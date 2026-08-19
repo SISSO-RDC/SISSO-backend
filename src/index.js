@@ -55,6 +55,10 @@ const accidentesRoutes = require('./routes/accidentesRoutes');
 // organizacion (necesario para asignar "responsable" de una accion
 // en Accidentes/Incidentes). Solo lectura, minimo, sin datos sensibles.
 const usuariosRoutes = require('./routes/usuariosRoutes');
+// CORREGIDO tras Auditoria SISSO N.06 (punto 19 / G1): CAPA
+// transversal, con verificacion de eficacia real antes de cerrar
+// (no solo "marcar como completado").
+const capaRoutes = require('./routes/capaRoutes');
 
 const app = express();
 
@@ -125,7 +129,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-19-accidentes-incidentes-usuarios',
+    version: '2026-08-19-capa-transversal',
   });
 });
 
@@ -160,6 +164,7 @@ app.use('/api/matriz-medico-puesto', matrizMedicoPuestoRoutes);
 app.use('/api/vigilancia-salud', vigilanciaSaludRoutes);
 app.use('/api/accidentes', accidentesRoutes);
 app.use('/api/usuarios', usuariosRoutes);
+app.use('/api/capa', capaRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {
