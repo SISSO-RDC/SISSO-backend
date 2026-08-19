@@ -1,0 +1,35 @@
+{
+  "name": "sisso-backend",
+  "version": "1.0.0",
+  "description": "Backend de SISSO - Sistema de Salud Ocupacional, con autenticacion real y arquitectura multi-tenant",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "migrate": "node src/db/migrate.js",
+    "seed": "node src/db/seed.js",
+    "cargar-cie10": "node scripts/cargar_cie10.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5",
+    "cookie-parser": "^1.4.6",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.4.0",
+    "express-validator": "^7.2.0",
+    "uuid": "^10.0.0",
+    "morgan": "^1.10.0",
+    "cloudinary": "^2.5.1",
+    "pdfkit": "^0.15.0",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
