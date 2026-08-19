@@ -47,6 +47,14 @@ const restriccionesMedicasRoutes = require('./routes/restriccionesMedicasRoutes'
 // salud (programas longitudinales con cifras agregadas para SSO).
 const matrizMedicoPuestoRoutes = require('./routes/matrizMedicoPuestoRoutes');
 const vigilanciaSaludRoutes = require('./routes/vigilanciaSaludRoutes');
+// CORREGIDO tras Auditoria SISSO N.06 (punto 18 / CRITICO 1): ciclo
+// integral de investigacion preventiva de accidentes/incidentes/casi
+// accidentes, con causas, acciones verificables y evidencia privada.
+const accidentesRoutes = require('./routes/accidentesRoutes');
+// CORREGIDO: no existia ningun endpoint para listar usuarios de la
+// organizacion (necesario para asignar "responsable" de una accion
+// en Accidentes/Incidentes). Solo lectura, minimo, sin datos sensibles.
+const usuariosRoutes = require('./routes/usuariosRoutes');
 
 const app = express();
 
@@ -117,7 +125,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-18-cie10-busqueda-prefijo',
+    version: '2026-08-19-accidentes-incidentes-usuarios',
   });
 });
 
@@ -150,6 +158,8 @@ app.use('/api/enfermedad-profesional', enfermedadProfesionalRoutes);
 app.use('/api/restricciones-medicas', restriccionesMedicasRoutes);
 app.use('/api/matriz-medico-puesto', matrizMedicoPuestoRoutes);
 app.use('/api/vigilancia-salud', vigilanciaSaludRoutes);
+app.use('/api/accidentes', accidentesRoutes);
+app.use('/api/usuarios', usuariosRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {
