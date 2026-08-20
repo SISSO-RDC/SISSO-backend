@@ -59,6 +59,10 @@ const usuariosRoutes = require('./routes/usuariosRoutes');
 // transversal, con verificacion de eficacia real antes de cerrar
 // (no solo "marcar como completado").
 const capaRoutes = require('./routes/capaRoutes');
+// CORREGIDO tras Auditoria SISSO N.06 (hallazgo G3): ciclo completo
+// de inspecciones -- checklist, hallazgos, y generacion directa de
+// una accion CAPA real desde cada hallazgo.
+const inspeccionesRoutes = require('./routes/inspeccionesRoutes');
 
 const app = express();
 
@@ -129,7 +133,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-19-capa-transversal',
+    version: '2026-08-20-inspecciones',
   });
 });
 
@@ -165,6 +169,7 @@ app.use('/api/vigilancia-salud', vigilanciaSaludRoutes);
 app.use('/api/accidentes', accidentesRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/capa', capaRoutes);
+app.use('/api/inspecciones', inspeccionesRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {
