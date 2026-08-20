@@ -63,6 +63,15 @@ const capaRoutes = require('./routes/capaRoutes');
 // de inspecciones -- checklist, hallazgos, y generacion directa de
 // una accion CAPA real desde cada hallazgo.
 const inspeccionesRoutes = require('./routes/inspeccionesRoutes');
+// CORREGIDO tras Auditoria SISSO N.06 (punto 7.6 / G6): riesgo
+// psicosocial con evaluacion, factores, nivel de riesgo,
+// intervencion (via CAPA) y reevaluacion longitudinal. Separacion
+// clinica respetada -- ver migration_039.
+const riesgoPsicosocialRoutes = require('./routes/riesgoPsicosocialRoutes');
+// CORREGIDO tras Auditoria SISSO N.06 (hallazgo G4): registro
+// estructurado de mediciones de higiene industrial y cumplimiento
+// contra limite permisible.
+const higieneIndustrialRoutes = require('./routes/higieneIndustrialRoutes');
 
 const app = express();
 
@@ -133,7 +142,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-20-inspecciones',
+    version: '2026-08-20-higiene-industrial-psicosocial',
   });
 });
 
@@ -170,6 +179,8 @@ app.use('/api/accidentes', accidentesRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/capa', capaRoutes);
 app.use('/api/inspecciones', inspeccionesRoutes);
+app.use('/api/riesgo-psicosocial', riesgoPsicosocialRoutes);
+app.use('/api/higiene-industrial', higieneIndustrialRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {
