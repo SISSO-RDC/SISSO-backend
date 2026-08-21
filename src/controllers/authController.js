@@ -320,7 +320,8 @@ async function login(req, res) {
               u.activo, u.intentos_fallidos, u.bloqueado_hasta, u.requiere_cambio_password,
               u.mfa_habilitado,
               o.activa AS organizacion_activa, o.nombre AS organizacion_nombre, o.codigo AS organizacion_codigo,
-              o.logo_url AS organizacion_logo_url
+              o.logo_url AS organizacion_logo_url, o.estado_suscripcion, o.fecha_fin_trial,
+              o.fecha_proxima_renovacion, o.suspendida_manualmente
        FROM usuarios u
        LEFT JOIN organizaciones o ON o.id = u.organizacion_id
        WHERE u.email = $1`,
@@ -395,6 +396,41 @@ async function login(req, res) {
     // NULL a proposito), asi que esta validacion solo aplica a los demas roles.
     if (usuario.rol !== 'superadmin' && !usuario.organizacion_activa) {
       return res.status(403).json({ error: 'La organizacion asociada esta inactiva.' });
+    }
+
+    // CORREGIDO: verificacion perezosa de vencimiento de trial/
+    // suscripcion. No hay un cron job corriendo en Render (plan
+    // gratuito), asi que en vez de depender de un proceso en
+    // segundo plano, se revisa en el momento del login -- si el
+    // trial o la suscripcion ya vencieron, se apaga la organizacion
+    // AHORA MISMO (activa=false, estado_suscripcion='vencida') y se
+    // bloquea este intento de login con un mensaje especifico,
+    // distinto de "organizacion inactiva" generico, para que el
+    // admin sepa exactamente que debe pagar/renovar. Nunca pisa una
+    // suspension manual del superadmin (esa ya bloqueo mas arriba).
+    if (usuario.rol !== 'superadmin' && usuario.organizacion_activa && !usuario.suspendida_manualmente) {
+      const hoy = new Date().toISOString().slice(0, 10);
+      const trialVencido = usuario.estado_suscripcion === 'trial' && usuario.fecha_fin_trial && usuario.fecha_fin_trial < hoy;
+      const suscripcionVencida = usuario.estado_suscripcion === 'activa' && usuario.fecha_proxima_renovacion && usuario.fecha_proxima_renovacion < hoy;
+
+      if (trialVencido || suscripcionVencida) {
+        await query(
+          `UPDATE organizaciones SET activa = false, estado_suscripcion = 'vencida' WHERE id = $1`,
+          [usuario.organizacion_id]
+        );
+        await registrarAuditoria({
+          organizacionId: usuario.organizacion_id,
+          accion: 'organizacion_vencida_automaticamente',
+          detalle: { razon: trialVencido ? 'trial_vencido' : 'suscripcion_vencida' },
+          req,
+        });
+        return res.status(402).json({
+          error: trialVencido
+            ? 'El período de prueba de 14 días ha finalizado. Contrate un plan para continuar.'
+            : 'La suscripción venció. Renueve el pago para reactivar el acceso.',
+          codigo: 'SUSCRIPCION_VENCIDA',
+        });
+      }
     }
 
     const passwordValida = await bcrypt.compare(password, usuario.password_hash);

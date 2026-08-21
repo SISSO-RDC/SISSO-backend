@@ -41,12 +41,18 @@ function generarPasswordTemporal() {
 // ------------------------------------------------------------
 // GET /api/superadmin/empresas
 // Lista todas las organizaciones con su(s) administrador(es).
+// CORREGIDO: ahora incluye tambien el estado de suscripcion/plan,
+// para que el superadmin vea de un vistazo quien esta en trial,
+// activo, vencido o suspendido.
 // ------------------------------------------------------------
 async function listarEmpresas(req, res) {
   try {
     const resultado = await query(
       `SELECT
         o.id, o.nombre, o.codigo, o.ruc_nit, o.plan, o.activa, o.creado_en,
+        o.estado_suscripcion, o.fecha_fin_trial, o.fecha_proxima_renovacion,
+        o.suspendida_manualmente, o.motivo_suspension,
+        p.codigo AS plan_codigo, p.nombre AS plan_nombre, p.precio_mensual_usd,
         COALESCE(
           json_agg(
             json_build_object('id', u.id, 'nombre_completo', u.nombre_completo, 'email', u.email, 'activo', u.activo, 'ultimo_login', u.ultimo_login)
@@ -54,8 +60,9 @@ async function listarEmpresas(req, res) {
           '[]'
         ) AS administradores
        FROM organizaciones o
+       LEFT JOIN planes p ON p.id = o.plan_id
        LEFT JOIN usuarios u ON u.organizacion_id = o.id AND u.rol = 'admin'
-       GROUP BY o.id
+       GROUP BY o.id, p.codigo, p.nombre, p.precio_mensual_usd
        ORDER BY o.creado_en DESC`
     );
     return res.json({ empresas: resultado.rows });
@@ -69,9 +76,12 @@ async function listarEmpresas(req, res) {
 // POST /api/superadmin/empresas
 // Crea una empresa nueva + su primer usuario administrador.
 // Reemplaza el registro publico (que se elimino por seguridad).
+// CORREGIDO: ahora asigna un plan real del catalogo y arranca un
+// trial de 14 dias (en vez del campo de texto libre 'gratis' sin
+// fecha de vencimiento que existia antes).
 // ------------------------------------------------------------
 async function crearEmpresa(req, res) {
-  const { nombreEmpresa, rucNit, nombreAdmin, email, plan } = req.body;
+  const { nombreEmpresa, rucNit, nombreAdmin, email, planCodigo } = req.body;
 
   if (!nombreEmpresa || !nombreAdmin || !email) {
     return res.status(400).json({ error: 'Faltan campos obligatorios: nombreEmpresa, nombreAdmin, email.' });
@@ -83,10 +93,21 @@ async function crearEmpresa(req, res) {
     const resultado = await withTransaction(async (client) => {
       const codigo = generarCodigoOrganizacion();
 
+      const planRes = await client.query(
+        `SELECT id FROM planes WHERE codigo = $1 AND activo = true`,
+        [planCodigo || 'inicial']
+      );
+      const planId = planRes.rows[0] ? planRes.rows[0].id : null;
+
+      const hoy = new Date().toISOString().slice(0, 10);
+      const finTrial = new Date();
+      finTrial.setDate(finTrial.getDate() + 14);
+
       const orgRes = await client.query(
-        `INSERT INTO organizaciones (nombre, codigo, ruc_nit, plan)
-         VALUES ($1, $2, $3, $4) RETURNING id, nombre, codigo, plan`,
-        [nombreEmpresa, codigo, rucNit || null, plan || 'gratis']
+        `INSERT INTO organizaciones (nombre, codigo, ruc_nit, plan, plan_id, estado_suscripcion, fecha_inicio_trial, fecha_fin_trial)
+         VALUES ($1, $2, $3, $4, $5, 'trial', $6, $7)
+         RETURNING id, nombre, codigo, plan, estado_suscripcion, fecha_fin_trial`,
+        [nombreEmpresa, codigo, rucNit || null, planCodigo || 'inicial', planId, hoy, finTrial.toISOString().slice(0, 10)]
       );
       const organizacion = orgRes.rows[0];
 
@@ -113,7 +134,7 @@ async function crearEmpresa(req, res) {
     });
 
     return res.status(201).json({
-      mensaje: 'Empresa creada con exito.',
+      mensaje: 'Empresa creada con exito. Trial de 14 dias iniciado.',
       organizacion: resultado.organizacion,
       usuarioAdmin: resultado.usuario,
       passwordTemporal, // Se muestra UNA SOLA VEZ; el superadmin debe comunicarla al cliente.
@@ -216,4 +237,115 @@ async function resetearPassword(req, res) {
   }
 }
 
-module.exports = { listarEmpresas, crearEmpresa, cambiarEstadoUsuario, resetearPassword };
+// ------------------------------------------------------------
+// PATCH /api/superadmin/empresas/:id/suspension
+// CORRIGE el punto 1.b reportado: hasta ahora solo se podia
+// desactivar un administrador a la vez (cambiarEstadoUsuario). Si
+// una empresa terminaba su contrato, el resto de sus usuarios
+// (medico, sso, th) seguian con acceso total al sistema. Este
+// endpoint apaga la organizacion COMPLETA de un solo boton:
+//   - organizaciones.activa = false (el login YA lo valida)
+//   - suspendida_manualmente = true (distingue de un simple
+//     vencimiento de pago -- una reactivacion automatica por pago
+//     nunca debe pisar esto)
+//   - revoca DE INMEDIATO todos los refresh tokens de TODOS los
+//     usuarios de la organizacion (no solo bloquea logins futuros;
+//     mismo criterio ya aplicado a nivel de usuario individual
+//     tras el hallazgo GRAVE G2 de la auditoria de seguridad)
+// ------------------------------------------------------------
+async function cambiarSuspensionOrganizacion(req, res) {
+  const { suspender, motivo } = req.body;
+  if (typeof suspender !== 'boolean') {
+    return res.status(400).json({ error: 'El campo "suspender" debe ser true o false.' });
+  }
+
+  try {
+    const resultado = await withTransaction(async (client) => {
+      const orgRes = await client.query(
+        `UPDATE organizaciones SET
+           activa = $1,
+           suspendida_manualmente = $1,
+           motivo_suspension = $2,
+           estado_suscripcion = CASE WHEN $1 THEN 'suspendida' ELSE estado_suscripcion END
+         WHERE id = $3
+         RETURNING id, nombre, activa, suspendida_manualmente, estado_suscripcion`,
+        [suspender, suspender ? (motivo || 'Suspendida por el superadmin.') : null, req.params.id]
+      );
+      if (orgRes.rows.length === 0) return null;
+
+      if (suspender) {
+        // Revoca TODAS las sesiones activas de TODA la organizacion,
+        // no solo la del administrador.
+        await client.query(
+          `UPDATE refresh_tokens SET revocado = true
+           WHERE usuario_id IN (SELECT id FROM usuarios WHERE organizacion_id = $1)`,
+          [req.params.id]
+        );
+      }
+
+      return orgRes.rows[0];
+    });
+
+    if (!resultado) {
+      return res.status(404).json({ error: 'Organizacion no encontrada.' });
+    }
+
+    await registrarAuditoria({
+      organizacionId: resultado.id,
+      usuarioId: req.usuario.id,
+      accion: suspender ? 'organizacion_suspendida_por_superadmin' : 'organizacion_reactivada_por_superadmin',
+      entidad: 'organizacion',
+      entidadId: resultado.id,
+      detalle: { motivo: motivo || null },
+      req,
+    });
+
+    return res.json({ organizacion: resultado });
+  } catch (err) {
+    console.error('Error en cambiarSuspensionOrganizacion:', err);
+    return res.status(500).json({ error: 'Error interno al cambiar la suspension de la organizacion.' });
+  }
+}
+
+// ------------------------------------------------------------
+// PATCH /api/superadmin/empresas/:id/plan
+// Asigna o cambia el plan de una organizacion. No modifica el
+// estado de suscripcion (eso lo maneja el pago o la suspension
+// manual) -- solo el plan al que esta o quedara sujeta.
+// ------------------------------------------------------------
+async function asignarPlan(req, res) {
+  const { planCodigo } = req.body;
+  if (!['inicial', 'crecimiento', 'corporativo'].includes(planCodigo)) {
+    return res.status(400).json({ error: 'planCodigo invalido.' });
+  }
+
+  try {
+    const planRes = await query(`SELECT id FROM planes WHERE codigo = $1 AND activo = true`, [planCodigo]);
+    if (planRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Plan no encontrado.' });
+    }
+
+    const actualizadaRes = await query(
+      `UPDATE organizaciones SET plan = $1, plan_id = $2 WHERE id = $3 RETURNING id, nombre, plan`,
+      [planCodigo, planRes.rows[0].id, req.params.id]
+    );
+    if (actualizadaRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Organizacion no encontrada.' });
+    }
+
+    await registrarAuditoria({
+      organizacionId: req.params.id, usuarioId: req.usuario.id, accion: 'organizacion_plan_cambiado',
+      entidad: 'organizacion', entidadId: req.params.id, detalle: { planCodigo }, req,
+    });
+
+    return res.json({ organizacion: actualizadaRes.rows[0] });
+  } catch (err) {
+    console.error('Error en asignarPlan:', err);
+    return res.status(500).json({ error: 'Error interno al asignar el plan.' });
+  }
+}
+
+module.exports = {
+  listarEmpresas, crearEmpresa, cambiarEstadoUsuario, resetearPassword,
+  cambiarSuspensionOrganizacion, asignarPlan,
+};
