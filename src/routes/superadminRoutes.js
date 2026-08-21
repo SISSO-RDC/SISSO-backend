@@ -12,6 +12,8 @@ router.use(autenticar, autorizar('superadmin'));
 
 router.get('/empresas', superadminController.listarEmpresas);
 router.post('/empresas', superadminController.crearEmpresa);
+router.patch('/empresas/:id/suspension', superadminController.cambiarSuspensionOrganizacion);
+router.patch('/empresas/:id/plan', superadminController.asignarPlan);
 router.patch('/usuarios/:id/estado', superadminController.cambiarEstadoUsuario);
 router.post('/usuarios/:id/resetear-password', superadminController.resetearPassword);
 

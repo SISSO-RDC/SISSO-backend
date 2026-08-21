@@ -6,10 +6,12 @@ const express = require('express');
 const router = express.Router();
 const { autenticar, autorizar } = require('../middleware/auth');
 const organizacionController = require('../controllers/organizacionController');
+const pagosController = require('../controllers/pagosController');
 const { validarActualizarOrganizacion, validarActualizarLogoOrganizacion } = require('../middleware/validacion');
 
 router.get('/', autenticar, autorizar('admin'), organizacionController.obtenerPerfil);
 router.put('/', autenticar, autorizar('admin'), validarActualizarOrganizacion, organizacionController.actualizarPerfil);
 router.put('/logo', autenticar, autorizar('admin'), validarActualizarLogoOrganizacion, organizacionController.actualizarLogo);
+router.get('/suscripcion', autenticar, autorizar('admin'), pagosController.obtenerEstadoSuscripcion);
 
 module.exports = router;

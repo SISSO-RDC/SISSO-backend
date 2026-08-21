@@ -75,6 +75,10 @@ const higieneIndustrialRoutes = require('./routes/higieneIndustrialRoutes');
 // EPP: catalogo por organizacion + entregas individuales con firma
 // de recibido y vencimiento calculado automaticamente.
 const eppRoutes = require('./routes/eppRoutes');
+// Infraestructura de planes/suscripcion/pago (PayPhone). Ver
+// migration_042 y pagosController.js para el patron de seguridad
+// de confirmacion server-to-server.
+const pagosRoutes = require('./routes/pagosRoutes');
 
 const app = express();
 
@@ -145,7 +149,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-20-epp',
+    version: '2026-08-21-planes-suscripcion-payphone',
   });
 });
 
@@ -185,6 +189,7 @@ app.use('/api/inspecciones', inspeccionesRoutes);
 app.use('/api/riesgo-psicosocial', riesgoPsicosocialRoutes);
 app.use('/api/higiene-industrial', higieneIndustrialRoutes);
 app.use('/api/epp', eppRoutes);
+app.use('/api/pagos', pagosRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {
