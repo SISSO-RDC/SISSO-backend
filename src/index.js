@@ -72,6 +72,9 @@ const riesgoPsicosocialRoutes = require('./routes/riesgoPsicosocialRoutes');
 // estructurado de mediciones de higiene industrial y cumplimiento
 // contra limite permisible.
 const higieneIndustrialRoutes = require('./routes/higieneIndustrialRoutes');
+// EPP: catalogo por organizacion + entregas individuales con firma
+// de recibido y vencimiento calculado automaticamente.
+const eppRoutes = require('./routes/eppRoutes');
 
 const app = express();
 
@@ -142,7 +145,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-20-higiene-industrial-psicosocial',
+    version: '2026-08-20-epp',
   });
 });
 
@@ -181,6 +184,7 @@ app.use('/api/capa', capaRoutes);
 app.use('/api/inspecciones', inspeccionesRoutes);
 app.use('/api/riesgo-psicosocial', riesgoPsicosocialRoutes);
 app.use('/api/higiene-industrial', higieneIndustrialRoutes);
+app.use('/api/epp', eppRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {
