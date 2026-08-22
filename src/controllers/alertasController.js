@@ -1,169 +1,236 @@
 // ============================================================
-// Controlador de Alertas: panel consolidado de senales de
-// atencion agregadas de los modulos existentes. NO es un sistema
-// de notificaciones persistente (no hay tabla de alertas, no hay
-// estado leido/no-leido): es una vista calculada en tiempo real
-// sobre los datos que ya existen en cada modulo, mismo enfoque que
-// "Proximos examenes" (trabajadoresController.js).
+// Controlador de Alertas. CORRIGE el hallazgo G9 de la Auditoria
+// SISSO N.06: "Deben pasar de señales calculadas a objetos
+// persistentes gestionables."
 //
-// IMPORTANTE - separacion de roles: el sistema ya establece en
-// otros modulos (aptitud, historia clinica) que admin NUNCA ve
-// datos clinicos individuales de un trabajador. Alertas mezcla
-// señales administrativas (EMOs vencidos) con señales clinicas
-// (aptitud no apta, patrones anormales, STS, etc.), asi que este
-// controlador filtra en el BACKEND segun el rol de quien consulta
-// -no solo se oculta en el frontend-: admin y th solo reciben las
-// categorias administrativas; medico y sso reciben todo.
+// PATRON: en cada GET /api/alertas se sincroniza primero la tabla
+// `alertas` contra las mismas señales que antes se calculaban al
+// vuelo (EMOs vencidos, consentimientos revocados, aptitud no apta,
+// STS en audiometria, etc.) -- las señales NUEVAS se insertan como
+// alertas nuevas; las que ya existian NO se tocan (ON CONFLICT DO
+// NOTHING), para no perder el estado de gestion que un usuario ya
+// le haya dado. No hay cron job (Render free): la sincronizacion
+// perezosa en cada lectura es el mismo patron ya usado para el
+// vencimiento de trials/suscripciones (authController.js).
+//
+// Se preserva intacta la separacion de roles del controlador
+// original: admin y th solo ven categorias administrativas; medico
+// y sso ven todo, incluidas las clinicas.
 // ============================================================
 const { query } = require('../db/pool');
+const { registrarAuditoria } = require('../utils/auditoria');
 
-const LIMITE_POR_CATEGORIA = 30;
-const DIAS_RECIENTE = 180; // ventana para considerar "reciente" un hallazgo clinico
+const DIAS_RECIENTE = 180;
 
 // ------------------------------------------------------------
-// Categorias ADMINISTRATIVAS: visibles para cualquier rol.
+// Sincroniza la tabla `alertas` contra las señales administrativas.
 // ------------------------------------------------------------
-async function obtenerAlertasAdministrativas(organizacionId) {
-  const emosRes = await query(
-    `SELECT id, nombre_completo, documento,
-            (fecha_vencimiento - CURRENT_DATE) AS dias_restantes, fecha_vencimiento
-     FROM trabajadores
-     WHERE organizacion_id = $1 AND activo = true
-       AND fecha_vencimiento IS NOT NULL
-       AND fecha_vencimiento <= CURRENT_DATE + INTERVAL '15 days'
-     ORDER BY fecha_vencimiento ASC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+async function sincronizarAlertasAdministrativas(orgId) {
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, detalle, fecha_deteccion)
+     SELECT $1, 'emo_vencido', false, 'trabajadores', t.id, t.id,
+            'EMO próximo a vencer o vencido: ' || t.nombre_completo,
+            'Vence el ' || t.fecha_vencimiento,
+            CURRENT_DATE
+     FROM trabajadores t
+     WHERE t.organizacion_id = $1 AND t.activo = true
+       AND t.fecha_vencimiento IS NOT NULL
+       AND t.fecha_vencimiento <= CURRENT_DATE + INTERVAL '15 days'
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
 
-  const consentimientosRes = await query(
-    `SELECT c.id, c.trabajador_id, t.nombre_completo, t.documento, tc.nombre AS tipo_consentimiento_nombre, c.revocado_en
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, detalle, fecha_deteccion)
+     SELECT $1, 'consentimiento_revocado', false, 'consentimientos_firmados', c.id, c.trabajador_id,
+            'Consentimiento revocado: ' || t.nombre_completo,
+            tc.nombre,
+            c.revocado_en::date
      FROM consentimientos_firmados c
      JOIN trabajadores t ON t.id = c.trabajador_id
      JOIN tipos_consentimiento tc ON tc.codigo = c.tipo_consentimiento_codigo
      WHERE c.organizacion_id = $1 AND c.revocado = true
        AND c.revocado_en >= CURRENT_DATE - INTERVAL '${DIAS_RECIENTE} days'
-     ORDER BY c.revocado_en DESC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
-
-  return {
-    emos_vencidos_o_criticos: emosRes.rows,
-    consentimientos_revocados: consentimientosRes.rows,
-  };
 }
 
 // ------------------------------------------------------------
-// Categorias CLINICAS: solo medico y sso.
+// Sincroniza la tabla `alertas` contra las señales clinicas.
 // ------------------------------------------------------------
-async function obtenerAlertasClinicas(organizacionId) {
-  const aptitudRes = await query(
-    `SELECT id, nombre_completo, documento, aptitud
-     FROM trabajadores
-     WHERE organizacion_id = $1 AND activo = true AND aptitud = 'no_apto'
-     ORDER BY nombre_completo ASC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+async function sincronizarAlertasClinicas(orgId) {
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, fecha_deteccion)
+     SELECT $1, 'aptitud_no_apto', true, 'trabajadores', t.id, t.id,
+            'Aptitud NO APTO: ' || t.nombre_completo, CURRENT_DATE
+     FROM trabajadores t
+     WHERE t.organizacion_id = $1 AND t.activo = true AND t.aptitud = 'no_apto'
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
 
-  const historiaClinicaRes = await query(
-    `SELECT e.id, e.trabajador_id, t.nombre_completo, t.documento, e.tipo_evaluacion, e.aptitud_msp, e.fecha_atencion
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, detalle, fecha_deteccion)
+     SELECT $1, 'historia_clinica_limitada', true, 'evaluaciones_ocupacionales', e.id, e.trabajador_id,
+            'Aptitud limitada en historia clínica: ' || t.nombre_completo, e.tipo_evaluacion, e.fecha_atencion::date
      FROM evaluaciones_ocupacionales e
      JOIN trabajadores t ON t.id = e.trabajador_id
      WHERE e.organizacion_id = $1 AND e.aptitud_msp IN ('no_apto', 'apto_con_limitaciones')
        AND e.fecha_atencion >= CURRENT_DATE - INTERVAL '${DIAS_RECIENTE} days'
-     ORDER BY e.fecha_atencion DESC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
 
-  const audiometriaRes = await query(
-    `SELECT id, trabajador_id,
-            (SELECT nombre_completo FROM trabajadores WHERE id = examenes_audiometria.trabajador_id) AS nombre_completo,
-            (SELECT documento FROM trabajadores WHERE id = examenes_audiometria.trabajador_id) AS documento,
-            fecha_examen, sts_od_positivo, sts_oi_positivo
-     FROM examenes_audiometria
-     WHERE organizacion_id = $1 AND (sts_od_positivo = true OR sts_oi_positivo = true)
-       AND fecha_examen >= CURRENT_DATE - INTERVAL '${DIAS_RECIENTE} days'
-     ORDER BY fecha_examen DESC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, fecha_deteccion)
+     SELECT $1, 'audiometria_sts', true, 'examenes_audiometria', a.id, a.trabajador_id,
+            'STS positivo en audiometría: ' || t.nombre_completo, a.fecha_examen
+     FROM examenes_audiometria a
+     JOIN trabajadores t ON t.id = a.trabajador_id
+     WHERE a.organizacion_id = $1 AND (a.sts_od_positivo = true OR a.sts_oi_positivo = true)
+       AND a.fecha_examen >= CURRENT_DATE - INTERVAL '${DIAS_RECIENTE} days'
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
 
-  const espirometriaRes = await query(
-    `SELECT e.id, e.trabajador_id, t.nombre_completo, t.documento, e.fecha_examen, e.patron
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, detalle, fecha_deteccion)
+     SELECT $1, 'espirometria_anormal', true, 'examenes_espirometria', e.id, e.trabajador_id,
+            'Patrón espirométrico anormal: ' || t.nombre_completo, e.patron, e.fecha_examen
      FROM examenes_espirometria e
      JOIN trabajadores t ON t.id = e.trabajador_id
      WHERE e.organizacion_id = $1 AND e.patron IS NOT NULL AND e.patron != 'normal'
        AND e.fecha_examen >= CURRENT_DATE - INTERVAL '${DIAS_RECIENTE} days'
-     ORDER BY e.fecha_examen DESC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
 
-  const visiometriaRes = await query(
-    `SELECT e.id, e.trabajador_id, t.nombre_completo, t.documento, e.fecha_examen, e.aptitud_definida
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, fecha_deteccion)
+     SELECT $1, 'visiometria_requiere_evaluacion', true, 'examenes_visiometria', e.id, e.trabajador_id,
+            'Requiere evaluación oftalmológica: ' || t.nombre_completo, e.fecha_examen
      FROM examenes_visiometria e
      JOIN trabajadores t ON t.id = e.trabajador_id
      WHERE e.organizacion_id = $1 AND e.aptitud_definida IN ('requiere_evaluacion_oftalmologica', 'no_apto')
        AND e.fecha_examen >= CURRENT_DATE - INTERVAL '${DIAS_RECIENTE} days'
-     ORDER BY e.fecha_examen DESC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
 
-  const nordicoRes = await query(
-    `SELECT c.id, c.trabajador_id, t.nombre_completo, t.documento, c.fecha_aplicacion, c.regiones_prioritarias
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, fecha_deteccion)
+     SELECT $1, 'nordico_prioritario', true, 'cuestionarios_nordicos', c.id, c.trabajador_id,
+            'Cuestionario nórdico prioritario: ' || t.nombre_completo, c.fecha_aplicacion
      FROM cuestionarios_nordicos c
      JOIN trabajadores t ON t.id = c.trabajador_id
      WHERE c.organizacion_id = $1 AND c.requiere_atencion_prioritaria = true
        AND c.fecha_aplicacion >= CURRENT_DATE - INTERVAL '${DIAS_RECIENTE} days'
-     ORDER BY c.fecha_aplicacion DESC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
 
-  const nioshRes = await query(
-    `SELECT e.id, e.trabajador_id, t.nombre_completo, t.documento, e.fecha_evaluacion, e.nombre_tarea, e.li, e.clasificacion
+  await query(
+    `INSERT INTO alertas (organizacion_id, categoria, es_clinica, origen_entidad, origen_id, trabajador_id, titulo, detalle, fecha_deteccion)
+     SELECT $1, 'niosh_riesgo_alto', true, 'evaluaciones_niosh', e.id, e.trabajador_id,
+            'Riesgo NIOSH alto: ' || t.nombre_completo, e.nombre_tarea, e.fecha_evaluacion
      FROM evaluaciones_niosh e
      JOIN trabajadores t ON t.id = e.trabajador_id
      WHERE e.organizacion_id = $1 AND e.clasificacion IN ('riesgo_alto', 'riesgo_muy_alto')
        AND e.fecha_evaluacion >= CURRENT_DATE - INTERVAL '${DIAS_RECIENTE} days'
-     ORDER BY e.fecha_evaluacion DESC
-     LIMIT $2`,
-    [organizacionId, LIMITE_POR_CATEGORIA]
+     ON CONFLICT (organizacion_id, categoria, origen_entidad, origen_id) DO NOTHING`,
+    [orgId]
   );
-
-  return {
-    aptitud_no_apto: aptitudRes.rows,
-    historia_clinica_aptitud_limitada: historiaClinicaRes.rows,
-    audiometria_sts: audiometriaRes.rows,
-    espirometria_patron_anormal: espirometriaRes.rows,
-    visiometria_requiere_evaluacion: visiometriaRes.rows,
-    nordico_prioritario: nordicoRes.rows,
-    niosh_riesgo_alto: nioshRes.rows,
-  };
 }
 
 // ------------------------------------------------------------
-// GET /api/alertas
+// GET /api/alertas  (filtros: estado, categoria)
 // ------------------------------------------------------------
 async function obtenerAlertas(req, res) {
+  const orgId = req.usuario.organizacionId;
+  const esClinico = ['medico', 'sso'].includes(req.usuario.rol);
+  const { estado, categoria } = req.query;
+
   try {
-    const esClinico = ['medico', 'sso'].includes(req.usuario.rol);
+    await sincronizarAlertasAdministrativas(orgId);
+    if (esClinico) await sincronizarAlertasClinicas(orgId);
 
-    const administrativas = await obtenerAlertasAdministrativas(req.usuario.organizacionId);
-    const clinicas = esClinico ? await obtenerAlertasClinicas(req.usuario.organizacionId) : null;
+    const condiciones = ['a.organizacion_id = $1'];
+    const parametros = [orgId];
+    if (!esClinico) condiciones.push('a.es_clinica = false');
+    if (estado) { parametros.push(estado); condiciones.push(`a.estado = $${parametros.length}`); }
+    if (categoria) { parametros.push(categoria); condiciones.push(`a.categoria = $${parametros.length}`); }
 
-    const alertas = { ...administrativas, ...(clinicas || {}) };
-    const total = Object.values(alertas).reduce((acc, lista) => acc + lista.length, 0);
+    const resultado = await query(
+      `SELECT a.id, a.categoria, a.es_clinica, a.trabajador_id, t.nombre_completo AS trabajador_nombre,
+              a.titulo, a.detalle, a.estado, a.responsable_id, u.nombre_completo AS responsable_nombre,
+              a.nota_gestion, a.fecha_deteccion, a.fecha_resolucion, a.creado_en
+       FROM alertas a
+       LEFT JOIN trabajadores t ON t.id = a.trabajador_id
+       LEFT JOIN usuarios u ON u.id = a.responsable_id
+       WHERE ${condiciones.join(' AND ')}
+       ORDER BY (a.estado = 'nueva') DESC, a.fecha_deteccion DESC`,
+      parametros
+    );
 
-    return res.json({ alertas, total, incluyeClinicas: esClinico });
+    const total = resultado.rows.length;
+    const nuevas = resultado.rows.filter((a) => a.estado === 'nueva').length;
+
+    return res.json({ alertas: resultado.rows, total, nuevas, incluyeClinicas: esClinico });
   } catch (err) {
     console.error('Error en obtenerAlertas:', err);
     return res.status(500).json({ error: 'Error interno al obtener las alertas.' });
   }
 }
 
-module.exports = { obtenerAlertas };
+// ------------------------------------------------------------
+// PUT /api/alertas/:id/estado
+// Gestiona el ciclo de vida: vista -> en_gestion -> resuelta (o
+// descartada). Puede asignar un responsable y dejar una nota.
+// ------------------------------------------------------------
+async function actualizarEstadoAlerta(req, res) {
+  const orgId = req.usuario.organizacionId;
+  const { estado, responsableId, notaGestion } = req.body;
+
+  if (estado && !['nueva', 'vista', 'en_gestion', 'resuelta', 'descartada'].includes(estado)) {
+    return res.status(400).json({ error: 'estado invalido.' });
+  }
+
+  try {
+    // Una alerta CLINICA (es_clinica=true) solo puede ser gestionada
+    // por medico/sso, aunque el registro ya exista en la tabla --
+    // mismo criterio de separacion de roles que en la lectura.
+    const alertaRes = await query(`SELECT id, es_clinica FROM alertas WHERE id = $1 AND organizacion_id = $2`, [req.params.id, orgId]);
+    if (alertaRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Alerta no encontrada.' });
+    }
+    if (alertaRes.rows[0].es_clinica && !['medico', 'sso'].includes(req.usuario.rol)) {
+      return res.status(403).json({ error: 'No tiene permiso para gestionar esta alerta clínica.' });
+    }
+
+    const fechaResolucion = (estado === 'resuelta' || estado === 'descartada') ? new Date().toISOString().slice(0, 10) : null;
+
+    const actualizadaRes = await query(
+      `UPDATE alertas SET
+         estado = COALESCE($1, estado),
+         responsable_id = COALESCE($2, responsable_id),
+         nota_gestion = COALESCE($3, nota_gestion),
+         fecha_resolucion = COALESCE($4, fecha_resolucion)
+       WHERE id = $5 AND organizacion_id = $6
+       RETURNING id, estado, responsable_id, fecha_resolucion`,
+      [estado || null, responsableId || null, notaGestion || null, fechaResolucion, req.params.id, orgId]
+    );
+
+    await registrarAuditoria({
+      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'alerta_estado_actualizado',
+      entidad: 'alertas', entidadId: req.params.id, detalle: { estado }, req,
+    });
+
+    return res.json({ alerta: actualizadaRes.rows[0] });
+  } catch (err) {
+    console.error('Error en actualizarEstadoAlerta:', err);
+    return res.status(500).json({ error: 'Error interno al actualizar la alerta.' });
+  }
+}
+
+module.exports = { obtenerAlertas, actualizarEstadoAlerta };

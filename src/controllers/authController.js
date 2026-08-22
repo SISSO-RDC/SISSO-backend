@@ -59,7 +59,14 @@ const BLOQUEO_MINUTOS = 15;
 // usuario todavia no configuro su MFA, el login se corta con un
 // codigo especial que el frontend usa para redirigir directo a la
 // pantalla de configuracion de MFA en vez de al dashboard.
-const ROLES_MFA_OBLIGATORIO = ['superadmin', 'admin', 'medico'];
+//
+// AMPLIADO tras la Auditoria SISSO N.06 (hallazgo G5): "SSO y TH
+// deberian utilizar MFA obligatorio por el nivel de informacion que
+// pueden gestionar" -- ambos roles ya tienen acceso a datos
+// sensibles (restricciones medicas en modo operativo, accidentes,
+// CAPA, matriz de riesgos, ausentismo, entre otros) que antes no
+// exigian el segundo factor.
+const ROLES_MFA_OBLIGATORIO = ['superadmin', 'admin', 'medico', 'sso', 'th'];
 
 // ------------------------------------------------------------
 // CORREGIDO tras auditoria de seguridad (hallazgo GRAVE G4): el
