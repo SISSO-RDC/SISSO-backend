@@ -10,5 +10,6 @@ const { autenticar } = require('../middleware/auth');
 const alertasController = require('../controllers/alertasController');
 
 router.get('/', autenticar, alertasController.obtenerAlertas);
+router.put('/:id/estado', autenticar, alertasController.actualizarEstadoAlerta);
 
 module.exports = router;
