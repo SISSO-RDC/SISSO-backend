@@ -106,6 +106,16 @@ async function migrate() {
 
       try {
         await client.query('BEGIN');
+        // CORREGIDO (hallazgo GRAVE G3): con RLS + FORCE ROW LEVEL
+        // SECURITY activas desde la migracion 045, cualquier
+        // migracion FUTURA que modifique datos existentes entre
+        // organizaciones (como ya hizo la 042) necesita bypassear el
+        // filtro de organizacion explicitamente. migrate.js corre
+        // fuera de una peticion HTTP (no hay contexto async), asi
+        // que se fija aqui mismo, LOCAL a esta transaccion.
+        await client.query(
+          `SELECT set_config('app.es_superadmin', 'true', true)`
+        );
         await client.query(sql);
         // Idempotente aunque el archivo ya se haya auto-registrado.
         await client.query(
