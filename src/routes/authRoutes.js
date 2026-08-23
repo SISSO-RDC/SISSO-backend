@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const authController = require('../controllers/authController');
-const { autenticar, autorizar, autenticarOMfaPendiente } = require('../middleware/auth');
+const { autenticar, autorizar, autenticarOMfaPendiente, contextoInterno } = require('../middleware/auth');
 const {
   validarRegistrarOrganizacion,
   validarRegistrarUsuario,
@@ -72,7 +72,7 @@ const limitadorMfa = rateLimit({
 // un usuario dentro de una empresa es estando ya autenticado como
 // admin de esa empresa (/api/auth/registrar-usuario-interno).
 router.post('/registrar-usuario-interno', autenticar, autorizar('admin'), validarRegistrarUsuarioInterno, authController.registrarUsuarioInterno);
-router.post('/bootstrap-superadmin', authController.bootstrapSuperadmin);
+router.post('/bootstrap-superadmin', contextoInterno, authController.bootstrapSuperadmin);
 
 // CORREGIDO (hallazgo GRAVE G1): via de recuperacion "break-glass"
 // para el superadmin, protegida por RECOVERY_SECRET (ver comentario
@@ -87,10 +87,10 @@ const limitadorRecuperacion = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-router.post('/recuperar-superadmin', limitadorRecuperacion, authController.recuperarSuperadmin);
-router.post('/login', limitadorLogin, validarLogin, authController.login);
-router.post('/refrescar', authController.refrescar);
-router.post('/logout', authController.logout);
+router.post('/recuperar-superadmin', limitadorRecuperacion, contextoInterno, authController.recuperarSuperadmin);
+router.post('/login', limitadorLogin, validarLogin, contextoInterno, authController.login);
+router.post('/refrescar', contextoInterno, authController.refrescar);
+router.post('/logout', contextoInterno, authController.logout);
 router.get('/perfil', autenticar, authController.perfil);
 router.get('/usuarios', autenticar, autorizar('admin'), authController.listarUsuarios);
 
@@ -113,7 +113,7 @@ router.put('/cambiar-password', autenticar, validarCambiarPassword, authControll
 router.post('/mfa/iniciar-configuracion', autenticarOMfaPendiente, limitadorMfa, authController.iniciarConfiguracionMfa);
 router.post('/mfa/confirmar', autenticarOMfaPendiente, limitadorMfa, authController.confirmarMfa);
 router.post('/mfa/deshabilitar', autenticar, authController.deshabilitarMfa);
-router.post('/mfa/verificar-login', limitadorMfa, authController.verificarCodigoMfa);
+router.post('/mfa/verificar-login', limitadorMfa, contextoInterno, authController.verificarCodigoMfa);
 
 // CORREGIDO (hallazgo MODERADO de la auditoria: "crear gestion de
 // sesiones activas"). Ver authController.js:listarSesiones para el

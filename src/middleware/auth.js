@@ -9,6 +9,7 @@
 // nunca ve.
 // ============================================================
 const { verificarAccessToken, verificarTokenMfaPendiente } = require('../utils/jwt');
+const { ejecutarConContexto } = require('../utils/contextoSolicitud');
 
 function autenticar(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -31,7 +32,16 @@ function autenticar(req, res, next) {
       organizacionId: payload.organizacionId,
       rol: payload.rol,
     };
-    next();
+    // CORREGIDO (hallazgo GRAVE G3): propaga la identidad verificada
+    // al contexto async para que db/pool.js pueda fijar las
+    // variables de sesion de PostgreSQL que las politicas RLS
+    // (migration_045) usan para filtrar cada consulta a nivel de
+    // base de datos, ademas del filtrado que ya hace cada
+    // controlador. Ver src/utils/contextoSolicitud.js.
+    ejecutarConContexto(
+      { organizacionId: payload.organizacionId, usuarioId: payload.sub, esSuperadmin: payload.rol === 'superadmin' },
+      next
+    );
   } catch (err) {
     if (err.name === 'TokenExpiredError') {
       return res.status(401).json({ error: 'El token ha expirado.', codigo: 'TOKEN_EXPIRADO' });
@@ -93,10 +103,38 @@ function autenticarOMfaPendiente(req, res, next) {
       return res.status(401).json({ error: 'Token invalido.' });
     }
     req.usuario = { id: payload.sub, organizacionId: null, rol: null };
-    next();
+    // Sin organizacion confirmada todavia (usuario a medio loguear),
+    // pero SI con usuarioId -- la politica RLS de `usuarios` permite
+    // que cualquiera vea/edite su PROPIA fila por id incluso sin
+    // organizacion_id en contexto, que es exactamente lo que estas
+    // 2 rutas de configuracion de MFA necesitan.
+    ejecutarConContexto({ organizacionId: null, usuarioId: payload.sub, esSuperadmin: false }, next);
   } catch (err) {
     return res.status(401).json({ error: 'El token de verificacion expiro o es invalido. Inicie sesion de nuevo.' });
   }
 }
 
-module.exports = { autenticar, autorizar, autenticarOMfaPendiente };
+// ------------------------------------------------------------
+// CORREGIDO (hallazgo GRAVE G3): las rutas de PRE-sesion (login,
+// segundo paso de MFA, refrescar token, logout, bootstrap y
+// recuperacion de superadmin) no pasan por `autenticar` -- todavia
+// no sabemos quien es el usuario ni a que organizacion pertenece
+// cuando arrancan (login busca por EMAIL, refrescar busca por el
+// HASH del refresh token). Sin contexto async, db/pool.js no fija
+// ninguna variable de sesion, y con RLS + FORCE ROW LEVEL SECURITY
+// activo (migration_045) esas consultas devolverian CERO filas
+// aunque el usuario exista, rompiendo el login por completo.
+//
+// Este middleware marca el contexto como "superadmin" (bypassa el
+// filtro de organizacion en las politicas RLS) UNICAMENTE para
+// estas rutas puntuales, ANTES de que exista ninguna sesion. Cada
+// controlador sigue validando credenciales/tokens exactamente
+// igual que antes -- esto no otorga ningun acceso nuevo a nadie,
+// solo le permite a estas rutas especificas *buscar* en toda la
+// tabla antes de saber a quien encontraron.
+// ------------------------------------------------------------
+function contextoInterno(req, res, next) {
+  ejecutarConContexto({ organizacionId: null, usuarioId: null, esSuperadmin: true }, next);
+}
+
+module.exports = { autenticar, autorizar, autenticarOMfaPendiente, contextoInterno };
