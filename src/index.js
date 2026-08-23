@@ -149,7 +149,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-22-mfa-sso-th-alertas-persistentes',
+    version: '2026-08-22-mfa-rate-limit-tests-automatizados',
   });
 });
 
