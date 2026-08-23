@@ -41,7 +41,8 @@ las consultas SQL con `organizacion_id`.
   un puerto dedicado a pruebas.
 - **`tests/helpers/cliente.js`** — hace login COMPLETO (password + MFA)
   contra el servidor, generando codigos TOTP validos en el momento.
-- **`tests/seguridad.test.js`** — los 10 casos de prueba:
+- **`tests/seguridad.test.js`** — 10 casos de prueba contra el
+  servidor HTTP real:
   - **C1 (multi-tenant)**: un usuario de la Organizacion A nunca puede
     leer, ni por ID directo ni por listado, un registro de la
     Organizacion B — y viceversa.
@@ -50,8 +51,36 @@ las consultas SQL con `organizacion_id`.
     un token valido de su propia organizacion. Una ruta protegida sin
     token responde 401.
   - **G1 (rate limiting MFA)**: tras 5 codigos TOTP incorrectos, el
-    sexto intento se rechaza con 429 **aunque el codigo sea correcto**
-    — verifica el fix aplicado en esta misma sesion.
+    sexto intento se rechaza con 429 **aunque el codigo sea correcto**.
+- **`tests/rls.test.js`** — 3 casos que prueban el hallazgo G3
+  (Row-Level Security) de una forma que `seguridad.test.js` NO puede:
+  se saltan el controlador por completo y ejecutan una consulta SQL
+  **deliberadamente sin `WHERE organizacion_id`** — el bug humano
+  exacto que la auditoria advierte que un desarrollador futuro podria
+  cometer. Si RLS funciona de verdad, esa consulta "con el bug" sigue
+  aislada por la politica de base de datos; si no funcionara (o el rol
+  de conexion tuviera BYPASSRLS, o fuera dueño de las tablas sin FORCE
+  ROW LEVEL SECURITY), devolveria filas de todas las organizaciones.
+
+## Nota sobre RLS y el dueño de las tablas
+
+Por defecto, PostgreSQL deja que el **dueño** de una tabla salte sus
+propias politicas RLS, aunque esten "activadas" — a menos que se use
+tambien `FORCE ROW LEVEL SECURITY` (que la migracion 045 ya aplica en
+todas las tablas). Si reproduces este suite localmente conectando con
+un rol **superusuario** de Postgres (como el `postgres` por defecto),
+las pruebas de `rls.test.js` pueden pasar por una razon equivocada: los
+superusuarios de Postgres bypassan RLS SIEMPRE, sin importar FORCE.
+Para una verificacion realista (igual que en Neon, donde el rol de
+conexion de la app no es superusuario), crea un rol dedicado sin
+`SUPERUSER` que sea dueño de las tablas de prueba, por ejemplo:
+
+```sql
+CREATE ROLE sisso_app LOGIN PASSWORD 'algo';
+ALTER DATABASE sisso_test OWNER TO sisso_app;
+-- reconectar como sisso_app y correr `npm run migrate` desde ahi,
+-- para que las tablas se creen con sisso_app como dueño.
+```
 
 ## Que falta (para las proximas sesiones)
 

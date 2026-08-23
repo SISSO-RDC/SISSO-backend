@@ -21,23 +21,25 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const { authenticator } = require('otplib');
-const { pool } = require('../../src/db/pool');
+const { pool, queryComoSuperadmin } = require('../../src/db/pool');
 const { encriptar } = require('../../src/utils/crypto');
 
 const PASSWORD_PRUEBA = 'ClaveDePrueba#2026';
 
 async function sembrar() {
-  const client = await pool.connect();
+  // CORREGIDO: con RLS + FORCE ROW LEVEL SECURITY activas
+  // (migration_045), un client crudo del pool sin contexto de
+  // sesion ya NO puede leer ni escribir en las tablas
+  // organizacion_id-scoped. La siembra de datos de prueba necesita
+  // operar a traves de organizaciones, asi que usa
+  // queryComoSuperadmin en vez de pool.connect() directo.
   try {
-    await client.query('BEGIN');
+    await limpiar();
 
-    // Limpieza de corridas anteriores (idempotente).
-    await client.query(`DELETE FROM organizaciones WHERE codigo IN ('TEST-ORG-A', 'TEST-ORG-B')`);
-
-    const orgARes = await client.query(
+    const orgARes = await queryComoSuperadmin(
       `INSERT INTO organizaciones (nombre, codigo, plan, estado_suscripcion) VALUES ('Organizacion Prueba A', 'TEST-ORG-A', 'inicial', 'activa') RETURNING id`
     );
-    const orgBRes = await client.query(
+    const orgBRes = await queryComoSuperadmin(
       `INSERT INTO organizaciones (nombre, codigo, plan, estado_suscripcion) VALUES ('Organizacion Prueba B', 'TEST-ORG-B', 'inicial', 'activa') RETURNING id`
     );
     const orgAId = orgARes.rows[0].id;
@@ -49,7 +51,7 @@ async function sembrar() {
 
     const usuarios = {};
     for (const rol of ['admin', 'medico', 'sso', 'th']) {
-      const res = await client.query(
+      const res = await queryComoSuperadmin(
         `INSERT INTO usuarios (organizacion_id, email, password_hash, nombre_completo, rol, mfa_habilitado, mfa_secret)
          VALUES ($1, $2, $3, $4, $5, true, $6)
          RETURNING id`,
@@ -59,7 +61,7 @@ async function sembrar() {
     }
 
     // Un segundo admin en la organizacion B, para probar aislamiento.
-    const adminBRes = await client.query(
+    const adminBRes = await queryComoSuperadmin(
       `INSERT INTO usuarios (organizacion_id, email, password_hash, nombre_completo, rol, mfa_habilitado, mfa_secret)
        VALUES ($1, $2, $3, $4, 'admin', true, $5) RETURNING id`,
       [orgBId, 'admin.b.prueba@sisso-test.com', passwordHash, 'Usuario Prueba Admin B', secretoCifrado]
@@ -67,7 +69,7 @@ async function sembrar() {
     usuarios.adminB = { id: adminBRes.rows[0].id, email: 'admin.b.prueba@sisso-test.com', rol: 'admin' };
 
     // Trabajador + registro clinico en la organizacion A.
-    const trabajadorARes = await client.query(
+    const trabajadorARes = await queryComoSuperadmin(
       `INSERT INTO trabajadores (organizacion_id, nombre_completo, documento, aptitud)
        VALUES ($1, 'Trabajador Prueba A', 'DOC-TEST-A-001', 'apto') RETURNING id`,
       [orgAId]
@@ -75,29 +77,25 @@ async function sembrar() {
     const trabajadorAId = trabajadorARes.rows[0].id;
 
     // Trabajador en la organizacion B (para probar que A no puede leerlo).
-    const trabajadorBRes = await client.query(
+    const trabajadorBRes = await queryComoSuperadmin(
       `INSERT INTO trabajadores (organizacion_id, nombre_completo, documento, aptitud)
        VALUES ($1, 'Trabajador Prueba B', 'DOC-TEST-B-001', 'apto') RETURNING id`,
       [orgBId]
     );
     const trabajadorBId = trabajadorBRes.rows[0].id;
 
-    await client.query('COMMIT');
-
     return {
       orgAId, orgBId, trabajadorAId, trabajadorBId, usuarios,
       passwordPrueba: PASSWORD_PRUEBA, secretoTotp,
     };
   } catch (err) {
-    await client.query('ROLLBACK');
+    await limpiar().catch(() => {});
     throw err;
-  } finally {
-    client.release();
   }
 }
 
 async function limpiar() {
-  await pool.query(`DELETE FROM organizaciones WHERE codigo IN ('TEST-ORG-A', 'TEST-ORG-B')`);
+  await queryComoSuperadmin(`DELETE FROM organizaciones WHERE codigo IN ('TEST-ORG-A', 'TEST-ORG-B')`);
 }
 
 module.exports = { sembrar, limpiar };
