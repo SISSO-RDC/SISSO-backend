@@ -51,6 +51,18 @@ authenticator.options = { window: 2 };
 const SALT_ROUNDS = 12;
 const MAX_INTENTOS_FALLIDOS = 5;
 const BLOQUEO_MINUTOS = 15;
+// CORREGIDO tras Auditoria Integral 2026-08-22 (hallazgo GRAVE G1):
+// el codigo TOTP no tenia ningun limite de intentos propio. Un
+// atacante que ya conociera email+contraseña podia probar codigos
+// de 6 digitos repetidamente mientras el mfaToken siguiera vigente
+// (5 minutos) -- 1,000,000 de combinaciones posibles no son
+// inalcanzables a fuerza bruta en ese lapso sin un limite. Se usa
+// el mismo umbral que el password (5 intentos) pero con columnas y
+// contador PROPIOS (intentos_mfa_fallidos/bloqueado_mfa_hasta): son
+// conceptos distintos, un fallo de TOTP no debe bloquear el
+// password ni viceversa.
+const MAX_INTENTOS_MFA = 5;
+const BLOQUEO_MFA_MINUTOS = 15;
 
 // CORREGIDO tras auditoria de seguridad (hallazgo GRAVE G5): estos
 // roles manejan datos clinicos y/o privilegios administrativos altos,
@@ -772,6 +784,7 @@ async function verificarCodigoMfa(req, res) {
     const userRes = await query(
       `SELECT u.id, u.organizacion_id, u.email, u.nombre_completo, u.rol, u.activo,
               u.requiere_cambio_password, u.mfa_habilitado, u.mfa_secret,
+              u.intentos_mfa_fallidos, u.bloqueado_mfa_hasta,
               o.activa AS organizacion_activa, o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM usuarios u LEFT JOIN organizaciones o ON o.id = u.organizacion_id
        WHERE u.id = $1`,
@@ -782,16 +795,43 @@ async function verificarCodigoMfa(req, res) {
     }
     const usuario = userRes.rows[0];
 
+    // Bloqueo especifico de MFA (hallazgo GRAVE G1): si ya se
+    // supero el limite de intentos de codigo TOTP para este
+    // usuario, se corta aqui sin siquiera intentar verificar el
+    // codigo, y se obliga a reiniciar el login desde cero.
+    if (usuario.bloqueado_mfa_hasta && new Date(usuario.bloqueado_mfa_hasta) > new Date()) {
+      const minutosRestantes = Math.ceil((new Date(usuario.bloqueado_mfa_hasta) - new Date()) / 60000);
+      await registrarAuditoria({
+        organizacionId: usuario.organizacion_id, usuarioId: usuario.id,
+        accion: 'mfa_bloqueado_por_intentos', req,
+      });
+      return res.status(429).json({ error: `Demasiados intentos de código incorrectos. Inicie sesión de nuevo en ${minutosRestantes} minuto(s).` });
+    }
+
     // desencriptar() es compatible hacia atras con secretos legados
     // en texto plano (ver src/utils/crypto.js).
     const secretoDescifrado = desencriptar(usuario.mfa_secret);
     const valido = authenticator.check(codigo, secretoDescifrado);
     if (!valido) {
+      const intentos = usuario.intentos_mfa_fallidos + 1;
+      let bloqueadoHasta = null;
+      if (intentos >= MAX_INTENTOS_MFA) {
+        bloqueadoHasta = new Date(Date.now() + BLOQUEO_MFA_MINUTOS * 60000);
+      }
+      await query(
+        'UPDATE usuarios SET intentos_mfa_fallidos = $1, bloqueado_mfa_hasta = $2 WHERE id = $3',
+        [intentos, bloqueadoHasta, usuario.id]
+      );
       await registrarAuditoria({
         organizacionId: usuario.organizacion_id, usuarioId: usuario.id,
-        accion: 'mfa_codigo_incorrecto', req,
+        accion: 'mfa_codigo_incorrecto', detalle: { intentos }, req,
       });
       return res.status(401).json({ error: 'Codigo incorrecto.' });
+    }
+
+    // Codigo correcto: resetea el contador de intentos MFA.
+    if (usuario.intentos_mfa_fallidos > 0 || usuario.bloqueado_mfa_hasta) {
+      await query('UPDATE usuarios SET intentos_mfa_fallidos = 0, bloqueado_mfa_hasta = NULL WHERE id = $1', [usuario.id]);
     }
 
     // CORREGIDO tras auditoria de seguridad (hallazgo GRAVE G5): en
