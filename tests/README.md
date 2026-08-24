@@ -52,6 +52,14 @@ las consultas SQL con `organizacion_id`.
     token responde 401.
   - **G1 (rate limiting MFA)**: tras 5 codigos TOTP incorrectos, el
     sexto intento se rechaza con 429 **aunque el codigo sea correcto**.
+- **`tests/rbac_clinico.test.js`** — 29 casos que amplian la matriz
+  rol x endpoint a los modulos que la Auditoria Integral N.07
+  (hallazgo GRAVE G-N07-03) señalo como no cubiertos: aptitud,
+  restricciones medicas, enfermedad profesional, audiometria,
+  espirometria, visiometria, certificados y ausentismo. Esta suite
+  encontro y permitio corregir un bug real preexistente (columnas
+  `id`/`creado_en` ambiguas en el JOIN de `listarExamenes` de
+  audiometria, que rompia el endpoint para CUALQUIER rol).
 - **`tests/rls.test.js`** — 3 casos que prueban el hallazgo G3
   (Row-Level Security) de una forma que `seguridad.test.js` NO puede:
   se saltan el controlador por completo y ejecutan una consulta SQL
