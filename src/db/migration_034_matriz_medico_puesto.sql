@@ -56,3 +56,13 @@ CREATE INDEX idx_matrizmp_puesto ON matriz_medico_puesto(puesto_trabajo_id);
 CREATE TRIGGER set_actualizado_en_matriz_medico_puesto
   BEFORE UPDATE ON matriz_medico_puesto
   FOR EACH ROW EXECUTE FUNCTION trigger_set_actualizado_en();
+
+
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): se agrega
+-- el auto-registro en schema_migrations, siguiendo la convencion ya
+-- usada desde migration_030/031, para que esta migracion tambien sea
+-- segura de pegar a mano en el SQL Editor de Neon (el flujo manual
+-- que usa el equipo) sin quedar en un estado inconsistente frente a
+-- migrate.js. ON CONFLICT DO NOTHING la hace ademas re-ejecutable.
+INSERT INTO schema_migrations (version) VALUES ('034_matriz_medico_puesto')
+ON CONFLICT (version) DO NOTHING;

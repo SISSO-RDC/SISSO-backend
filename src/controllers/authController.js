@@ -834,18 +834,45 @@ async function verificarCodigoMfa(req, res) {
       await query('UPDATE usuarios SET intentos_mfa_fallidos = 0, bloqueado_mfa_hasta = NULL WHERE id = $1', [usuario.id]);
     }
 
-    // CORREGIDO tras auditoria de seguridad (hallazgo GRAVE G5): en
-    // vez de obligar al usuario a desactivar y reactivar MFA a mano
-    // para migrar su secreto, aprovechamos que acaba de demostrar
-    // que lo conoce (login exitoso) para re-cifrarlo en el acto. Asi,
-    // cada cuenta con un secreto heredado en texto plano queda
-    // migrada automaticamente la proxima vez que su dueño inicia
-    // sesion, sin pedirle ninguna accion adicional.
+    // CORREGIDO en Auditoria N.07 (hallazgo CRITICO C-N07-01): la
+    // version anterior, al detectar un secreto legado en texto
+    // plano, lo re-cifraba EN EL LUGAR y dejaba entrar al usuario.
+    // Eso no remedia el riesgo real: si esa base de datos (backup,
+    // dump, acceso de lectura indebido a Neon) fue comprometida en
+    // algun momento ANTES de este login, el valor del secreto ya
+    // pudo haber sido leido en texto plano. Cifrarlo despues de una
+    // fuga no deshace la fuga -- el atacante ya tiene un secreto
+    // TOTP valido para generar codigos, cifrado o no en la base.
+    //
+    // La unica remediacion real es ROTACION: invalidar el secreto
+    // heredado y forzar la generacion de uno nuevo que nunca existio
+    // en texto plano. Aqui aprovechamos que el usuario acaba de
+    // demostrar (con password + codigo TOTP valido) que es el dueño
+    // legitimo de la cuenta, y en vez de completar el login,
+    // reutilizamos el MISMO contrato ya soportado por el frontend
+    // para 'MFA_OBLIGATORIO_NO_CONFIGURADO' (login() mas abajo):
+    // se limpia el MFA actual y se devuelve un mfaToken corto para
+    // que el usuario configure un secreto nuevo antes de entrar.
+    // Cero cambios de contrato/frontend: es el mismo codigo y forma
+    // de respuesta que el flujo de 'rol exige MFA y no lo configuro'.
     if (!esFormatoCifrado(usuario.mfa_secret)) {
-      await query('UPDATE usuarios SET mfa_secret = $1 WHERE id = $2', [encriptar(secretoDescifrado), usuario.id]);
+      await query(
+        `UPDATE usuarios SET mfa_habilitado = false, mfa_secret = NULL, mfa_secret_pendiente = NULL
+         WHERE id = $1`,
+        [usuario.id]
+      );
       await registrarAuditoria({
         organizacionId: usuario.organizacion_id, usuarioId: usuario.id,
-        accion: 'mfa_secreto_migrado_a_cifrado', req,
+        accion: 'mfa_secreto_legado_rotacion_forzada',
+        detalle: { motivo: 'secreto_totp_heredado_en_texto_plano' },
+        critico: true, // Auditoria N.07 G-N07-01/C-N07-01: evento de seguridad de MFA, no debe perderse en silencio
+        req,
+      });
+      const mfaTokenRotacion = generarTokenMfaPendiente(usuario);
+      return res.status(403).json({
+        error: 'Su codigo de autenticacion de dos factores debe reconfigurarse por un motivo de seguridad. Escanee un nuevo código QR para continuar.',
+        codigo: 'MFA_OBLIGATORIO_NO_CONFIGURADO',
+        mfaToken: mfaTokenRotacion,
       });
     }
 

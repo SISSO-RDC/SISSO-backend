@@ -72,3 +72,13 @@ CREATE TABLE enfermedad_profesional_seguimientos (
 
 CREATE INDEX idx_enfprof_seg_caso ON enfermedad_profesional_seguimientos(enfermedad_profesional_id);
 CREATE INDEX idx_enfprof_seg_organizacion ON enfermedad_profesional_seguimientos(organizacion_id);
+
+
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): se agrega
+-- el auto-registro en schema_migrations, siguiendo la convencion ya
+-- usada desde migration_030/031, para que esta migracion tambien sea
+-- segura de pegar a mano en el SQL Editor de Neon (el flujo manual
+-- que usa el equipo) sin quedar en un estado inconsistente frente a
+-- migrate.js. ON CONFLICT DO NOTHING la hace ademas re-ejecutable.
+INSERT INTO schema_migrations (version) VALUES ('032_enfermedad_profesional')
+ON CONFLICT (version) DO NOTHING;

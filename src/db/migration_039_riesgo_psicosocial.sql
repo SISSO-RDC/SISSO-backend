@@ -89,3 +89,13 @@ CREATE TABLE factores_psicosociales (
 
 CREATE INDEX idx_factpsico_evaluacion ON factores_psicosociales(evaluacion_id);
 CREATE INDEX idx_factpsico_organizacion ON factores_psicosociales(organizacion_id);
+
+
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): se agrega
+-- el auto-registro en schema_migrations, siguiendo la convencion ya
+-- usada desde migration_030/031, para que esta migracion tambien sea
+-- segura de pegar a mano en el SQL Editor de Neon (el flujo manual
+-- que usa el equipo) sin quedar en un estado inconsistente frente a
+-- migrate.js. ON CONFLICT DO NOTHING la hace ademas re-ejecutable.
+INSERT INTO schema_migrations (version) VALUES ('039_riesgo_psicosocial')
+ON CONFLICT (version) DO NOTHING;

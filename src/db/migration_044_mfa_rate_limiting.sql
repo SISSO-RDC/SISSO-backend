@@ -14,5 +14,15 @@
 -- conceptos distintos mezclados en el mismo contador.
 -- ============================================================
 
-ALTER TABLE usuarios ADD COLUMN intentos_mfa_fallidos INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE usuarios ADD COLUMN bloqueado_mfa_hasta TIMESTAMPTZ;
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): agrega
+-- IF NOT EXISTS a cada ADD COLUMN para que el script sea repetible
+-- si alguna vez se ejecuta manualmente (Neon SQL Editor) sin pasar
+-- por migrate.js -- por ejemplo, si migrate.js ya la aplico y
+-- registro en schema_migrations, pero alguien la vuelve a correr a
+-- mano por error. Sin esto, una segunda ejecucion fallaria con
+-- "column already exists" en vez de no hacer nada.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS intentos_mfa_fallidos INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado_mfa_hasta TIMESTAMPTZ;
+
+INSERT INTO schema_migrations (version) VALUES ('044_mfa_rate_limiting')
+ON CONFLICT (version) DO NOTHING;

@@ -57,3 +57,13 @@ CREATE INDEX idx_entepp_organizacion ON entregas_epp(organizacion_id);
 CREATE INDEX idx_entepp_trabajador ON entregas_epp(trabajador_id);
 CREATE INDEX idx_entepp_estado ON entregas_epp(organizacion_id, estado);
 CREATE INDEX idx_entepp_vencimiento ON entregas_epp(fecha_vencimiento_estimada) WHERE estado = 'vigente';
+
+
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): se agrega
+-- el auto-registro en schema_migrations, siguiendo la convencion ya
+-- usada desde migration_030/031, para que esta migracion tambien sea
+-- segura de pegar a mano en el SQL Editor de Neon (el flujo manual
+-- que usa el equipo) sin quedar en un estado inconsistente frente a
+-- migrate.js. ON CONFLICT DO NOTHING la hace ademas re-ejecutable.
+INSERT INTO schema_migrations (version) VALUES ('041_epp')
+ON CONFLICT (version) DO NOTHING;

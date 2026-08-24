@@ -123,6 +123,7 @@ async function firmarConsentimiento(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'firmar_consentimiento_informado',
+      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'consentimiento_firmado',
       entidadId: insertRes.rows[0].id,
       detalle: { trabajadorId, tipoConsentimientoCodigo: tipo.codigo },
@@ -201,6 +202,7 @@ async function revocarConsentimiento(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'revocar_consentimiento_informado',
+      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'consentimiento_firmado',
       entidadId: req.params.id,
       detalle: { motivoRevocacion: motivoRevocacion.trim() },
@@ -439,6 +441,7 @@ async function firmarFisico(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'firmar_consentimiento_fisico_escaneado',
+      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'consentimiento_firmado',
       entidadId: insertRes.rows[0].id,
       detalle: { trabajadorId, tipoConsentimientoCodigo: tipo.codigo },

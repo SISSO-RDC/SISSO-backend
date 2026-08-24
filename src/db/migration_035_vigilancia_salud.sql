@@ -88,3 +88,13 @@ CREATE TABLE vigilancia_salud_observaciones (
 CREATE INDEX idx_vigobs_programa ON vigilancia_salud_observaciones(programa_id);
 CREATE INDEX idx_vigobs_organizacion ON vigilancia_salud_observaciones(organizacion_id);
 CREATE INDEX idx_vigobs_fecha ON vigilancia_salud_observaciones(fecha_corte DESC);
+
+
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): se agrega
+-- el auto-registro en schema_migrations, siguiendo la convencion ya
+-- usada desde migration_030/031, para que esta migracion tambien sea
+-- segura de pegar a mano en el SQL Editor de Neon (el flujo manual
+-- que usa el equipo) sin quedar en un estado inconsistente frente a
+-- migrate.js. ON CONFLICT DO NOTHING la hace ademas re-ejecutable.
+INSERT INTO schema_migrations (version) VALUES ('035_vigilancia_salud')
+ON CONFLICT (version) DO NOTHING;

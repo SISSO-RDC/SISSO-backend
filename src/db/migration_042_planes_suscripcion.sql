@@ -89,3 +89,13 @@ CREATE TABLE pagos_suscripcion (
 
 CREATE INDEX idx_pagossus_organizacion ON pagos_suscripcion(organizacion_id);
 CREATE INDEX idx_pagossus_referencia ON pagos_suscripcion(referencia_pasarela);
+
+
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): se agrega
+-- el auto-registro en schema_migrations, siguiendo la convencion ya
+-- usada desde migration_030/031, para que esta migracion tambien sea
+-- segura de pegar a mano en el SQL Editor de Neon (el flujo manual
+-- que usa el equipo) sin quedar en un estado inconsistente frente a
+-- migrate.js. ON CONFLICT DO NOTHING la hace ademas re-ejecutable.
+INSERT INTO schema_migrations (version) VALUES ('042_planes_suscripcion')
+ON CONFLICT (version) DO NOTHING;

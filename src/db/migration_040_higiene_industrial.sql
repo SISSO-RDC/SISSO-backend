@@ -47,3 +47,13 @@ CREATE INDEX idx_medhig_organizacion ON mediciones_higiene_industrial(organizaci
 CREATE INDEX idx_medhig_tipo ON mediciones_higiene_industrial(organizacion_id, tipo_medicion);
 CREATE INDEX idx_medhig_cumple ON mediciones_higiene_industrial(organizacion_id, cumple);
 CREATE INDEX idx_medhig_puesto ON mediciones_higiene_industrial(puesto_trabajo_id);
+
+
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): se agrega
+-- el auto-registro en schema_migrations, siguiendo la convencion ya
+-- usada desde migration_030/031, para que esta migracion tambien sea
+-- segura de pegar a mano en el SQL Editor de Neon (el flujo manual
+-- que usa el equipo) sin quedar en un estado inconsistente frente a
+-- migrate.js. ON CONFLICT DO NOTHING la hace ademas re-ejecutable.
+INSERT INTO schema_migrations (version) VALUES ('040_higiene_industrial')
+ON CONFLICT (version) DO NOTHING;

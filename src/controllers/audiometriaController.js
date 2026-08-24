@@ -91,6 +91,7 @@ async function registrarExamen(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_examen_audiometria',
+      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'examen_audiometria',
       entidadId: insertRes.rows[0].id,
       detalle: {
@@ -128,10 +129,21 @@ async function listarExamenes(req, res) {
       return res.status(404).json({ error: 'Trabajador no encontrado.' });
     }
 
+    // CORREGIDO en Auditoria N.07 (encontrado por la nueva suite
+    // RBAC de esta sesion, tests/rbac_clinico.test.js): varias
+    // columnas sin calificar ('id' Y 'creado_en') eran ambiguas
+    // porque tanto examenes_audiometria como usuarios las tienen --
+    // Postgres rechazaba la consulta completa con "column reference
+    // ... is ambiguous" (42702) cada vez que se ejecutaba, para
+    // CUALQUIER rol, no solo sso. Bug preexistente, no introducido
+    // en esta sesion; no habia sido detectado porque no existia
+    // ninguna prueba automatizada que ejecutara este endpoint hasta
+    // ahora. Se calificaron TODAS las columnas con el alias de
+    // tabla para no dejar ninguna ambiguedad silenciosa mas.
     const res2 = await query(
-      `SELECT id, fecha_examen, es_basal, pta_od, pta_oi,
-              sts_od, sts_oi, sts_od_positivo, sts_oi_positivo,
-              patron_od, patron_oi, observaciones, creado_en,
+      `SELECT e.id, e.fecha_examen, e.es_basal, e.pta_od, e.pta_oi,
+              e.sts_od, e.sts_oi, e.sts_od_positivo, e.sts_oi_positivo,
+              e.patron_od, e.patron_oi, e.observaciones, e.creado_en,
               u.nombre_completo AS medico_nombre
        FROM examenes_audiometria e
        JOIN usuarios u ON u.id = e.medico_id

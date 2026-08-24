@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { rotarSecretosMfaLegados } = require('../utils/mfaLegado');
 
 const SALT_ROUNDS = 12;
 
@@ -345,7 +346,40 @@ async function asignarPlan(req, res) {
   }
 }
 
+// ------------------------------------------------------------
+// POST /api/superadmin/mfa/rotar-legado
+//
+// CORRIGE el hallazgo CRITICO C-N07-01 de la Auditoria Integral
+// SISSO N.07: fuerza la rotacion de cualquier secreto MFA que haya
+// quedado en texto plano (cuentas que nunca volvieron a iniciar
+// sesion desde la migracion 029/AES-256-GCM). Ver
+// src/utils/mfaLegado.js para el detalle de por que un simple
+// re-cifrado en el lugar no es suficiente.
+//
+// Idempotente: si se ejecuta de nuevo y ya no quedan secretos
+// heredados, devuelve una lista vacia sin efecto.
+// ------------------------------------------------------------
+async function rotarMfaLegado(req, res) {
+  try {
+    const { totalRevisadas, afectadas } = await rotarSecretosMfaLegados({
+      actorUsuarioId: req.usuario.id,
+      req,
+    });
+    return res.json({
+      totalRevisadas,
+      cuentasRotadas: afectadas.length,
+      afectadas,
+      mensaje: afectadas.length > 0
+        ? 'Notifique a cada cuenta listada que su MFA quedo invalidado y debe reconfigurarlo (escanear un QR nuevo) en su proximo inicio de sesion.'
+        : 'No se encontraron secretos MFA heredados en texto plano.',
+    });
+  } catch (err) {
+    console.error('Error en rotarMfaLegado:', err);
+    return res.status(500).json({ error: 'Error interno al rotar los secretos MFA heredados.' });
+  }
+}
+
 module.exports = {
   listarEmpresas, crearEmpresa, cambiarEstadoUsuario, resetearPassword,
-  cambiarSuspensionOrganizacion, asignarPlan,
+  cambiarSuspensionOrganizacion, asignarPlan, rotarMfaLegado,
 };

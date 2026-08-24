@@ -109,6 +109,7 @@ async function registrarExamen(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_examen_espirometria',
+      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'examen_espirometria',
       entidadId: insertRes.rows[0].id,
       detalle: { trabajadorId, patron: resultado.patron, reversibilidadPositiva: resultado.reversibilidad.esPositiva },

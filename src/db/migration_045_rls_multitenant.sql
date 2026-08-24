@@ -68,6 +68,13 @@ BEGIN
     IF tabla NOT IN ('capacitaciones_asistentes', 'refresh_tokens') THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tabla);
       EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tabla);
+      -- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): DROP
+      -- POLICY IF EXISTS antes de CREATE POLICY, igual que ya hace
+      -- migration_046, para que esta migracion sea repetible si se
+      -- pega a mano en el SQL Editor de Neon (o si migrate.js la
+      -- corre de nuevo tras un registro perdido en schema_migrations)
+      -- sin fallar con "policy already exists".
+      EXECUTE format('DROP POLICY IF EXISTS aislamiento_tenant ON %I', tabla);
       EXECUTE format(
         'CREATE POLICY aislamiento_tenant ON %I USING (
            organizacion_id = nullif(current_setting(''app.organizacion_actual'', true), '''')::uuid
@@ -84,6 +91,7 @@ END $$;
 -- ------------------------------------------------------------
 ALTER TABLE organizaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizaciones FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS aislamiento_tenant ON organizaciones;
 CREATE POLICY aislamiento_tenant ON organizaciones USING (
   id = nullif(current_setting('app.organizacion_actual', true), '')::uuid
   OR current_setting('app.es_superadmin', true) = 'true'
@@ -99,6 +107,7 @@ CREATE POLICY aislamiento_tenant ON organizaciones USING (
 -- ------------------------------------------------------------
 ALTER TABLE usuarios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usuarios FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS aislamiento_tenant ON usuarios;
 CREATE POLICY aislamiento_tenant ON usuarios USING (
   organizacion_id = nullif(current_setting('app.organizacion_actual', true), '')::uuid
   OR id = nullif(current_setting('app.usuario_actual_id', true), '')::uuid
@@ -111,6 +120,7 @@ CREATE POLICY aislamiento_tenant ON usuarios USING (
 -- ------------------------------------------------------------
 ALTER TABLE capacitaciones_asistentes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE capacitaciones_asistentes FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS aislamiento_tenant ON capacitaciones_asistentes;
 CREATE POLICY aislamiento_tenant ON capacitaciones_asistentes USING (
   EXISTS (
     SELECT 1 FROM capacitaciones c
@@ -125,7 +135,18 @@ CREATE POLICY aislamiento_tenant ON capacitaciones_asistentes USING (
 -- ------------------------------------------------------------
 ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE refresh_tokens FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS aislamiento_tenant ON refresh_tokens;
 CREATE POLICY aislamiento_tenant ON refresh_tokens USING (
   usuario_id = nullif(current_setting('app.usuario_actual_id', true), '')::uuid
   OR current_setting('app.es_superadmin', true) = 'true'
 );
+
+
+-- CORREGIDO en Auditoria N.07 (hallazgo GRAVE G-N07-02): se agrega
+-- el auto-registro en schema_migrations, siguiendo la convencion ya
+-- usada desde migration_030/031, para que esta migracion tambien sea
+-- segura de pegar a mano en el SQL Editor de Neon (el flujo manual
+-- que usa el equipo) sin quedar en un estado inconsistente frente a
+-- migrate.js. ON CONFLICT DO NOTHING la hace ademas re-ejecutable.
+INSERT INTO schema_migrations (version) VALUES ('045_rls_multitenant')
+ON CONFLICT (version) DO NOTHING;
