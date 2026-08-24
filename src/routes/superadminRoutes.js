@@ -16,5 +16,8 @@ router.patch('/empresas/:id/suspension', superadminController.cambiarSuspensionO
 router.patch('/empresas/:id/plan', superadminController.asignarPlan);
 router.patch('/usuarios/:id/estado', superadminController.cambiarEstadoUsuario);
 router.post('/usuarios/:id/resetear-password', superadminController.resetearPassword);
+// CORREGIDO (Auditoria N.07, C-N07-01): rotacion forzada de
+// secretos MFA heredados en texto plano. Ver superadminController.js.
+router.post('/mfa/rotar-legado', superadminController.rotarMfaLegado);
 
 module.exports = router;
