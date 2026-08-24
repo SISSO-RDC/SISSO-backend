@@ -24,20 +24,45 @@ const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 // ------------------------------------------------------------
+// CORREGIDO en Auditoria N.08 (hallazgo GRAVE G-N08-02): antes,
+// listar()/obtener() solo ocultaban "aptitud" para no-medico, pero
+// devolvian sexo/fecha_nacimiento/talla_cm/peso_kg a CUALQUIER rol
+// autenticado -- incluido sso, que no tiene ningun permiso de
+// escritura sobre trabajadores ni sobre datos antropometricos (ver
+// trabajadoresRoutes.js: solo admin/medico/th estan autorizados en
+// POST /:id/datos-antropometricos).
+//
+// La correccion NO le quita estos campos a admin/th: la propia
+// arquitectura ya los trata como datos administrativos (no
+// clinicos) que admin/th cargan legitimamente al registrar un
+// trabajador -- quitarselos en la lectura seria inconsistente con
+// que puedan escribirlos, y no resuelve ningun riesgo real (ya son
+// dueños de ese dato). Sí se le quitan a sso: no puede escribirlos,
+// no hay ninguna necesidad operativa documentada para que un rol de
+// seguridad industrial conozca la talla/peso/fecha de nacimiento de
+// cada trabajador nombrado, y dejarselos visibles sin una razon de
+// negocio es exactamente la clase de "via lateral" que señala esta
+// auditoria.
+// ------------------------------------------------------------
+function columnasSegunRol(rol) {
+  if (rol === 'medico') {
+    return 'id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, aptitud, activo, sexo, fecha_nacimiento, talla_cm, peso_kg';
+  }
+  if (rol === 'admin' || rol === 'th') {
+    return 'id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, activo, sexo, fecha_nacimiento, talla_cm, peso_kg';
+  }
+  // sso (y cualquier rol futuro sin necesidad documentada): solo lo
+  // estrictamente operativo/preventivo, sin datos antropometricos.
+  return 'id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, activo';
+}
+
+// ------------------------------------------------------------
 // GET /api/trabajadores
 // Lista los trabajadores de la organizacion del usuario logueado.
 // ------------------------------------------------------------
 async function listar(req, res) {
   try {
-    // El campo "aptitud" solo se selecciona de la base de datos
-    // cuando el usuario es 'medico'. No se trata de pedirlo siempre
-    // y "ocultarlo" en la respuesta: directamente no se incluye en
-    // el SQL para los demas roles, asi el dato nunca sale del motor
-    // de base de datos hacia la capa de aplicacion si no corresponde.
-    const esMedico = req.usuario.rol === 'medico';
-    const columnas = esMedico
-      ? 'id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, aptitud, activo, sexo, fecha_nacimiento, talla_cm, peso_kg'
-      : 'id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, activo, sexo, fecha_nacimiento, talla_cm, peso_kg';
+    const columnas = columnasSegunRol(req.usuario.rol);
 
     const resultado = await query(
       `SELECT ${columnas}
@@ -67,10 +92,7 @@ async function listar(req, res) {
 // ------------------------------------------------------------
 async function obtener(req, res) {
   try {
-    const esMedico = req.usuario.rol === 'medico';
-    const columnas = esMedico
-      ? 'id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, aptitud, activo, sexo, fecha_nacimiento, talla_cm, peso_kg'
-      : 'id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, activo, sexo, fecha_nacimiento, talla_cm, peso_kg';
+    const columnas = columnasSegunRol(req.usuario.rol);
 
     const resultado = await query(
       `SELECT ${columnas}
