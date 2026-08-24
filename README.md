@@ -1,23 +1,63 @@
 # SISSO Backend
 
-Backend con autenticacion real y arquitectura multi-tenant para el Sistema
-de Salud Ocupacional (SISSO). Reemplaza el sistema de roles simulados en el
-navegador por autenticacion con JWT, contrasenas hasheadas, y aislamiento
-real de datos entre empresas clientes.
+Backend con autenticacion real, MFA, aislamiento multi-tenant forzado a
+nivel de base de datos (RLS) y RBAC clinico para el Sistema de Salud
+Ocupacional (SISSO).
 
-## Que incluye esta primera fase
+> **Nota (Auditoria N.08, hallazgo GRAVE G-N08-04):** este README describia
+> RLS y el cifrado de MFA como pasos "futuros" de una "primera fase",
+> aunque ambos ya estaban completamente implementados desde hace varias
+> migraciones. Esa desactualizacion podia inducir a desplegar con
+> supuestos equivocados. Esta seccion refleja el estado real del codigo.
 
-- Registro de organizaciones (empresas clientes = "tenants")
-- Registro de usuarios dentro de cada organizacion, con 4 roles: `admin`,
-  `medico`, `sso`, `th`
-- Login con JWT (access token de 15 min + refresh token de 7 dias)
-- Bloqueo temporal de cuenta tras 5 intentos fallidos
-- Limite de peticiones (rate limiting) sobre el endpoint de login
-- Tabla de auditoria: registra logins, accesos a datos clinicos, creacion
-  de usuarios, etc.
-- Middleware reutilizable de autenticacion y autorizacion por rol, listo
-  para proteger los modulos que migremos despues (trabajadores, examenes,
-  certificados...)
+## Estado real de seguridad (al dia de hoy)
+
+- **Autenticacion**: JWT (access token corto + refresh token separado,
+  almacenado como hash, con rotacion y `familia_id` para detectar reuso).
+- **MFA**: TOTP obligatorio para los 4 roles (`admin`, `medico`, `sso`,
+  `th`). Secretos cifrados en reposo con AES-256-GCM
+  (`MFA_ENCRYPTION_KEY`), rate limiting de intentos fallidos, y rotacion
+  forzada de cualquier secreto heredado en texto plano (ver
+  `POST /api/superadmin/mfa/rotar-legado` y
+  `scripts/mfa_forzar_rotacion_legado.js`).
+- **Aislamiento multi-tenant**: Row Level Security de PostgreSQL,
+  `ENABLE` + `FORCE`, con el contexto de organizacion fijado por
+  peticion (`AsyncLocalStorage` + `set_config`) y politicas `USING` +
+  `WITH CHECK` explicitas (`migration_045`, `migration_046`). Es defensa
+  en profundidad: los controladores tambien filtran por
+  `organizacion_id` de forma independiente.
+- **RBAC clinico**: los datos clinicos individuales (diagnostico CIE-10,
+  aptitud medica, historia clinica, restricciones medicas, enfermedad
+  profesional, resultados de audiometria/espirometria/visiometria) estan
+  reservados al rol `medico`. Otros roles reciben, cuando corresponde,
+  vistas agregadas o proyecciones operativas sin datos nominales —
+  incluidos endpoints transversales como `/api/dashboard/resumen`,
+  `/api/trabajadores`, `/api/indicadores` y `/api/reportes`, que
+  aplican el mismo criterio de minimizacion que los modulos clinicos
+  dedicados.
+- **Auditoria**: tabla `auditoria` con modo `critico` — las escrituras
+  clinicas mas sensibles hacen que un fallo al registrar la auditoria
+  tumbe la peticion en vez de perderse en silencio.
+- **Migraciones**: 001 a 046+, todas repetibles (`IF NOT EXISTS`,
+  `DROP POLICY IF EXISTS`, `ON CONFLICT DO NOTHING`) y con auto-registro
+  en `schema_migrations`, sea que se ejecuten con `npm run migrate` o
+  pegadas a mano en el SQL Editor de Neon.
+- **Pruebas automatizadas**: suite contra servidor HTTP real y
+  PostgreSQL real (nada mockeado) en `tests/`: aislamiento multi-tenant,
+  autorizacion por rol, rate limiting de MFA, matriz RBAC clinica
+  (aptitud, restricciones, enfermedad profesional, audiometria,
+  espirometria, visiometria, certificados, ausentismo, alertas) y
+  pruebas de contenido (no solo status HTTP) para dashboard y
+  trabajadores. Ver `tests/README.md`.
+
+## Roles
+
+`admin`, `medico`, `sso`, `th` — mas `superadmin`, que gestiona la
+plataforma (no pertenece a ninguna organizacion cliente). Los permisos
+detallados de cada rol viven documentados junto a cada ruta en
+`src/routes/*.js`; no hay todavia una matriz formal separada rol ×
+endpoint × tipo de dato (recomendado por la Auditoria N.08, hallazgo
+G-N08-03, como siguiente paso de madurez).
 
 ## Estructura del proyecto
 
@@ -90,20 +130,40 @@ sisso-backend/
 
 ## Paso 4: Crear las tablas en la base de datos
 
-Una vez desplegado (o tambien puedes hacerlo en local antes de desplegar),
-necesitas correr la migracion una sola vez para crear las tablas:
+Necesitas correr las migraciones (46 y contando) una sola vez por
+entorno nuevo. Todas son repetibles: si por error se ejecutan dos veces,
+no fallan (usan `IF NOT EXISTS`/`DROP POLICY IF EXISTS`/
+`ON CONFLICT DO NOTHING`).
 
 **Opcion A: desde tu computadora, apuntando a la base de Neon:**
 ```bash
 npm install
 cp .env.example .env
-# Edita .env y pon tu DATABASE_URL real de Neon
+# Edita .env con tus valores reales (ver la lista completa mas abajo)
 npm run migrate
 ```
 
-**Opcion B: usando la consola SQL de Neon directamente:**
-Abre el "SQL Editor" en el panel de Neon y pega el contenido completo de
-`src/db/schema.sql`, luego ejecutalo.
+**Opcion B: usando la consola SQL de Neon directamente (el flujo real
+que usa el equipo, sin terminal local):**
+Abre el "SQL Editor" en el panel de Neon y pega el contenido de cada
+`src/db/migration_XXX_*.sql` en orden, o el `src/db/schema.sql` completo
+para una base nueva. Cada migracion se auto-registra en
+`schema_migrations`, asi que `npm run migrate` sabra cuales ya se
+aplicaron manualmente y no las repetira.
+
+### Variables de entorno obligatorias/opcionales
+
+Ver `.env.example` para la lista completa y comentada. Resumen:
+
+| Variable | Obligatoria | Para que |
+|---|---|---|
+| `DATABASE_URL` | Si | Conexion a Neon/PostgreSQL |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | Si | Firma de tokens |
+| `MFA_ENCRYPTION_KEY` | Si (si hay MFA, y todos los roles lo exigen) | Cifrado AES-256-GCM de secretos TOTP |
+| `CORS_ORIGINS` | Si en produccion | Sin esta variable, CORS falla-cerrado en `NODE_ENV=production` |
+| `CLOUDINARY_*` | Solo si se suben archivos | Evidencias, certificados escaneados, firmas |
+| `PAYPHONE_*` | Solo si se cobran suscripciones | Pagos |
+| `BOOTSTRAP_SECRET`, `RECOVERY_SECRET` | No | Habilitan endpoints de un solo uso para crear/recuperar el superadmin |
 
 ## Paso 5: Probar que todo funciona
 
@@ -164,14 +224,17 @@ curl -X POST https://TU-BACKEND.onrender.com/api/auth/registrar-usuario \
   responder. Cuando tengas clientes pagando, el plan pago ($7/mes
   aproximadamente) elimina ese problema.
 
-## Siguientes pasos (no incluidos en esta fase)
+## Siguientes pasos (roadmap, no cerrado)
 
-- Migrar los modulos del frontend original (trabajadores, examenes
-  medicos, certificados) para que consuman este backend en vez de tener
-  los datos hardcodeados en el HTML.
-- Cifrado de campos sensibles especificos en la base de datos.
-- Politicas de Row Level Security (RLS) en PostgreSQL como capa adicional
-  de aislamiento entre organizaciones.
-- Recuperacion de contrasena por email.
-- Panel de auditoria visual para que el admin de cada empresa vea quien
-  accedio a que.
+- Matriz formal de clasificacion de datos (D0 publico/tecnico … D4
+  clinico altamente sensible) y matriz rol × endpoint × accion, como
+  documento central en vez de reglas repartidas por controlador
+  (Auditoria N.08, G-N08-03).
+- Ampliar la suite automatizada a `indicadores`, `reportes` y variantes
+  de `alertas` con el mismo nivel de detalle que ya tiene
+  `tests/rbac_clinico.test.js` (Auditoria N.08, G-N08-01).
+- Observabilidad estructurada en produccion (request-id, latencia,
+  metricas) sin loguear PII.
+- Recuperacion de contrasena por email para roles no-superadmin.
+- Automatizar que la version que reporta `/api/salud` se derive del
+  codigo desplegado en vez de mantenerse a mano.
