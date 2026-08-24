@@ -3,10 +3,17 @@
 //
 // El certificado HCU 081 NO esta aqui: se sigue generando desde
 // GET /api/historia-clinica/:id/certificado (solo medico, porque
-// es un documento derivado de una evaluacion clinica). Los 2
-// certificados de este archivo son de gestion (capacitacion,
-// aptitud independiente), accesibles a admin/sso/th igual que el
-// resto del modulo de gestion.
+// es un documento derivado de una evaluacion clinica).
+//
+// CORREGIDO (Auditoria N.07, hallazgo GRAVE C3): el certificado de
+// capacitacion es un documento de gestion (asistencia), por lo que
+// se mantiene abierto a admin/sso/th. El certificado de APTITUD,
+// en cambio, revela el estado de aptitud individual del
+// trabajador -- exactamente el mismo dato que el sistema oculta a
+// admin/th en Historia Clinica y Aptitud. Permitir que ese mismo
+// dato se obtuviera via este endpoint era una ruta alternativa de
+// acceso clinico. Se restringe ahora al rol medico, unico
+// autorizado a emitir/consultar la aptitud de un trabajador.
 // ============================================================
 const express = require('express');
 const router = express.Router();
@@ -20,7 +27,7 @@ router.get(
 );
 router.get(
   '/aptitud/:trabajadorId',
-  autenticar, autorizar('admin', 'sso', 'th'),
+  autenticar, autorizar('medico'),
   certificadosController.certificadoAptitud
 );
 
