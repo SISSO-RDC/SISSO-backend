@@ -154,6 +154,7 @@ async function registrarPreocupacional(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_evaluacion_preocupacional',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'evaluacion_ocupacional',
       entidadId: insertRes.rows[0].id,
       detalle: { trabajadorId, aptitudMsp: b.aptitudMsp || null },
@@ -263,6 +264,7 @@ async function registrarRetiro(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_evaluacion_retiro',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'evaluacion_ocupacional',
       entidadId: insertRes.rows[0].id,
       detalle: { trabajadorId },
@@ -384,6 +386,7 @@ async function registrarPeriodica(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_evaluacion_periodica',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'evaluacion_ocupacional',
       entidadId: insertRes.rows[0].id,
       detalle: { trabajadorId, aptitudMsp: b.aptitudMsp || null },
@@ -483,6 +486,7 @@ async function registrarReintegro(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_evaluacion_reintegro',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'evaluacion_ocupacional',
       entidadId: insertRes.rows[0].id,
       detalle: { trabajadorId, aptitudMsp: b.aptitudMsp || null },

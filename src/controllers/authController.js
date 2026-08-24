@@ -872,12 +872,14 @@ async function verificarCodigoMfa(req, res) {
 // forzando a volver a iniciar sesion en todos los dispositivos.
 // ------------------------------------------------------------
 async function refrescar(req, res) {
-  // CORREGIDO (hallazgo G4): el refreshToken ya no viaja en el body,
-  // se lee de la cookie HttpOnly que puso completarLogin(). Se
-  // mantiene un fallback a req.body por compatibilidad hacia atras
-  // (por si un cliente viejo todavia lo manda asi durante un
-  // despliegue en transicion), pero el flujo normal es la cookie.
-  const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
+  // CORREGIDO (hallazgo G4, retirado en Auditoria N.07 hallazgo
+  // GRAVE C8): el refreshToken se lee EXCLUSIVAMENTE de la cookie
+  // HttpOnly que puso completarLogin(). Se elimino el fallback a
+  // req.body?.refreshToken: mantenerlo reabria el canal que la
+  // correccion original queria cerrar (secreto expuesto a
+  // JavaScript, logs y proxies), y el frontend ya no lo envia por
+  // body desde que se adopto la cookie.
+  const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
   if (!refreshToken) {
     return res.status(401).json({ error: 'No hay sesion que renovar. Inicie sesion de nuevo.' });
   }
@@ -1000,9 +1002,9 @@ async function refrescar(req, res) {
 // actual), cerrando de verdad la cadena de sesion completa.
 // ------------------------------------------------------------
 async function logout(req, res) {
-  // CORREGIDO (hallazgo G4): se lee de la cookie HttpOnly, con
-  // fallback a body por compatibilidad hacia atras (ver refrescar()).
-  const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body?.refreshToken;
+  // CORREGIDO (hallazgo G4, retirado en Auditoria N.07 hallazgo C8):
+  // se lee exclusivamente de la cookie HttpOnly (ver refrescar()).
+  const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
   res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
   if (!refreshToken) {
     return res.status(400).json({ error: 'Falta el refreshToken.' });

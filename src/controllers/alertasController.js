@@ -13,9 +13,20 @@
 // perezosa en cada lectura es el mismo patron ya usado para el
 // vencimiento de trials/suscripciones (authController.js).
 //
-// Se preserva intacta la separacion de roles del controlador
-// original: admin y th solo ven categorias administrativas; medico
-// y sso ven todo, incluidas las clinicas.
+// CORREGIDO en Auditoria N.07 (hallazgo GRAVE C5): la version
+// anterior dejaba que SSO viera tambien las alertas clinicas
+// NOMINALES ('Aptitud NO APTO: <nombre>', 'STS positivo en
+// audiometria: <nombre>', etc, asociadas al trabajador). Esto era
+// inconsistente con la separacion que el propio backend aplica en
+// Historia Clinica, Aptitud, Enfermedad Profesional, Audiometria,
+// Espirometria y Visiometria, donde esos mismos hallazgos estan
+// reservados al medico. Ahora solo 'medico' recibe categoria
+// es_clinica=true; admin, sso y th solo ven alertas administrativas
+// (EMO vencido, consentimiento revocado). Si en el futuro SSO
+// necesita saber que "alguien requiere intervencion de vigilancia"
+// sin conocer el diagnostico ni el nombre, debe modelarse como una
+// categoria administrativa/agregada nueva y explicita -- no
+// reutilizando esClinico.
 // ============================================================
 const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
@@ -148,7 +159,7 @@ async function sincronizarAlertasClinicas(orgId) {
 // ------------------------------------------------------------
 async function obtenerAlertas(req, res) {
   const orgId = req.usuario.organizacionId;
-  const esClinico = ['medico', 'sso'].includes(req.usuario.rol);
+  const esClinico = req.usuario.rol === 'medico';
   const { estado, categoria } = req.query;
 
   try {
@@ -197,14 +208,15 @@ async function actualizarEstadoAlerta(req, res) {
   }
 
   try {
-    // Una alerta CLINICA (es_clinica=true) solo puede ser gestionada
-    // por medico/sso, aunque el registro ya exista en la tabla --
-    // mismo criterio de separacion de roles que en la lectura.
+    // CORREGIDO (Auditoria N.07, C5): una alerta CLINICA (es_clinica=true)
+    // solo puede ser gestionada por medico -- mismo criterio de
+    // separacion de roles que en la lectura, tras retirar la
+    // excepcion de sso.
     const alertaRes = await query(`SELECT id, es_clinica FROM alertas WHERE id = $1 AND organizacion_id = $2`, [req.params.id, orgId]);
     if (alertaRes.rows.length === 0) {
       return res.status(404).json({ error: 'Alerta no encontrada.' });
     }
-    if (alertaRes.rows[0].es_clinica && !['medico', 'sso'].includes(req.usuario.rol)) {
+    if (alertaRes.rows[0].es_clinica && req.usuario.rol !== 'medico') {
       return res.status(403).json({ error: 'No tiene permiso para gestionar esta alerta clínica.' });
     }
 

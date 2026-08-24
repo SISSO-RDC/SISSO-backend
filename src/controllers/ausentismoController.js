@@ -23,18 +23,25 @@ const { TIPOS_AUSENCIA, CODIGOS_VALIDOS, esSubsidiablePorDefecto } = require('..
 
 const CARPETA_CERTIFICADOS = 'sisso/certificados-ausentismo';
 
-// CORREGIDO tras auditoria de seguridad: el diagnostico CIE-10 es un
-// dato clinico (no laboral/administrativo), y este modulo lo devolvia
-// a cualquier rol autenticado (incluido TH y admin, que segun la
-// arquitectura de roles de SISSO nunca deben ver diagnosticos
-// individuales). Esta funcion aplica minimizacion de datos: solo
-// medico y sso (roles que ya manejan informacion clinica en el resto
-// del sistema) reciben diagnostico_cie10 y numero_certificado; el
-// resto de roles recibe la fila completa MENOS esos dos campos
-// (siguen viendo tipo de ausencia, fechas, dias y certificado
-// escaneado, que es lo minimo necesario para gestion laboral).
+// CORREGIDO tras auditoria de seguridad (N.06) y endurecido en
+// Auditoria N.07 (hallazgo GRAVE C4): el diagnostico CIE-10 es un
+// dato clinico individual. La version anterior lo liberaba tambien
+// a SSO, razonando que SSO "ya maneja informacion clinica en el
+// resto del sistema" -- pero la propia arquitectura de SISSO define
+// el ausentismo como gestion SST/RRHH, no como modulo clinico, y en
+// Historia Clinica/Aptitud/Enfermedad Profesional el diagnostico SI
+// esta reservado exclusivamente al medico. Mantener a SSO como
+// excepcion aqui era inconsistente y constituia una ruta alterna de
+// acceso a un dato de salud individual.
+//
+// Ahora unicamente 'medico' recibe diagnostico_cie10 y
+// numero_certificado. El resto de roles (incluido sso) recibe la
+// fila completa MENOS esos dos campos: siguen viendo tipo de
+// ausencia, fechas, dias y si hay certificado adjunto, que es lo
+// minimo necesario para gestion laboral/preventiva sin conocer el
+// diagnostico especifico.
 function minimizarDatosClinicos(fila, rol) {
-  if (['medico', 'sso'].includes(rol)) return fila;
+  if (rol === 'medico') return fila;
   const { diagnostico_cie10, numero_certificado, ...resto } = fila;
   return resto;
 }
@@ -127,16 +134,16 @@ async function obtener(req, res) {
 // de corta duracion, DESPUES de comprobar que el usuario tiene
 // permiso para ver el certificado de ESTA ausencia especifica.
 //
-// Se restringe a medico/sso (igual umbral que minimizarDatosClinicos
-// arriba): el certificado medico es un documento clinico, y hasta
-// ahora Talento Humano podia abrir su URL directamente si la
-// alcanzaba a ver en el HTML/red, aunque ya no viera el diagnostico
-// en texto. Con el archivo detras de una URL firmada, aprovechamos
-// para cerrar tambien ese acceso.
+// CORREGIDO en Auditoria N.07 (C4): se restringe ahora unicamente a
+// medico (igual umbral que minimizarDatosClinicos arriba, tras
+// retirar la excepcion de sso). El certificado medico escaneado es
+// un documento clinico igual que el diagnostico CIE-10 que
+// acompaña; no tiene sentido ocultar el texto del diagnostico pero
+// dejar accesible la imagen del certificado que lo contiene.
 // ------------------------------------------------------------
 async function obtenerUrlCertificado(req, res) {
   const orgId = req.usuario.organizacionId;
-  if (!['medico', 'sso'].includes(req.usuario.rol)) {
+  if (req.usuario.rol !== 'medico') {
     return res.status(403).json({ error: 'No tiene permiso para ver el certificado medico.' });
   }
   try {

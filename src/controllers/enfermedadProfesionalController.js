@@ -68,6 +68,7 @@ async function crearCaso(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'enfermedad_profesional_creada',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'enfermedad_profesional',
       entidadId: casoRes.rows[0].id,
       detalle: { trabajadorId },
@@ -229,6 +230,7 @@ async function actualizarCaso(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'enfermedad_profesional_actualizada',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'enfermedad_profesional',
       entidadId: casoId,
       detalle: { estado },
@@ -275,6 +277,7 @@ async function agregarSeguimiento(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'enfermedad_profesional_seguimiento_agregado',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'enfermedad_profesional',
       entidadId: casoId,
       req,

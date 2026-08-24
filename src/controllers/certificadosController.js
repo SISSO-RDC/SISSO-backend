@@ -9,10 +9,13 @@
 // tiene sentido duplicarlo aqui):
 //
 //   - Certificado de asistencia a capacitacion (por trabajador,
-//     dentro de una capacitacion ya registrada).
+//     dentro de una capacitacion ya registrada). Documento de
+//     gestion, sin dato clinico: admin/sso/th.
 //   - Certificado de aptitud independiente (estado actual de
 //     trabajadores.aptitud, sin requerir una evaluacion HCU077
-//     completa).
+//     completa). CORREGIDO (Auditoria N.07, C3): revela un dato
+//     clinico individual, asi que certificadosRoutes.js ahora
+//     restringe este endpoint a medico unicamente.
 // ============================================================
 const { query } = require('../db/pool');
 const { generarPdfCertificadoCapacitacion } = require('../capacitaciones/pdfCertificadoCapacitacion');

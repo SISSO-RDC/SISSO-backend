@@ -81,6 +81,7 @@ async function crearRegla(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'crear_regla_contraindicacion',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'regla_contraindicacion',
       entidadId: insertRes.rows[0].id,
       detalle: { nombre, severidad },
@@ -274,6 +275,7 @@ async function registrarAptitud(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_aptitud_medica',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'historial_aptitud_medica',
       entidadId: insertRes.rows[0].id,
       detalle: {

@@ -107,6 +107,7 @@ async function emitirRestriccion(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'restriccion_medica_emitida',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'restricciones_medicas',
       entidadId: resultado.id,
       detalle: { trabajadorId },
@@ -212,6 +213,7 @@ async function prorrogarRestriccion(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'restriccion_medica_prorrogada',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'restricciones_medicas',
       entidadId: restriccionId,
       req,
@@ -270,6 +272,7 @@ async function modificarRestriccion(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'restriccion_medica_modificada',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'restricciones_medicas',
       entidadId: restriccionId,
       req,
@@ -332,6 +335,7 @@ async function levantarRestriccion(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'restriccion_medica_levantada',
+      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'restricciones_medicas',
       entidadId: restriccionId,
       req,
