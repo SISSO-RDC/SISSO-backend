@@ -2,10 +2,21 @@
 // Rutas de Accidentes/Incidentes: /api/accidentes/*
 //
 // Gestion (crear/investigar/accionar/verificar/evidencias): admin,
-// sso -- mismo criterio que puestos_trabajo/ausentismo (dato de
-// gestion SST, no clinico individual). Lectura: cualquier usuario
-// autenticado. Corrige el punto 18 / CRITICO 1 de la Auditoria
-// SISSO N.06.
+// sso.
+//
+// CORREGIDO en Auditoria N.08 (hallazgo CRITICO/P0 C-N08-02): la
+// lectura ya NO es "cualquier autenticado" sin mas. Sigue abierta a
+// los 4 roles (admin/sso/medico/th tienen alguna necesidad
+// operativa de saber que un caso existe), pero el CONTENIDO se
+// proyecta por rol dentro del controlador (ver
+// proyectarCasoSegunRol en accidentesController.js) -- TH ya no
+// recibe tipo_lesion, descripcion libre, investigacion, acciones ni
+// evidencias.
+//
+// La URL firmada de evidencia (fotos/documentos del caso) se
+// restringe ademas a nivel de ruta a admin/sso/medico: no hay
+// necesidad operativa documentada para que TH abra archivos
+// adjuntos de un accidente.
 // ============================================================
 const express = require('express');
 const router = express.Router();
@@ -25,7 +36,7 @@ router.put('/acciones/:accionId/completar', autenticar, autorizar('admin', 'sso'
 router.put('/acciones/:accionId/verificar', autenticar, autorizar('admin', 'sso'), controller.verificarAccion);
 
 router.post('/:id/evidencias', autenticar, autorizar('admin', 'sso'), controller.subirEvidenciaCaso);
-router.get('/evidencias/:evidenciaId/url', autenticar, controller.obtenerUrlEvidencia);
+router.get('/evidencias/:evidenciaId/url', autenticar, autorizar('admin', 'sso', 'medico'), controller.obtenerUrlEvidencia);
 router.delete('/evidencias/:evidenciaId', autenticar, autorizar('admin', 'sso'), controller.eliminarEvidencia);
 
 module.exports = router;

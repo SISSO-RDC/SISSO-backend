@@ -44,10 +44,37 @@ function generarAccessToken(usuario) {
  * del usuario; todo lo demas se vuelve a consultar en base de datos
  * cuando se usa para renovar el access token (asi si el rol cambia,
  * se refleja de inmediato).
+ *
+ * CORREGIDO durante la verificacion manual de la Auditoria N.08
+ * (hallazgo CRITICO no catalogado previamente, encontrado al probar
+ * end-to-end la correccion de G-N08-03): sin un campo con entropia
+ * propia, el payload de un refresh token es enteramente
+ * predecible/repetible: `sub` y `tipo` son fijos, y `iat` (que
+ * jsonwebtoken agrega automaticamente) solo tiene granularidad de
+ * SEGUNDOS. Si el mismo usuario recibe dos refresh tokens distintos
+ * (ej. login y luego una rotacion) dentro del mismo segundo de
+ * reloj, la firma HMAC produce el MISMO string de token para ambos
+ * -- y por lo tanto el MISMO hashToken(). Esto rompe por completo el
+ * mecanismo de deteccion de reuso (C-N07/G8): el UPDATE atomico
+ * "WHERE token_hash = $1 AND usado_en IS NULL" ya no puede
+ * distinguir el token padre (ya usado) del hijo recien emitido (sin
+ * usar) porque comparten el mismo hash -- el servidor no tiene forma
+ * de saber cual de los dos esta presentando el cliente. En la
+ * practica, esto se disparo de verdad en una prueba manual (login
+ * seguido de un refresh a los pocos milisegundos, ambos dentro del
+ * mismo segundo), y volvio a aceptar como valido un token que ya
+ * deberia haber sido rechazado como reuso.
+ *
+ * La correccion es agregar `jti` (JWT ID), un identificador aleatorio
+ * de 16 bytes generado con crypto.randomBytes en cada llamada. Esto
+ * garantiza que DOS refresh tokens jamas sean el mismo string, sin
+ * importar que tan rapido se emitan, eliminando la colision de raiz
+ * (no es un parche al sintoma: quita la causa, que era la falta de
+ * entropia propia del token).
  */
 function generarRefreshToken(usuario) {
   return jwt.sign(
-    { sub: usuario.id, tipo: 'refresh' },
+    { sub: usuario.id, tipo: 'refresh', jti: crypto.randomBytes(16).toString('hex') },
     REFRESH_SECRET,
     { expiresIn: REFRESH_EXPIRES }
   );

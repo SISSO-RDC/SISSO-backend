@@ -90,8 +90,17 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
   // si calcularResumen() redacto estas secciones por k-anonimato
   // (area filtrada con muy pocos trabajadores), el PDF debe mostrar
   // el aviso, no intentar leer campos que ya no existen.
+  //
+  // CORREGIDO en Auditoria N.08 (G-N08-01): ademas del caso de
+  // k-anonimato, ahora la seccion puede estar AUSENTE por completo
+  // porque reportesController.proyectarResumenSegunRol() no la
+  // incluyo para el rol que genero el PDF (ej. TH no recibe
+  // aptitudMedica). Cada seccion valida su propia presencia antes
+  // de intentar leer sus campos.
   tituloSeccion(doc, '2. Distribución de aptitud médica laboral');
-  if (r.grupoPequenoRedactado) {
+  if (!r.aptitudMedica) {
+    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
+  } else if (r.grupoPequenoRedactado) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#dc2626').text(r.aptitudMedica.nota);
     doc.moveDown(0.5);
   } else {
@@ -103,7 +112,9 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
 
   // ---- Examenes complementarios ----
   tituloSeccion(doc, '3. Exámenes complementarios');
-  if (r.grupoPequenoRedactado) {
+  if (!r.examenesComplementarios) {
+    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
+  } else if (r.grupoPequenoRedactado) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#dc2626').text(r.examenesComplementarios.nota);
     doc.moveDown(0.5);
   } else {
@@ -121,29 +132,39 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
 
   // ---- Ausentismo ----
   tituloSeccion(doc, '4. Ausentismo laboral');
-  filaDato(doc, 'Total de ausencias registradas', r.ausentismo.totalAusencias);
-  filaDato(doc, 'Total de días perdidos', r.ausentismo.totalDias);
-  if (r.ausentismo.porTipo.length > 0) {
-    doc.moveDown(0.3);
-    tablaSimple(doc, ['Tipo', 'Ausencias', 'Días'], r.ausentismo.porTipo.map((t) => [t.etiqueta, t.ausencias, t.dias]), [280, 120, 120]);
+  if (!r.ausentismo) {
+    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
+  } else {
+    filaDato(doc, 'Total de ausencias registradas', r.ausentismo.totalAusencias);
+    filaDato(doc, 'Total de días perdidos', r.ausentismo.totalDias);
+    if (r.ausentismo.porTipo.length > 0) {
+      doc.moveDown(0.3);
+      tablaSimple(doc, ['Tipo', 'Ausencias', 'Días'], r.ausentismo.porTipo.map((t) => [t.etiqueta, t.ausencias, t.dias]), [280, 120, 120]);
+    }
   }
 
   // ---- Matriz de riesgos ----
   tituloSeccion(doc, '5. Matriz de riesgos (IPER)');
-  doc.fontSize(8.5).font('Helvetica-Oblique').fillColor('#94a3b8').text(r.matrizRiesgos.nota);
-  doc.moveDown(0.3);
-  filaDato(doc, 'Total de peligros identificados (activos)', r.matrizRiesgos.total);
-  filaDato(doc, 'Porcentaje en clasificación importante/intolerable', `${r.matrizRiesgos.porcentajeAltoRiesgo}%`);
-  tablaSimple(
-    doc,
-    ['Clasificación', 'Cantidad'],
-    Object.entries(r.matrizRiesgos.porClasificacion).map(([clave, valor]) => [clave, valor]),
-    [280, 240]
-  );
+  if (!r.matrizRiesgos) {
+    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
+  } else {
+    doc.fontSize(8.5).font('Helvetica-Oblique').fillColor('#94a3b8').text(r.matrizRiesgos.nota);
+    doc.moveDown(0.3);
+    filaDato(doc, 'Total de peligros identificados (activos)', r.matrizRiesgos.total);
+    filaDato(doc, 'Porcentaje en clasificación importante/intolerable', `${r.matrizRiesgos.porcentajeAltoRiesgo}%`);
+    tablaSimple(
+      doc,
+      ['Clasificación', 'Cantidad'],
+      Object.entries(r.matrizRiesgos.porClasificacion).map(([clave, valor]) => [clave, valor]),
+      [280, 240]
+    );
+  }
 
   // ---- Ergonomia ----
   tituloSeccion(doc, '6. Ergonomía');
-  if (r.grupoPequenoRedactado) {
+  if (!r.ergonomia) {
+    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
+  } else if (r.grupoPequenoRedactado) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#dc2626').text(r.ergonomia.nota);
   } else {
     filaDato(doc, 'Cuestionarios Nórdicos aplicados', r.ergonomia.nordico.total);
@@ -155,10 +176,14 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
 
   // ---- Consentimientos ----
   tituloSeccion(doc, '7. Consentimientos informados');
-  filaDato(doc, 'Total registrados', r.consentimientos.total);
-  filaDato(doc, 'Firma electrónica', r.consentimientos.electronica);
-  filaDato(doc, 'Firma física escaneada', r.consentimientos.fisica);
-  filaDato(doc, 'Revocados', `${r.consentimientos.revocados} (${r.consentimientos.porcentajeRevocados}%)`);
+  if (!r.consentimientos) {
+    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
+  } else {
+    filaDato(doc, 'Total registrados', r.consentimientos.total);
+    filaDato(doc, 'Firma electrónica', r.consentimientos.electronica);
+    filaDato(doc, 'Firma física escaneada', r.consentimientos.fisica);
+    filaDato(doc, 'Revocados', `${r.consentimientos.revocados} (${r.consentimientos.porcentajeRevocados}%)`);
+  }
 
   doc.moveDown(1.5);
   doc.fontSize(7.5).font('Helvetica').fillColor('#cbd5e1')
