@@ -1,7 +1,7 @@
 // ============================================================
 // Controlador de audiometria ocupacional.
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { calcularAudiometria } = require('../audiometria/audiometria');
 
@@ -47,7 +47,8 @@ async function registrarExamen(req, res) {
     const resultado = calcularAudiometria(input, basal, edadAnios);
 
     // Insertar examen
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const filaInsertada = await client.query(
       `INSERT INTO examenes_audiometria (
         organizacion_id, trabajador_id, medico_id, fecha_examen, es_basal,
         ca_od_500, ca_od_1000, ca_od_2000, ca_od_3000, ca_od_4000, ca_od_6000, ca_od_8000,
@@ -91,9 +92,8 @@ async function registrarExamen(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_examen_audiometria',
-      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'examen_audiometria',
-      entidadId: insertRes.rows[0].id,
+      entidadId: filaInsertada.rows[0].id,
       detalle: {
         trabajadorId,
         esBasal: !!input.esBasal,
@@ -103,7 +103,11 @@ async function registrarExamen(req, res) {
         patronOi: resultado.patronOi,
       },
       req,
+      client,
     });
+
+    return filaInsertada;
+  });
 
     return res.status(201).json({
       examen: insertRes.rows[0],

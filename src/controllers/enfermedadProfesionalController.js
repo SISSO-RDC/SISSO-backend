@@ -18,7 +18,7 @@
 //   - 'admin' y 'th': sin acceso a este modulo (ni siquiera la
 //     vista agregada), igual que con historia clinica y aptitud.
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 // ------------------------------------------------------------
@@ -47,7 +47,8 @@ async function crearCaso(req, res) {
       return res.status(404).json({ error: 'Trabajador no encontrado.' });
     }
 
-    const casoRes = await query(
+    const casoRes = await withTransaction(async (client) => {
+    const resultado = await client.query(
       `INSERT INTO enfermedad_profesional
         (organizacion_id, trabajador_id, estado, fecha_sospecha, diagnostico_presuntivo,
          exposicion_relacionada, puesto_trabajo_id, medico_responsable_id)
@@ -68,12 +69,15 @@ async function crearCaso(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'enfermedad_profesional_creada',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'enfermedad_profesional',
-      entidadId: casoRes.rows[0].id,
+      entidadId: resultado.rows[0].id,
       detalle: { trabajadorId },
       req,
+      client,
     });
+
+    return resultado;
+  });
 
     return res.status(201).json({ caso: casoRes.rows[0] });
   } catch (err) {
@@ -200,7 +204,8 @@ async function actualizarCaso(req, res) {
       return res.status(400).json({ error: 'No se puede cerrar un caso sin una conclusion clinica.' });
     }
 
-    const actualizadoRes = await query(
+    const actualizadoRes = await withTransaction(async (client) => {
+    const resultado = await client.query(
       `UPDATE enfermedad_profesional SET
          estado = COALESCE($1, estado),
          diagnostico_cie10 = COALESCE($2, diagnostico_cie10),
@@ -230,12 +235,15 @@ async function actualizarCaso(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'enfermedad_profesional_actualizada',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'enfermedad_profesional',
       entidadId: casoId,
       detalle: { estado },
       req,
+      client,
     });
+
+    return resultado;
+  });
 
     return res.json({ caso: actualizadoRes.rows[0] });
   } catch (err) {
@@ -265,7 +273,8 @@ async function agregarSeguimiento(req, res) {
       return res.status(404).json({ error: 'Caso no encontrado.' });
     }
 
-    const seguimientoRes = await query(
+    const seguimientoRes = await withTransaction(async (client) => {
+    const resultado = await client.query(
       `INSERT INTO enfermedad_profesional_seguimientos
         (enfermedad_profesional_id, organizacion_id, fecha, nota_clinica, medico_id)
        VALUES ($1, $2, $3, $4, $5)
@@ -277,11 +286,14 @@ async function agregarSeguimiento(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'enfermedad_profesional_seguimiento_agregado',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'enfermedad_profesional',
       entidadId: casoId,
       req,
+      client,
     });
+
+    return resultado;
+  });
 
     return res.status(201).json({ seguimiento: seguimientoRes.rows[0] });
   } catch (err) {

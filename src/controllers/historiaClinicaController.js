@@ -2,7 +2,7 @@
 // Controlador de Historia Clinica Ocupacional.
 // Primera pieza: formulario preocupacional - inicio (HCU 077).
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { subirEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 const { calcularImc, validarFactoresRiesgo } = require('../historiaClinica/historiaClinica');
@@ -72,7 +72,8 @@ async function registrarPreocupacional(req, res) {
       firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
     }
 
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
         organizacion_id, trabajador_id, medico_id, tipo_evaluacion, fecha_atencion, hora_atencion,
         numero_archivo, religion, grupo_sanguineo, lateralidad, orientacion_sexual, identidad_genero,
@@ -154,12 +155,15 @@ async function registrarPreocupacional(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_evaluacion_preocupacional',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'evaluacion_ocupacional',
-      entidadId: insertRes.rows[0].id,
+      entidadId: resultado.rows[0].id,
       detalle: { trabajadorId, aptitudMsp: b.aptitudMsp || null },
       req,
+      client,
     });
+
+    return resultado;
+  });
 
     return res.status(201).json({ evaluacion: insertRes.rows[0] });
   } catch (err) {
@@ -205,7 +209,8 @@ async function registrarRetiro(req, res) {
       firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
     }
 
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
         organizacion_id, trabajador_id, medico_id, tipo_evaluacion, fecha_atencion, hora_atencion,
         fecha_inicio_labores, fecha_salida, tiempo_permanencia_meses,
@@ -264,12 +269,15 @@ async function registrarRetiro(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_evaluacion_retiro',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'evaluacion_ocupacional',
-      entidadId: insertRes.rows[0].id,
+      entidadId: resultado.rows[0].id,
       detalle: { trabajadorId },
       req,
+      client,
     });
+
+    return resultado;
+  });
 
     return res.status(201).json({ evaluacion: insertRes.rows[0] });
   } catch (err) {
@@ -313,7 +321,8 @@ async function registrarPeriodica(req, res) {
       firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
     }
 
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
         organizacion_id, trabajador_id, medico_id, tipo_evaluacion, fecha_atencion, hora_atencion,
         puesto_trabajo_ciuo,
@@ -386,12 +395,15 @@ async function registrarPeriodica(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_evaluacion_periodica',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'evaluacion_ocupacional',
-      entidadId: insertRes.rows[0].id,
+      entidadId: resultado.rows[0].id,
       detalle: { trabajadorId, aptitudMsp: b.aptitudMsp || null },
       req,
+      client,
     });
+
+    return resultado;
+  });
 
     return res.status(201).json({ evaluacion: insertRes.rows[0] });
   } catch (err) {
@@ -435,7 +447,8 @@ async function registrarReintegro(req, res) {
       firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
     }
 
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
         organizacion_id, trabajador_id, medico_id, tipo_evaluacion, fecha_atencion, hora_atencion,
         fecha_ultimo_dia_laboral, fecha_reingreso, total_dias_ausencia, causa_salida,
@@ -486,12 +499,15 @@ async function registrarReintegro(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_evaluacion_reintegro',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
       entidad: 'evaluacion_ocupacional',
-      entidadId: insertRes.rows[0].id,
+      entidadId: resultado.rows[0].id,
       detalle: { trabajadorId, aptitudMsp: b.aptitudMsp || null },
       req,
+      client,
     });
+
+    return resultado;
+  });
 
     return res.status(201).json({ evaluacion: insertRes.rows[0] });
   } catch (err) {

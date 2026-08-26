@@ -100,18 +100,25 @@ async function emitirRestriccion(req, res) {
         [restriccion.id, req.usuario.organizacionId, motivoClinico.trim(), req.usuario.id, fechaVigenciaHasta || null]
       );
 
-      return restriccion;
-    });
+      // CORREGIDO en Auditoria N.08 (hallazgo CRITICO/P0 C-N08-01):
+      // antes, registrarAuditoria() se llamaba DESPUES de que
+      // withTransaction() ya habia hecho COMMIT de restriccion +
+      // historial -- si esta llamada fallaba, la API respondia 500
+      // pero la restriccion medica ya estaba guardada. Ahora vive
+      // DENTRO de la misma transaccion: los 3 pasos se confirman o
+      // se revierten juntos.
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'restriccion_medica_emitida',
+        entidad: 'restricciones_medicas',
+        entidadId: restriccion.id,
+        detalle: { trabajadorId },
+        req,
+        client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'restriccion_medica_emitida',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
-      entidad: 'restricciones_medicas',
-      entidadId: resultado.id,
-      detalle: { trabajadorId },
-      req,
+      return restriccion;
     });
 
     return res.status(201).json({ restriccion: resultado });
@@ -206,17 +213,19 @@ async function prorrogarRestriccion(req, res) {
         [restriccionId, req.usuario.organizacionId, motivo || null, req.usuario.id, fechaAnterior, nuevaFechaVigenciaHasta]
       );
 
-      return actualizadaRes.rows[0];
-    });
+      // CORREGIDO en Auditoria N.08 (C-N08-01): auditoria dentro de
+      // la misma transaccion que el UPDATE + historial.
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'restriccion_medica_prorrogada',
+        entidad: 'restricciones_medicas',
+        entidadId: restriccionId,
+        req,
+        client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'restriccion_medica_prorrogada',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
-      entidad: 'restricciones_medicas',
-      entidadId: restriccionId,
-      req,
+      return actualizadaRes.rows[0];
     });
 
     return res.json({ restriccion: resultado });
@@ -265,17 +274,19 @@ async function modificarRestriccion(req, res) {
         [restriccionId, req.usuario.organizacionId, motivo || null, req.usuario.id]
       );
 
-      return actualizadaRes.rows[0];
-    });
+      // CORREGIDO en Auditoria N.08 (C-N08-01): auditoria dentro de
+      // la misma transaccion que el UPDATE + historial.
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'restriccion_medica_modificada',
+        entidad: 'restricciones_medicas',
+        entidadId: restriccionId,
+        req,
+        client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'restriccion_medica_modificada',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
-      entidad: 'restricciones_medicas',
-      entidadId: restriccionId,
-      req,
+      return actualizadaRes.rows[0];
     });
 
     return res.json({ restriccion: resultado });
@@ -328,17 +339,19 @@ async function levantarRestriccion(req, res) {
         [restriccionId, req.usuario.organizacionId, motivoLevantamiento.trim(), req.usuario.id]
       );
 
-      return actualizadaRes.rows[0];
-    });
+      // CORREGIDO en Auditoria N.08 (C-N08-01): auditoria dentro de
+      // la misma transaccion que el UPDATE + historial.
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'restriccion_medica_levantada',
+        entidad: 'restricciones_medicas',
+        entidadId: restriccionId,
+        req,
+        client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'restriccion_medica_levantada',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
-      entidad: 'restricciones_medicas',
-      entidadId: restriccionId,
-      req,
+      return actualizadaRes.rows[0];
     });
 
     return res.json({ restriccion: resultado });

@@ -3,7 +3,7 @@
 // predichos ECSC/ERS 1993). Ver src/espirometria/espirometria.js
 // para el detalle de las formulas y el criterio clinico.
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { calcularEspirometria } = require('../espirometria/espirometria');
 
@@ -63,7 +63,8 @@ async function registrarExamen(req, res) {
 
     const resultado = calcularEspirometria(medidos, t.sexo, edadAnios, t.talla_cm);
 
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const filaInsertada = await client.query(
       `INSERT INTO examenes_espirometria (
         organizacion_id, trabajador_id, medico_id, fecha_examen,
         sexo_usado, edad_anios_usada, talla_cm_usada, peso_kg_usado,
@@ -109,12 +110,15 @@ async function registrarExamen(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_examen_espirometria',
-      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'examen_espirometria',
-      entidadId: insertRes.rows[0].id,
+      entidadId: filaInsertada.rows[0].id,
       detalle: { trabajadorId, patron: resultado.patron, reversibilidadPositiva: resultado.reversibilidad.esPositiva },
       req,
+      client,
     });
+
+    return filaInsertada;
+  });
 
     return res.status(201).json({ examen: insertRes.rows[0] });
   } catch (err) {

@@ -941,83 +941,111 @@ async function refrescar(req, res) {
     // trata igual que un reuso real (es lo correcto: si dos
     // peticiones reclaman el mismo token casi al mismo tiempo, ya no
     // hay forma de saber cual de las dos es legitima).
-    const claimRes = await query(
-      `UPDATE refresh_tokens
-       SET usado_en = now()
-       WHERE token_hash = $1 AND usado_en IS NULL
-       RETURNING id, usuario_id, familia_id, expira_en, revocado`,
-      [tokenHash]
-    );
-
-    if (claimRes.rows.length === 0) {
-      // No se pudo reclamar: o no existe, o ya fue usado (reuso), o
-      // esta revocado. Distinguimos leyendo la fila (sin condicion)
-      // solo para decidir que auditar y que mensaje mostrar.
-      const filaRes = await query(
-        'SELECT id, usuario_id, familia_id, revocado, usado_en FROM refresh_tokens WHERE token_hash = $1',
+    // CORREGIDO en Auditoria N.08 (hallazgo GRAVE G-N08-03, P1):
+    // el UPDATE atomico de reclamo (arriba) seguia siendo correcto
+    // por si solo para la deteccion de reuso, pero el INSERT del
+    // token hijo corria despues como una llamada query() aparte. Si
+    // ese INSERT fallaba, el token padre ya habia quedado marcado
+    // usado_en (muerto) SIN que existiera un hijo que lo reemplazara
+    // -- el usuario se quedaba sin sesion valida y tenia que volver
+    // a iniciar sesion. No era un hueco de seguridad (fallaba
+    // cerrado, no abierto), pero si una perdida de sesion evitable.
+    // Ahora el reclamo y la creacion del hijo viven en la misma
+    // transaccion: o ambos se confirman, o ninguno.
+    const resultadoRotacion = await withTransaction(async (client) => {
+      const claimRes = await client.query(
+        `UPDATE refresh_tokens
+         SET usado_en = now()
+         WHERE token_hash = $1 AND usado_en IS NULL
+         RETURNING id, usuario_id, familia_id, expira_en, revocado`,
         [tokenHash]
       );
-      if (filaRes.rows.length > 0 && filaRes.rows[0].usado_en !== null) {
-        // Reuso detectado (ver nota de arriba): revocamos toda la
-        // familia porque no hay forma de saber cual de las dos partes
-        // (la legitima o la atacante) esta pidiendo el refresh ahora.
-        await query('UPDATE refresh_tokens SET revocado = true WHERE familia_id = $1', [filaRes.rows[0].familia_id]);
-        await registrarAuditoria({
-          usuarioId: filaRes.rows[0].usuario_id,
-          accion: 'refresh_token_reuso_detectado',
-          entidad: 'refresh_tokens',
-          entidadId: filaRes.rows[0].familia_id,
-          req,
-        });
-        res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
-        return res.status(401).json({ error: 'Sesion invalida detectada. Por seguridad, se cerraron todas las sesiones. Vuelva a iniciar sesion.' });
+
+      if (claimRes.rows.length === 0) {
+        // No se pudo reclamar: o no existe, o ya fue usado (reuso), o
+        // esta revocado. Distinguimos leyendo la fila (sin condicion)
+        // solo para decidir que auditar y que mensaje mostrar.
+        const filaRes = await client.query(
+          'SELECT id, usuario_id, familia_id, revocado, usado_en FROM refresh_tokens WHERE token_hash = $1',
+          [tokenHash]
+        );
+        if (filaRes.rows.length > 0 && filaRes.rows[0].usado_en !== null) {
+          // Reuso detectado (ver nota de arriba): revocamos toda la
+          // familia porque no hay forma de saber cual de las dos partes
+          // (la legitima o la atacante) esta pidiendo el refresh ahora.
+          await client.query('UPDATE refresh_tokens SET revocado = true WHERE familia_id = $1', [filaRes.rows[0].familia_id]);
+          await registrarAuditoria({
+            usuarioId: filaRes.rows[0].usuario_id,
+            accion: 'refresh_token_reuso_detectado',
+            entidad: 'refresh_tokens',
+            entidadId: filaRes.rows[0].familia_id,
+            req,
+            client,
+          });
+          return { tipo: 'reuso' };
+        }
+        return { tipo: 'invalido' };
       }
+
+      const tokenFila = claimRes.rows[0];
+
+      if (tokenFila.revocado) {
+        return { tipo: 'revocado' };
+      }
+      if (new Date(tokenFila.expira_en) < new Date()) {
+        return { tipo: 'expirado' };
+      }
+
+      const userRes = await client.query(
+        `SELECT id, organizacion_id, rol, activo FROM usuarios WHERE id = $1`,
+        [payload.sub]
+      );
+      if (userRes.rows.length === 0 || !userRes.rows[0].activo) {
+        return { tipo: 'usuario_invalido' };
+      }
+
+      const nuevoAccessToken = generarAccessToken(userRes.rows[0]);
+      const nuevoRefreshToken = generarRefreshToken(userRes.rows[0]);
+      const expiraEnMs = expiresInMs(REFRESH_EXPIRES);
+
+      // El token viejo ya quedo marcado como usado por el UPDATE
+      // atomico de arriba; solo falta insertar el hijo en la misma
+      // familia -- ahora dentro de la MISMA transaccion.
+      await client.query(
+        `INSERT INTO refresh_tokens (usuario_id, familia_id, token_hash, user_agent, ip_origen, expira_en)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          userRes.rows[0].id,
+          tokenFila.familia_id,
+          hashToken(nuevoRefreshToken),
+          req.headers['user-agent'] || null,
+          req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
+          new Date(Date.now() + expiraEnMs),
+        ]
+      );
+
+      return { tipo: 'ok', nuevoAccessToken, nuevoRefreshToken, expiraEnMs };
+    });
+
+    if (resultadoRotacion.tipo === 'reuso') {
+      res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+      return res.status(401).json({ error: 'Sesion invalida detectada. Por seguridad, se cerraron todas las sesiones. Vuelva a iniciar sesion.' });
+    }
+    if (resultadoRotacion.tipo === 'invalido' || resultadoRotacion.tipo === 'revocado') {
       res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
       return res.status(401).json({ error: 'Refresh token invalido o revocado.' });
     }
-
-    const tokenFila = claimRes.rows[0];
-
-    if (tokenFila.revocado) {
-      res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
-      return res.status(401).json({ error: 'Refresh token invalido o revocado.' });
-    }
-    if (new Date(tokenFila.expira_en) < new Date()) {
+    if (resultadoRotacion.tipo === 'expirado') {
       res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
       return res.status(401).json({ error: 'Refresh token expirado, vuelva a iniciar sesion.' });
     }
-
-    const userRes = await query(
-      `SELECT id, organizacion_id, rol, activo FROM usuarios WHERE id = $1`,
-      [payload.sub]
-    );
-    if (userRes.rows.length === 0 || !userRes.rows[0].activo) {
+    if (resultadoRotacion.tipo === 'usuario_invalido') {
       return res.status(401).json({ error: 'Usuario no encontrado o inactivo.' });
     }
 
-    const nuevoAccessToken = generarAccessToken(userRes.rows[0]);
-    const nuevoRefreshToken = generarRefreshToken(userRes.rows[0]);
-    const expiraEnMs = expiresInMs(REFRESH_EXPIRES);
+    res.cookie(REFRESH_COOKIE_NAME, resultadoRotacion.nuevoRefreshToken, opcionesCookieRefresh(resultadoRotacion.expiraEnMs));
 
-    // El token viejo ya quedo marcado como usado por el UPDATE
-    // atomico de arriba; solo falta insertar el hijo en la misma
-    // familia.
-    await query(
-      `INSERT INTO refresh_tokens (usuario_id, familia_id, token_hash, user_agent, ip_origen, expira_en)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        userRes.rows[0].id,
-        tokenFila.familia_id,
-        hashToken(nuevoRefreshToken),
-        req.headers['user-agent'] || null,
-        req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
-        new Date(Date.now() + expiraEnMs),
-      ]
-    );
-
-    res.cookie(REFRESH_COOKIE_NAME, nuevoRefreshToken, opcionesCookieRefresh(expiraEnMs));
-
-    return res.json({ accessToken: nuevoAccessToken });
+    return res.json({ accessToken: resultadoRotacion.nuevoAccessToken });
   } catch (err) {
     return res.status(401).json({ error: 'Refresh token invalido o expirado.' });
   }
@@ -1135,34 +1163,49 @@ async function resetearPassword(req, res) {
   try {
     const passwordHash = await bcrypt.hash(passwordTemporal, SALT_ROUNDS);
 
-    const resultado = await query(
-      `UPDATE usuarios
-       SET password_hash = $1, requiere_cambio_password = true,
-           intentos_fallidos = 0, bloqueado_hasta = NULL
-       WHERE id = $2 AND organizacion_id = $3
-       RETURNING id, email, nombre_completo`,
-      [passwordHash, id, req.usuario.organizacionId]
-    );
+    // CORREGIDO en Auditoria N.08 (G-N08-03): mismo patron que
+    // cambiarPassword() -- el UPDATE de password_hash y la
+    // revocacion de refresh_tokens del usuario afectado quedan en
+    // la misma transaccion.
+    const resultado = await withTransaction(async (client) => {
+      const res2 = await client.query(
+        `UPDATE usuarios
+         SET password_hash = $1, requiere_cambio_password = true,
+             intentos_fallidos = 0, bloqueado_hasta = NULL
+         WHERE id = $2 AND organizacion_id = $3
+         RETURNING id, email, nombre_completo`,
+        [passwordHash, id, req.usuario.organizacionId]
+      );
+
+      if (res2.rows.length === 0) {
+        // No hay fila que auditar ni sesiones que revocar; el
+        // codigo fuera de la transaccion respondera 404.
+        return res2;
+      }
+
+      // Revoca todas las sesiones activas del usuario afectado (mismo
+      // criterio que el cambio de password propio: una contrasena
+      // reseteada por el admin invalida cualquier sesion abierta con
+      // la contrasena anterior).
+      await client.query('UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1', [id]);
+
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'resetear_password_admin',
+        entidad: 'usuario',
+        entidadId: id,
+        detalle: { usuarioAfectado: res2.rows[0].email },
+        req,
+        client,
+      });
+
+      return res2;
+    });
 
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'Usuario no encontrado.' });
     }
-
-    // Revoca todas las sesiones activas del usuario afectado (mismo
-    // criterio que el cambio de password propio: una contrasena
-    // reseteada por el admin invalida cualquier sesion abierta con
-    // la contrasena anterior).
-    await query('UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1', [id]);
-
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'resetear_password_admin',
-      entidad: 'usuario',
-      entidadId: id,
-      detalle: { usuarioAfectado: resultado.rows[0].email },
-      req,
-    });
 
     return res.json({ mensaje: 'Contrasena reseteada. El usuario debera cambiarla en su proximo inicio de sesion.', usuario: resultado.rows[0] });
   } catch (err) {
@@ -1196,26 +1239,38 @@ async function cambiarPassword(req, res) {
     }
 
     const passwordHash = await bcrypt.hash(passwordNueva, SALT_ROUNDS);
-    await query(
-      'UPDATE usuarios SET password_hash = $1, requiere_cambio_password = false WHERE id = $2',
-      [passwordHash, req.usuario.id]
-    );
 
-    // CORREGIDO tras auditoria de seguridad (hallazgo 4.9): un cambio
-    // de password debe invalidar TODAS las sesiones existentes del
-    // usuario (todas sus familias de refresh token), no solo afectar
-    // la sesion actual. Si alguien mas tenia una sesion abierta con
-    // la contrasena vieja (dispositivo compartido, sesion robada),
-    // queda cerrada de inmediato.
-    await query('UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1', [req.usuario.id]);
+    // CORREGIDO en Auditoria N.08 (hallazgo GRAVE G-N08-03, P1): el
+    // UPDATE de password_hash y la revocacion de refresh_tokens
+    // corrian antes como 2 llamadas query() independientes (cada
+    // una en su propia transaccion). Si la segunda fallaba, la
+    // contrasena quedaba cambiada pero las sesiones viejas seguian
+    // validas -- exactamente el riesgo que la revocacion buscaba
+    // cerrar. Ahora ambas viven en la misma transaccion: o se
+    // confirman juntas, o ninguna de las dos.
+    await withTransaction(async (client) => {
+      await client.query(
+        'UPDATE usuarios SET password_hash = $1, requiere_cambio_password = false WHERE id = $2',
+        [passwordHash, req.usuario.id]
+      );
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'cambiar_password_propia',
-      entidad: 'usuario',
-      entidadId: req.usuario.id,
-      req,
+      // CORREGIDO tras auditoria de seguridad (hallazgo 4.9): un cambio
+      // de password debe invalidar TODAS las sesiones existentes del
+      // usuario (todas sus familias de refresh token), no solo afectar
+      // la sesion actual. Si alguien mas tenia una sesion abierta con
+      // la contrasena vieja (dispositivo compartido, sesion robada),
+      // queda cerrada de inmediato.
+      await client.query('UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1', [req.usuario.id]);
+
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'cambiar_password_propia',
+        entidad: 'usuario',
+        entidadId: req.usuario.id,
+        req,
+        client,
+      });
     });
 
     return res.json({ mensaje: 'Contrasena actualizada correctamente.' });
@@ -1470,30 +1525,42 @@ async function recuperarSuperadmin(req, res) {
     const passwordTemporal = generarPasswordTemporalSegura();
     const passwordHash = await bcrypt.hash(passwordTemporal, SALT_ROUNDS);
 
-    const resultado = await query(
-      `UPDATE usuarios
-       SET password_hash = $1, requiere_cambio_password = true,
-           intentos_fallidos = 0, bloqueado_hasta = NULL
-       WHERE email = $2 AND rol = 'superadmin'
-       RETURNING id, email, nombre_completo`,
-      [passwordHash, email.toLowerCase().trim()]
-    );
+    // CORREGIDO en Auditoria N.08 (G-N08-03): mismo patron que
+    // cambiarPassword()/resetearPassword() -- UPDATE + revocacion de
+    // sesiones + auditoria en una sola transaccion.
+    const resultado = await withTransaction(async (client) => {
+      const res2 = await client.query(
+        `UPDATE usuarios
+         SET password_hash = $1, requiere_cambio_password = true,
+             intentos_fallidos = 0, bloqueado_hasta = NULL
+         WHERE email = $2 AND rol = 'superadmin'
+         RETURNING id, email, nombre_completo`,
+        [passwordHash, email.toLowerCase().trim()]
+      );
+
+      if (res2.rows.length === 0) {
+        return res2;
+      }
+
+      await client.query('UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1', [res2.rows[0].id]);
+
+      await registrarAuditoria({
+        usuarioId: res2.rows[0].id,
+        accion: 'superadmin_recuperado_via_break_glass',
+        entidad: 'usuario',
+        entidadId: res2.rows[0].id,
+        req,
+        client,
+      });
+
+      return res2;
+    });
 
     // Mensaje deliberadamente generico si no existe: no confirmamos
     // ni negamos si ese email corresponde a un superadmin real.
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'No se pudo completar la recuperacion con los datos proporcionados.' });
     }
-
-    await query('UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1', [resultado.rows[0].id]);
-
-    await registrarAuditoria({
-      usuarioId: resultado.rows[0].id,
-      accion: 'superadmin_recuperado_via_break_glass',
-      entidad: 'usuario',
-      entidadId: resultado.rows[0].id,
-      req,
-    });
 
     return res.json({
       mensaje: 'Acceso recuperado. Debera cambiar esta contrasena temporal en su proximo inicio de sesion. Todas las sesiones anteriores fueron cerradas.',

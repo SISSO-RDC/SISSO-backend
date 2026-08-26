@@ -289,6 +289,31 @@ async function calcularResumen(orgId, filtros) {
   return redactarPorGrupoPequeno(resumenCompleto, totalTrabajadores, Boolean(area));
 }
 
+// CORREGIDO en Auditoria N.08 (hallazgo GRAVE G-N08-01, P1): antes,
+// cualquier rol autenticado recibia calcularResumen() completo --
+// tanto por JSON (/resumen) como por PDF (/pdf), ya que ambos
+// llaman a la misma funcion. Se aplica aqui la misma proyeccion por
+// rol que indicadoresController.js (ver su comentario de cabecera
+// para la matriz completa), justo antes de redactar por
+// k-anonimato, para que JSON y PDF respeten siempre la misma
+// matriz sin duplicar la logica.
+function proyectarResumenSegunRol(resumen, rol) {
+  const { filtrosAplicados, grupoPequenoRedactado, trabajadores, coberturaEmo, aptitudMedica, examenesComplementarios, ausentismo, matrizRiesgos, ergonomia, consentimientos } = resumen;
+  const base = { filtrosAplicados, ...(grupoPequenoRedactado ? { grupoPequenoRedactado } : {}), trabajadores, coberturaEmo };
+
+  if (rol === 'medico') {
+    return { ...base, aptitudMedica, examenesComplementarios, consentimientos };
+  }
+  if (rol === 'sso') {
+    return { ...base, matrizRiesgos, ergonomia, consentimientos };
+  }
+  if (rol === 'th') {
+    return { ...base, ausentismo };
+  }
+  // admin: gestion empresarial, sin convertirse en lector clinico.
+  return { ...base, matrizRiesgos, ausentismo, consentimientos };
+}
+
 // CORREGIDO (hallazgo MODERADO de la auditoria: "evitar inferencias
 // en indicadores de grupos pequeños"). Cuando el reporte se filtra
 // por un area especifica y esa area tiene muy pocos trabajadores,
@@ -330,7 +355,7 @@ async function obtenerResumen(req, res) {
       hasta: req.query.hasta || null,
       area: req.query.area || null,
     });
-    return res.json(resumen);
+    return res.json(proyectarResumenSegunRol(resumen, req.usuario.rol));
   } catch (err) {
     console.error('Error en obtenerResumen (reportes BI):', err);
     return res.status(500).json({ error: 'Error interno al calcular el reporte.' });
@@ -348,7 +373,10 @@ async function exportarPdf(req, res) {
       hasta: req.query.hasta || null,
       area: req.query.area || null,
     };
-    const resumen = await calcularResumen(orgId, filtros);
+    const resumenCompleto = await calcularResumen(orgId, filtros);
+    // Mismo criterio que /resumen: el PDF de gerencia no debe mostrar
+    // mas de lo que el rol que lo genera veria en pantalla.
+    const resumen = proyectarResumenSegunRol(resumenCompleto, req.usuario.rol);
 
     const orgRes = await query(`SELECT nombre FROM organizaciones WHERE id = $1`, [orgId]);
     const nombreOrganizacion = orgRes.rows[0]?.nombre || 'SISSO';

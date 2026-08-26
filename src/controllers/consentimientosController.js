@@ -15,7 +15,7 @@
 // firmo y luego revoco" es en si mismo un dato medico-legal
 // relevante que no debe desaparecer.
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { subirEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 const { generarPdfFirmado, generarPdfEnBlanco } = require('../consentimientos/pdfConsentimiento');
@@ -101,7 +101,8 @@ async function firmarConsentimiento(req, res) {
 
     const firma = await subirEvidencia(firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
 
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const resultadoConsulta = await client.query(
       `INSERT INTO consentimientos_firmados
         (organizacion_id, trabajador_id, tipo_consentimiento_codigo, texto_legal_firmado, version_firmada,
          firma_imagen_url, firma_imagen_public_id, registrado_por, metodo_firma)
@@ -123,11 +124,14 @@ async function firmarConsentimiento(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'firmar_consentimiento_informado',
-      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'consentimiento_firmado',
-      entidadId: insertRes.rows[0].id,
+      entidadId: resultadoConsulta.rows[0].id,
       detalle: { trabajadorId, tipoConsentimientoCodigo: tipo.codigo },
       req,
+      client,
+    });
+
+      return resultadoConsulta;
     });
 
     return res.status(201).json({ consentimiento: insertRes.rows[0] });
@@ -186,28 +190,41 @@ async function revocarConsentimiento(req, res) {
   }
 
   try {
-    const resultado = await query(
-      `UPDATE consentimientos_firmados
-       SET revocado = true, revocado_en = now(), motivo_revocacion = $1
-       WHERE id = $2 AND organizacion_id = $3 AND revocado = false
-       RETURNING id, tipo_consentimiento_codigo, revocado, revocado_en`,
-      [motivoRevocacion.trim(), req.params.id, req.usuario.organizacionId]
-    );
+    // CORREGIDO en Auditoria N.08 (C-N08-01): UPDATE + auditoria en
+    // la misma transaccion -- ver firmarConsentimiento arriba para
+    // la explicacion completa del patron.
+    const resultado = await withTransaction(async (client) => {
+      const resultadoConsulta = await client.query(
+        `UPDATE consentimientos_firmados
+         SET revocado = true, revocado_en = now(), motivo_revocacion = $1
+         WHERE id = $2 AND organizacion_id = $3 AND revocado = false
+         RETURNING id, tipo_consentimiento_codigo, revocado, revocado_en`,
+        [motivoRevocacion.trim(), req.params.id, req.usuario.organizacionId]
+      );
+
+      if (resultadoConsulta.rows.length === 0) {
+        // No hay fila que auditar: devolvemos un resultado vacio y
+        // dejamos que el codigo fuera de la transaccion responda 404.
+        return resultadoConsulta;
+      }
+
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'revocar_consentimiento_informado',
+        entidad: 'consentimiento_firmado',
+        entidadId: req.params.id,
+        detalle: { motivoRevocacion: motivoRevocacion.trim() },
+        req,
+        client,
+      });
+
+      return resultadoConsulta;
+    });
 
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'Consentimiento no encontrado, no pertenece a su organizacion, o ya estaba revocado.' });
     }
-
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'revocar_consentimiento_informado',
-      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
-      entidad: 'consentimiento_firmado',
-      entidadId: req.params.id,
-      detalle: { motivoRevocacion: motivoRevocacion.trim() },
-      req,
-    });
 
     return res.json({ consentimiento: resultado.rows[0] });
   } catch (err) {
@@ -419,7 +436,8 @@ async function firmarFisico(req, res) {
 
     const imagen = await subirEvidencia(imagenBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
 
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const resultadoConsulta = await client.query(
       `INSERT INTO consentimientos_firmados
         (organizacion_id, trabajador_id, tipo_consentimiento_codigo, texto_legal_firmado, version_firmada,
          firma_imagen_url, firma_imagen_public_id, registrado_por, metodo_firma)
@@ -441,11 +459,14 @@ async function firmarFisico(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'firmar_consentimiento_fisico_escaneado',
-      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'consentimiento_firmado',
-      entidadId: insertRes.rows[0].id,
+      entidadId: resultadoConsulta.rows[0].id,
       detalle: { trabajadorId, tipoConsentimientoCodigo: tipo.codigo },
       req,
+      client,
+    });
+
+      return resultadoConsulta;
     });
 
     return res.status(201).json({ consentimiento: insertRes.rows[0] });

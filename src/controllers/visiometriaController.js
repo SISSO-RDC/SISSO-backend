@@ -3,7 +3,7 @@
 // src/visiometria/visiometria.js para el detalle de las formulas
 // y el criterio clinico (prueba tamiz, no diagnostico definitivo).
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { calcularVisiometria } = require('../visiometria/visiometria');
 
@@ -52,7 +52,8 @@ async function registrarExamen(req, res) {
 
     const resultado = calcularVisiometria(medidos);
 
-    const insertRes = await query(
+    const insertRes = await withTransaction(async (client) => {
+    const filaInsertada = await client.query(
       `INSERT INTO examenes_visiometria (
         organizacion_id, trabajador_id, medico_id, fecha_examen,
         od_lejana_sin_correccion, od_lejana_con_correccion,
@@ -105,12 +106,15 @@ async function registrarExamen(req, res) {
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
       accion: 'registrar_examen_visiometria',
-      critico: true, // Auditoria N.07 G-N07-01: escritura clinica/legal, la auditoria no debe fallar en silencio
       entidad: 'examen_visiometria',
-      entidadId: insertRes.rows[0].id,
+      entidadId: filaInsertada.rows[0].id,
       detalle: { trabajadorId, aptitudSugerida: resultado.aptitudSugerida },
       req,
+      client,
     });
+
+    return filaInsertada;
+  });
 
     return res.status(201).json({ examen: insertRes.rows[0] });
   } catch (err) {

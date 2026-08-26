@@ -13,12 +13,55 @@
 // Todos los "ultimos 12 meses" se calculan sobre la fecha del
 // examen/evaluacion (no la fecha de creacion del registro), para
 // que el indicador refleje la cobertura real del periodo.
+//
+// CORREGIDO en Auditoria N.08 (hallazgo GRAVE G-N08-01, P1): antes,
+// cualquier rol autenticado recibia el JSON completo -- incluida
+// la distribucion de aptitud medica y el desglose de hallazgos
+// anormales de audiometria/espirometria/visiometria, que son
+// agregados con relevancia clinica, no solo de gestion. Se aplica
+// ahora una proyeccion por rol (`proyectarIndicadoresSegunRol`)
+// sobre la MISMA respuesta ya calculada, siguiendo la matriz que
+// pide la auditoria:
+//   - medico: indicadores clinicos de vigilancia (aptitud,
+//     cobertura y hallazgos anormales de examenes, consentimientos).
+//   - sso: indicadores preventivos/SST (matriz de riesgos,
+//     ergonomia, cobertura de examenes, consentimientos) SIN el
+//     desglose de aptitud individual ni de hallazgos anormales
+//     especificos.
+//   - th: gestion de personal (total de trabajadores, cobertura de
+//     EMO) -- nada clinico ni de SST operativo.
+//   - admin: gestion empresarial (total, cobertura EMO, cobertura
+//     de examenes como metrica de cumplimiento, matriz de riesgos y
+//     consentimientos como exposicion legal/de negocio) sin
+//     convertirse en lector clinico (sin aptitud ni hallazgos
+//     anormales detallados).
 // ============================================================
 const { query } = require('../db/pool');
 
 function pct(numerador, denominador) {
   if (!denominador || denominador === 0) return 0;
   return Math.round((numerador / denominador) * 1000) / 10; // 1 decimal
+}
+
+/**
+ * Proyecta el objeto de indicadores ya calculado segun el rol de
+ * quien consulta. Ver comentario de cabecera del archivo para la
+ * matriz completa.
+ */
+function proyectarIndicadoresSegunRol(indicadores, rol) {
+  const { totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, matrizRiesgos, ergonomia, consentimientos } = indicadores;
+
+  if (rol === 'medico') {
+    return { totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, consentimientos };
+  }
+  if (rol === 'sso') {
+    return { totalTrabajadores, coberturaEmo, coberturaExamenes, matrizRiesgos, ergonomia, consentimientos };
+  }
+  if (rol === 'th') {
+    return { totalTrabajadores, coberturaEmo };
+  }
+  // admin: gestion empresarial, sin convertirse en lector clinico.
+  return { totalTrabajadores, coberturaEmo, coberturaExamenes, matrizRiesgos, consentimientos };
 }
 
 async function obtenerIndicadores(req, res) {
@@ -206,7 +249,7 @@ async function obtenerIndicadores(req, res) {
     const cons = consentimientosRes.rows[0];
     const totalConsentimientos = parseInt(cons.total, 10);
 
-    return res.json({
+    return res.json(proyectarIndicadoresSegunRol({
       totalTrabajadores,
 
       coberturaEmo: {
@@ -274,7 +317,7 @@ async function obtenerIndicadores(req, res) {
         revocados: parseInt(cons.revocados, 10),
         porcentajeRevocados: pct(parseInt(cons.revocados, 10), totalConsentimientos),
       },
-    });
+    }, req.usuario.rol));
 
   } catch (err) {
     console.error('Error en obtenerIndicadores:', err);

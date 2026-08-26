@@ -12,7 +12,7 @@
 //   - El endpoint de aptitud de un trabajador especifico excluye
 //     'admin' explicitamente de los roles autorizados.
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { detectarContraindicaciones } = require('../aptitud/motorContraindicaciones');
 
@@ -58,34 +58,41 @@ async function crearRegla(req, res) {
       return res.status(400).json({ error: 'exposicionCodigo no existe en el catalogo de exposiciones.' });
     }
 
-    const insertRes = await query(
-      `INSERT INTO reglas_contraindicacion
-        (organizacion_id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, creado_por)
-       VALUES ($1, $2, $3, COALESCE($4, 'exacto'), $5, $6, $7, $8, $9, $10)
-       RETURNING id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, creado_en`,
-      [
-        req.usuario.organizacionId,
-        nombre,
-        codigoCie10Patron.toUpperCase(),
-        tipoCoincidencia || null,
-        exposicionCodigo,
-        severidad,
-        descripcionRiesgo,
-        sugerenciaAccion || null,
-        fuenteReferencia || null,
-        req.usuario.id,
-      ]
-    );
+    const insertRes = await withTransaction(async (client) => {
+      const res = await client.query(
+        `INSERT INTO reglas_contraindicacion
+          (organizacion_id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, creado_por)
+         VALUES ($1, $2, $3, COALESCE($4, 'exacto'), $5, $6, $7, $8, $9, $10)
+         RETURNING id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, creado_en`,
+        [
+          req.usuario.organizacionId,
+          nombre,
+          codigoCie10Patron.toUpperCase(),
+          tipoCoincidencia || null,
+          exposicionCodigo,
+          severidad,
+          descripcionRiesgo,
+          sugerenciaAccion || null,
+          fuenteReferencia || null,
+          req.usuario.id,
+        ]
+      );
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'crear_regla_contraindicacion',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
-      entidad: 'regla_contraindicacion',
-      entidadId: insertRes.rows[0].id,
-      detalle: { nombre, severidad },
-      req,
+      // CORREGIDO en Auditoria N.08 (C-N08-01): auditoria dentro de
+      // la misma transaccion que el INSERT -- ver registrarAptitud
+      // mas abajo para la explicacion completa del patron.
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'crear_regla_contraindicacion',
+        entidad: 'regla_contraindicacion',
+        entidadId: res.rows[0].id,
+        detalle: { nombre, severidad },
+        req,
+        client,
+      });
+
+      return res;
     });
 
     return res.status(201).json({ regla: insertRes.rows[0] });
@@ -240,51 +247,67 @@ async function registrarAptitud(req, res) {
     );
     const alertas = detectarContraindicaciones(diagnosticosCie10 || [], exposicionesPuesto || [], reglasRes.rows);
 
-    const insertRes = await query(
-      `INSERT INTO historial_aptitud_medica
-        (organizacion_id, trabajador_id, medico_id, aptitud, puesto_evaluado,
-         diagnosticos_cie10, exposiciones_puesto, alertas_detectadas, justificacion_clinica,
-         restricciones, vigencia_hasta)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING id, aptitud, puesto_evaluado, diagnosticos_cie10, exposiciones_puesto,
-                 alertas_detectadas, justificacion_clinica, restricciones, vigencia_hasta, creado_en`,
-      [
-        req.usuario.organizacionId,
-        trabajadorId,
-        req.usuario.id,
-        aptitud,
-        puestoEvaluado,
-        diagnosticosCie10 || [],
-        exposicionesPuesto || [],
-        JSON.stringify(alertas),
-        justificacionClinica,
-        restricciones || null,
-        vigenciaHasta || null,
-      ]
-    );
+    const insertRes = await withTransaction(async (client) => {
+      // CORREGIDO en Auditoria N.08 (hallazgo CRITICO/P0 C-N08-01):
+      // el INSERT del historial de aptitud, el UPDATE del cache en
+      // trabajadores.aptitud y el registro de auditoria ahora viven
+      // en la MISMA transaccion. Antes, cada uno corria con query()
+      // independiente (BEGIN/COMMIT propio): si la auditoria fallaba
+      // despues de que los dos primeros ya se habian confirmado, la
+      // API respondia 500 pero el cambio clinico ya habia quedado
+      // guardado -- justo el escenario que describe la auditoria.
+      // Ahora, si CUALQUIERA de los 3 pasos falla, withTransaction()
+      // hace ROLLBACK de los 3 juntos: no puede quedar un registro
+      // de aptitud sin su auditoria, ni un cache de trabajadores
+      // desincronizado del historial.
+      const res = await client.query(
+        `INSERT INTO historial_aptitud_medica
+          (organizacion_id, trabajador_id, medico_id, aptitud, puesto_evaluado,
+           diagnosticos_cie10, exposiciones_puesto, alertas_detectadas, justificacion_clinica,
+           restricciones, vigencia_hasta)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         RETURNING id, aptitud, puesto_evaluado, diagnosticos_cie10, exposiciones_puesto,
+                   alertas_detectadas, justificacion_clinica, restricciones, vigencia_hasta, creado_en`,
+        [
+          req.usuario.organizacionId,
+          trabajadorId,
+          req.usuario.id,
+          aptitud,
+          puestoEvaluado,
+          diagnosticosCie10 || [],
+          exposicionesPuesto || [],
+          JSON.stringify(alertas),
+          justificacionClinica,
+          restricciones || null,
+          vigenciaHasta || null,
+        ]
+      );
 
-    // Se actualiza el campo "aptitud" en trabajadores como cache
-    // del estado mas reciente (la fuente de verdad y el historial
-    // completo viven en historial_aptitud_medica).
-    await query(
-      `UPDATE trabajadores SET aptitud = $1, actualizado_en = now() WHERE id = $2 AND organizacion_id = $3`,
-      [aptitud, trabajadorId, req.usuario.organizacionId]
-    );
+      // Se actualiza el campo "aptitud" en trabajadores como cache
+      // del estado mas reciente (la fuente de verdad y el historial
+      // completo viven en historial_aptitud_medica).
+      await client.query(
+        `UPDATE trabajadores SET aptitud = $1, actualizado_en = now() WHERE id = $2 AND organizacion_id = $3`,
+        [aptitud, trabajadorId, req.usuario.organizacionId]
+      );
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'registrar_aptitud_medica',
-      critico: true, // Auditoria N.07 C6: escritura clinica, la auditoria no debe fallar en silencio
-      entidad: 'historial_aptitud_medica',
-      entidadId: insertRes.rows[0].id,
-      detalle: {
-        trabajadorId,
-        aptitud,
-        cantidadAlertas: alertas.length,
-        alertasAbsolutas: alertas.filter((a) => a.severidad === 'absoluta').length,
-      },
-      req,
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'registrar_aptitud_medica',
+        entidad: 'historial_aptitud_medica',
+        entidadId: res.rows[0].id,
+        detalle: {
+          trabajadorId,
+          aptitud,
+          cantidadAlertas: alertas.length,
+          alertasAbsolutas: alertas.filter((a) => a.severidad === 'absoluta').length,
+        },
+        req,
+        client,
+      });
+
+      return res;
     });
 
     return res.status(201).json({ registroAptitud: insertRes.rows[0] });

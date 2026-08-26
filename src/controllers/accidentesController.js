@@ -4,18 +4,62 @@
 // ciclo integral de investigacion preventiva (registro,
 // investigacion de causas, acciones con verificacion, evidencia).
 //
-// Acceso: admin, sso gestionan (crear/investigar/accionar/cerrar);
-// cualquier usuario autenticado puede LEER (mismo criterio que
-// ausentismo/puestos_trabajo -- dato de gestion SST, no clinico
-// individual). El componente clinico del caso NO vive aqui: si el
-// trabajador requiere atencion, eso se registra por separado en
-// Historia Clinica / Enfermedad Profesional, exclusivos de 'medico'.
+// Acceso: admin, sso gestionan (crear/investigar/accionar/cerrar).
+//
+// CORREGIDO en Auditoria N.08 (hallazgo CRITICO/P0 C-N08-02, y
+// GRAVE G-N08-02 sobre arquitectura): la version anterior dejaba
+// leer el expediente COMPLETO (nombre del trabajador + tipo_lesion +
+// descripcion libre del accidente + dias_perdidos +
+// requiere_atencion_medica + investigacion + acciones + evidencias)
+// a CUALQUIER usuario autenticado, incluido TH -- que no tiene
+// ninguna necesidad operativa de conocer el tipo de lesion o la
+// narrativa del accidente para hacer su trabajo (gestion de
+// personal). La combinacion identidad + lesion + necesidad de
+// atencion medica es exactamente el tipo de dato personal de salud
+// que el resto del sistema ya trata con cuidado en otros modulos.
+//
+// Se agrega `proyectarCasoSegunRol()`: una funcion de serializacion
+// explicita por rol (no una lista de columnas SQL distinta por
+// endpoint) para que cualquier ruta futura que reutilice estos datos
+// pase por el mismo punto unico de decision, en vez de reimplementar
+// su propio criterio de minimizacion (la preocupacion de arquitectura
+// que señala G-N08-02).
+//   - admin/sso/medico: expediente completo (lo gestionan o lo
+//     necesitan para correlacion clinica).
+//   - th: proyeccion minimizada -- conserva lo que TH SI necesita
+//     para gestion de personal (trabajador, fecha, dias_perdidos,
+//     requiere_atencion_medica, estado) y quita lo que no
+//     (tipo_lesion, descripcion libre, investigacion de causas,
+//     acciones correctivas, evidencias).
+//
+// Las evidencias (fotos/documentos del caso) quedan ademas
+// restringidas por rol directamente en la ruta
+// (routes/accidentesRoutes.js): ya no basta con tener un JWT valido
+// de la organizacion, TH tampoco puede generar la URL firmada.
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 
 const CARPETA_EVIDENCIA = 'sisso/evidencia-accidentes';
+
+// Roles con acceso al expediente completo de un caso.
+const ROLES_ACCESO_COMPLETO = ['admin', 'sso', 'medico'];
+
+/**
+ * Proyecta un caso de accidente/incidente segun el rol de quien
+ * consulta. Ver comentario de cabecera del archivo.
+ */
+function proyectarCasoSegunRol(caso, rol) {
+  if (ROLES_ACCESO_COMPLETO.includes(rol)) return caso;
+  // TH (y cualquier rol futuro sin necesidad documentada): version
+  // minimizada, sin tipo de lesion ni narrativa libre del accidente.
+  const {
+    tipo_lesion, descripcion,
+    ...resto
+  } = caso;
+  return resto;
+}
 
 // ------------------------------------------------------------
 // POST /api/accidentes
@@ -97,7 +141,8 @@ async function listar(req, res) {
     const resultado = await query(
       `SELECT ai.id, ai.tipo, ai.trabajador_id, t.nombre_completo AS trabajador_nombre,
               ai.puesto_trabajo_id, pt.nombre_puesto, ai.fecha_ocurrencia, ai.hora_ocurrencia,
-              ai.lugar, ai.gravedad, ai.dias_perdidos, ai.requiere_atencion_medica, ai.estado, ai.creado_en
+              ai.lugar, ai.gravedad, ai.tipo_lesion, ai.descripcion, ai.dias_perdidos,
+              ai.requiere_atencion_medica, ai.estado, ai.creado_en
        FROM accidentes_incidentes ai
        LEFT JOIN trabajadores t ON t.id = ai.trabajador_id
        LEFT JOIN puestos_trabajo pt ON pt.id = ai.puesto_trabajo_id
@@ -105,7 +150,8 @@ async function listar(req, res) {
        ORDER BY ai.fecha_ocurrencia DESC, ai.creado_en DESC`,
       parametros
     );
-    return res.json({ casos: resultado.rows });
+    const casos = resultado.rows.map((fila) => proyectarCasoSegunRol(fila, req.usuario.rol));
+    return res.json({ casos });
   } catch (err) {
     console.error('Error en listar (accidentes):', err);
     return res.status(500).json({ error: 'Error interno al listar los casos.' });
@@ -117,6 +163,7 @@ async function listar(req, res) {
 // ------------------------------------------------------------
 async function obtener(req, res) {
   const orgId = req.usuario.organizacionId;
+  const accesoCompleto = ROLES_ACCESO_COMPLETO.includes(req.usuario.rol);
   try {
     const casoRes = await query(
       `SELECT ai.*, t.nombre_completo AS trabajador_nombre, pt.nombre_puesto
@@ -130,33 +177,39 @@ async function obtener(req, res) {
       return res.status(404).json({ error: 'Caso no encontrado.' });
     }
 
-    const investigacionRes = await query(
-      `SELECT i.*, u.nombre_completo AS investigador_nombre
-       FROM investigaciones_accidentes i
-       LEFT JOIN usuarios u ON u.id = i.investigador_id
-       WHERE i.accidente_id = $1 AND i.organizacion_id = $2`,
-      [req.params.id, orgId]
-    );
-
-    const accionesRes = await query(
-      `SELECT a.*, u.nombre_completo AS responsable_nombre
-       FROM accidentes_acciones a
-       LEFT JOIN usuarios u ON u.id = a.responsable_id
-       WHERE a.accidente_id = $1 AND a.organizacion_id = $2
-       ORDER BY a.fecha_limite ASC`,
-      [req.params.id, orgId]
-    );
-
-    const evidenciasRes = await query(
-      `SELECT id, tipo_archivo, descripcion, creado_en
-       FROM accidentes_evidencias
-       WHERE accidente_id = $1 AND organizacion_id = $2
-       ORDER BY creado_en DESC`,
-      [req.params.id, orgId]
-    );
+    // CORREGIDO en Auditoria N.08 (C-N08-02): para roles sin acceso
+    // completo (TH), ni siquiera se consultan investigacion/acciones/
+    // evidencias -- son datos operativos de SST (causas raiz, plan de
+    // accion, archivos adjuntos) sin relacion con gestion de personal.
+    const [investigacionRes, accionesRes, evidenciasRes] = accesoCompleto
+      ? await Promise.all([
+          query(
+            `SELECT i.*, u.nombre_completo AS investigador_nombre
+             FROM investigaciones_accidentes i
+             LEFT JOIN usuarios u ON u.id = i.investigador_id
+             WHERE i.accidente_id = $1 AND i.organizacion_id = $2`,
+            [req.params.id, orgId]
+          ),
+          query(
+            `SELECT a.*, u.nombre_completo AS responsable_nombre
+             FROM accidentes_acciones a
+             LEFT JOIN usuarios u ON u.id = a.responsable_id
+             WHERE a.accidente_id = $1 AND a.organizacion_id = $2
+             ORDER BY a.fecha_limite ASC`,
+            [req.params.id, orgId]
+          ),
+          query(
+            `SELECT id, tipo_archivo, descripcion, creado_en
+             FROM accidentes_evidencias
+             WHERE accidente_id = $1 AND organizacion_id = $2
+             ORDER BY creado_en DESC`,
+            [req.params.id, orgId]
+          ),
+        ])
+      : [{ rows: [] }, { rows: [] }, { rows: [] }];
 
     return res.json({
-      caso: casoRes.rows[0],
+      caso: proyectarCasoSegunRol(casoRes.rows[0], req.usuario.rol),
       investigacion: investigacionRes.rows[0] || null,
       acciones: accionesRes.rows,
       evidencias: evidenciasRes.rows,

@@ -162,38 +162,50 @@ async function cambiarEstadoUsuario(req, res) {
   }
 
   try {
-    const resultado = await query(
-      `UPDATE usuarios SET activo = $1 WHERE id = $2 AND rol != 'superadmin'
-       RETURNING id, email, nombre_completo, rol, organizacion_id, activo`,
-      [activo, req.params.id]
-    );
+    // CORREGIDO en Auditoria N.08 (G-N08-03): UPDATE + revocacion de
+    // sesiones + auditoria en una sola transaccion -- mismo patron
+    // que authController.js (cambiarPassword/resetearPassword).
+    const resultado = await withTransaction(async (client) => {
+      const res2 = await client.query(
+        `UPDATE usuarios SET activo = $1 WHERE id = $2 AND rol != 'superadmin'
+         RETURNING id, email, nombre_completo, rol, organizacion_id, activo`,
+        [activo, req.params.id]
+      );
+      if (res2.rows.length === 0) {
+        return res2;
+      }
+
+      // CORREGIDO tras auditoria de seguridad (hallazgo GRAVE G2): antes
+      // desactivar un usuario solo le impedia iniciar sesion de nuevo
+      // (el chequeo de `activo` en login()), pero cualquier sesion que
+      // YA tuviera abierta (accessToken vigente hasta 15 min, y sobre
+      // todo el refreshToken de 7 dias) seguia funcionando con total
+      // normalidad. Un empleado despedido o una cuenta comprometida
+      // podia seguir usando el sistema hasta que su refresh token
+      // expirara por su cuenta. Ahora, desactivar revoca de inmediato
+      // TODAS las familias de refresh token del usuario, forzando el
+      // cierre de sesion en cualquier dispositivo la proxima vez que
+      // intente renovar su access token (a mas tardar en 15 minutos).
+      if (!activo) {
+        await client.query('UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1', [res2.rows[0].id]);
+      }
+
+      await registrarAuditoria({
+        organizacionId: res2.rows[0].organizacion_id,
+        usuarioId: req.usuario.id,
+        accion: activo ? 'usuario_reactivado_por_superadmin' : 'usuario_desactivado_por_superadmin',
+        entidad: 'usuario',
+        entidadId: res2.rows[0].id,
+        req,
+        client,
+      });
+
+      return res2;
+    });
+
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'Usuario no encontrado.' });
     }
-
-    // CORREGIDO tras auditoria de seguridad (hallazgo GRAVE G2): antes
-    // desactivar un usuario solo le impedia iniciar sesion de nuevo
-    // (el chequeo de `activo` en login()), pero cualquier sesion que
-    // YA tuviera abierta (accessToken vigente hasta 15 min, y sobre
-    // todo el refreshToken de 7 dias) seguia funcionando con total
-    // normalidad. Un empleado despedido o una cuenta comprometida
-    // podia seguir usando el sistema hasta que su refresh token
-    // expirara por su cuenta. Ahora, desactivar revoca de inmediato
-    // TODAS las familias de refresh token del usuario, forzando el
-    // cierre de sesion en cualquier dispositivo la proxima vez que
-    // intente renovar su access token (a mas tardar en 15 minutos).
-    if (!activo) {
-      await query('UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1', [resultado.rows[0].id]);
-    }
-
-    await registrarAuditoria({
-      organizacionId: resultado.rows[0].organizacion_id,
-      usuarioId: req.usuario.id,
-      accion: activo ? 'usuario_reactivado_por_superadmin' : 'usuario_desactivado_por_superadmin',
-      entidad: 'usuario',
-      entidadId: resultado.rows[0].id,
-      req,
-    });
 
     return res.json({ usuario: resultado.rows[0] });
   } catch (err) {
