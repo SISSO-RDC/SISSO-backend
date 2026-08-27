@@ -43,25 +43,79 @@ function pct(numerador, denominador) {
   return Math.round((numerador / denominador) * 1000) / 10; // 1 decimal
 }
 
+const MATRIZ_RIESGOS_VACIA = {
+  total: 0,
+  porcentajeAltoRiesgo: 0,
+  porClasificacion: { trivial: 0, tolerable: 0, moderado: 0, importante: 0, intolerable: 0 },
+};
+const ERGONOMIA_VACIA = {
+  nordico: { total: 0, prioritarios: 0, porcentaje: 0 },
+  niosh: { total: 0, altoRiesgo: 0, porcentaje: 0 },
+};
+const APTITUD_MEDICA_VACIA = { apto: 0, conRestricciones: 0, noApto: 0, pendiente: 0, porcentajeApto: 0 };
+const EXAMEN_VACIO = { trabajadores: 0, porcentaje: 0 };
+const COBERTURA_EXAMENES_VACIA = { audiometria: EXAMEN_VACIO, espirometria: EXAMEN_VACIO, visiometria: EXAMEN_VACIO };
+const HALLAZGO_ANORMAL_VACIO = { total: 0, anormales: 0, porcentaje: 0 };
+const HALLAZGOS_ANORMALES_VACIOS = { audiometria: HALLAZGO_ANORMAL_VACIO, espirometria: HALLAZGO_ANORMAL_VACIO, visiometria: HALLAZGO_ANORMAL_VACIO };
+const CONSENTIMIENTOS_VACIO = { total: 0, electronica: 0, fisica: 0, revocados: 0, porcentajeRevocados: 0 };
+
 /**
  * Proyecta el objeto de indicadores ya calculado segun el rol de
  * quien consulta. Ver comentario de cabecera del archivo para la
  * matriz completa.
+ *
+ * CORREGIDO tras reporte de la persona usuaria (26/08/2026): la
+ * version anterior OMITIA por completo la clave de cada seccion que
+ * el rol no debia ver (ej. `matrizRiesgos` no existia en absoluto en
+ * la respuesta para 'medico'). Eso es correcto desde seguridad --el
+ * dato real nunca viajaba-- pero el frontend (indicadores.js) nunca
+ * fue actualizado para verificar que una seccion exista antes de
+ * leer sus subpropiedades (ej. `datos.matrizRiesgos.total`), asi que
+ * terminaba lanzando "Cannot read properties of undefined (reading
+ * 'total')" para cualquier rol distinto del que tiene la vista mas
+ * completa. En vez de omitir la clave, ahora se devuelve un
+ * placeholder con la MISMA forma que la seccion real pero en cero, y
+ * se marca con `_restringido: true` para que el frontend (si se
+ * actualiza mas adelante) pueda distinguir "sin datos" de "no
+ * autorizado para tu rol". El dato real sigue sin viajar nunca: esto
+ * no reabre el hallazgo G-N08-01, solo evita que la ausencia de un
+ * campo tumbe la pagina.
  */
 function proyectarIndicadoresSegunRol(indicadores, rol) {
   const { totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, matrizRiesgos, ergonomia, consentimientos } = indicadores;
 
   if (rol === 'medico') {
-    return { totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, consentimientos };
+    return {
+      totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, consentimientos,
+      matrizRiesgos: { ...MATRIZ_RIESGOS_VACIA, _restringido: true },
+      ergonomia: { ...ERGONOMIA_VACIA, _restringido: true },
+    };
   }
   if (rol === 'sso') {
-    return { totalTrabajadores, coberturaEmo, coberturaExamenes, matrizRiesgos, ergonomia, consentimientos };
+    return {
+      totalTrabajadores, coberturaEmo, coberturaExamenes, matrizRiesgos, ergonomia, consentimientos,
+      aptitudMedica: { ...APTITUD_MEDICA_VACIA, _restringido: true },
+      hallazgosAnormales: { ...HALLAZGOS_ANORMALES_VACIOS, _restringido: true },
+    };
   }
   if (rol === 'th') {
-    return { totalTrabajadores, coberturaEmo };
+    return {
+      totalTrabajadores, coberturaEmo,
+      aptitudMedica: { ...APTITUD_MEDICA_VACIA, _restringido: true },
+      coberturaExamenes: { ...COBERTURA_EXAMENES_VACIA, _restringido: true },
+      hallazgosAnormales: { ...HALLAZGOS_ANORMALES_VACIOS, _restringido: true },
+      matrizRiesgos: { ...MATRIZ_RIESGOS_VACIA, _restringido: true },
+      ergonomia: { ...ERGONOMIA_VACIA, _restringido: true },
+      consentimientos: { ...CONSENTIMIENTOS_VACIO, _restringido: true },
+    };
   }
   // admin: gestion empresarial, sin convertirse en lector clinico.
-  return { totalTrabajadores, coberturaEmo, coberturaExamenes, matrizRiesgos, consentimientos };
+  return {
+    totalTrabajadores, coberturaEmo, coberturaExamenes, matrizRiesgos, consentimientos,
+    aptitudMedica: { ...APTITUD_MEDICA_VACIA, _restringido: true },
+    hallazgosAnormales: { ...HALLAZGOS_ANORMALES_VACIOS, _restringido: true },
+    ergonomia: { ...ERGONOMIA_VACIA, _restringido: true },
+  };
 }
 
 async function obtenerIndicadores(req, res) {

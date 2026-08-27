@@ -297,21 +297,70 @@ async function calcularResumen(orgId, filtros) {
 // para la matriz completa), justo antes de redactar por
 // k-anonimato, para que JSON y PDF respeten siempre la misma
 // matriz sin duplicar la logica.
+const APTITUD_MEDICA_VACIA_RPT = { apto: 0, conRestricciones: 0, noApto: 0, pendiente: 0, porcentajeApto: 0 };
+const EXAMEN_VACIO_RPT = { trabajadoresCubiertos: 0, porcentajeCobertura: 0, total: 0, anormales: 0, porcentajeAnormales: 0 };
+const EXAMENES_COMPLEMENTARIOS_VACIOS = { audiometria: EXAMEN_VACIO_RPT, espirometria: EXAMEN_VACIO_RPT, visiometria: EXAMEN_VACIO_RPT };
+const AUSENTISMO_VACIO = { totalAusencias: 0, totalDias: 0, porTipo: [] };
+const MATRIZ_RIESGOS_VACIA_RPT = {
+  nota: 'No disponible para tu rol.',
+  total: 0,
+  porcentajeAltoRiesgo: 0,
+  porClasificacion: { trivial: 0, tolerable: 0, moderado: 0, importante: 0, intolerable: 0 },
+};
+const ERGONOMIA_VACIA_RPT = {
+  nordico: { total: 0, prioritarios: 0, porcentaje: 0 },
+  niosh: { total: 0, altoRiesgo: 0, porcentaje: 0 },
+};
+const CONSENTIMIENTOS_VACIO_RPT = { total: 0, electronica: 0, fisica: 0, revocados: 0, porcentajeRevocados: 0 };
+
+// CORREGIDO tras reporte de la persona usuaria (26/08/2026): mismo
+// problema y misma solucion que proyectarIndicadoresSegunRol() en
+// indicadoresController.js -- ver el comentario completo alli. En
+// resumen: antes se OMITIA la clave completa de cada seccion no
+// autorizada para el rol (ej. `ausentismo` no existia para 'medico'
+// ni 'sso'), y el frontend (reportes-bi.js) no verificaba su
+// existencia antes de leer subpropiedades como
+// `resumen.ausentismo.totalAusencias`, lo que lo hacia fallar con
+// "Cannot read properties of undefined". Ahora se devuelve un
+// placeholder en cero con `_restringido: true` en vez de omitir la
+// clave. El dato real sigue sin viajar para roles no autorizados.
 function proyectarResumenSegunRol(resumen, rol) {
   const { filtrosAplicados, grupoPequenoRedactado, trabajadores, coberturaEmo, aptitudMedica, examenesComplementarios, ausentismo, matrizRiesgos, ergonomia, consentimientos } = resumen;
   const base = { filtrosAplicados, ...(grupoPequenoRedactado ? { grupoPequenoRedactado } : {}), trabajadores, coberturaEmo };
 
   if (rol === 'medico') {
-    return { ...base, aptitudMedica, examenesComplementarios, consentimientos };
+    return {
+      ...base, aptitudMedica, examenesComplementarios, consentimientos,
+      ausentismo: { ...AUSENTISMO_VACIO, _restringido: true },
+      matrizRiesgos: { ...MATRIZ_RIESGOS_VACIA_RPT, _restringido: true },
+      ergonomia: { ...ERGONOMIA_VACIA_RPT, _restringido: true },
+    };
   }
   if (rol === 'sso') {
-    return { ...base, matrizRiesgos, ergonomia, consentimientos };
+    return {
+      ...base, matrizRiesgos, ergonomia, consentimientos,
+      aptitudMedica: { ...APTITUD_MEDICA_VACIA_RPT, _restringido: true },
+      examenesComplementarios: { ...EXAMENES_COMPLEMENTARIOS_VACIOS, _restringido: true },
+      ausentismo: { ...AUSENTISMO_VACIO, _restringido: true },
+    };
   }
   if (rol === 'th') {
-    return { ...base, ausentismo };
+    return {
+      ...base, ausentismo,
+      aptitudMedica: { ...APTITUD_MEDICA_VACIA_RPT, _restringido: true },
+      examenesComplementarios: { ...EXAMENES_COMPLEMENTARIOS_VACIOS, _restringido: true },
+      matrizRiesgos: { ...MATRIZ_RIESGOS_VACIA_RPT, _restringido: true },
+      ergonomia: { ...ERGONOMIA_VACIA_RPT, _restringido: true },
+      consentimientos: { ...CONSENTIMIENTOS_VACIO_RPT, _restringido: true },
+    };
   }
   // admin: gestion empresarial, sin convertirse en lector clinico.
-  return { ...base, matrizRiesgos, ausentismo, consentimientos };
+  return {
+    ...base, matrizRiesgos, ausentismo, consentimientos,
+    aptitudMedica: { ...APTITUD_MEDICA_VACIA_RPT, _restringido: true },
+    examenesComplementarios: { ...EXAMENES_COMPLEMENTARIOS_VACIOS, _restringido: true },
+    ergonomia: { ...ERGONOMIA_VACIA_RPT, _restringido: true },
+  };
 }
 
 // CORREGIDO (hallazgo MODERADO de la auditoria: "evitar inferencias
