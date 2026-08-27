@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const authController = require('../controllers/authController');
-const { autenticar, autorizar, autenticarOMfaPendiente, contextoInterno } = require('../middleware/auth');
+const { autenticar, autorizar, autenticarOMfaPendiente, contextoInterno, verificarOrigenCookie } = require('../middleware/auth');
 const {
   validarRegistrarOrganizacion,
   validarRegistrarUsuario,
@@ -89,8 +89,13 @@ const limitadorRecuperacion = rateLimit({
 });
 router.post('/recuperar-superadmin', limitadorRecuperacion, contextoInterno, authController.recuperarSuperadmin);
 router.post('/login', limitadorLogin, validarLogin, contextoInterno, authController.login);
-router.post('/refrescar', contextoInterno, authController.refrescar);
-router.post('/logout', contextoInterno, authController.logout);
+// CORREGIDO en Auditoria N.09 (G-N09-10): estos dos endpoints usan
+// la cookie de refresh token (sameSite=none) para autenticar la
+// operacion, asi que se protegen ademas con verificarOrigenCookie
+// (valida Origin/Referer contra CORS_ORIGINS) para cerrar el vector
+// CSRF -- ver el comentario completo en middleware/auth.js.
+router.post('/refrescar', verificarOrigenCookie, contextoInterno, authController.refrescar);
+router.post('/logout', verificarOrigenCookie, contextoInterno, authController.logout);
 router.get('/perfil', autenticar, authController.perfil);
 router.get('/usuarios', autenticar, autorizar('admin'), authController.listarUsuarios);
 

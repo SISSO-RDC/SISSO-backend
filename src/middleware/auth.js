@@ -10,8 +10,73 @@
 // ============================================================
 const { verificarAccessToken, verificarTokenMfaPendiente } = require('../utils/jwt');
 const { ejecutarConContexto } = require('../utils/contextoSolicitud');
+const { queryComoSuperadmin } = require('../db/pool');
 
-function autenticar(req, res, next) {
+// ------------------------------------------------------------
+// CORREGIDO en Auditoria N.09 (hallazgo GRAVE/MODERADO G-N09-11):
+// cuando el superadmin suspende una organizacion (o vence su
+// suscripcion), se revocan los refresh tokens de inmediato -- pero
+// un access token YA EMITIDO antes de la suspension seguia siendo
+// valido hasta su propia expiracion (hasta 15 minutos), porque
+// `autenticar` solo verificaba la firma/expiracion del JWT, sin
+// volver a consultar el estado de la organizacion en cada peticion.
+//
+// La auditoria sugiere tres alternativas ("consultar estado en
+// middleware", "session_version", "lista de revocacion con cache").
+// Se implementa una variante de la primera con cache corto en
+// memoria: en vez de una consulta a BD en CADA peticion (costoso) o
+// dejar el hueco de 15 minutos completo (lo que se queria corregir),
+// se cachea el estado activa/suspendida de cada organizacion por
+// ORGANIZACION_CACHE_TTL_MS y se revalida despues de ese tiempo. El
+// hueco de "acceso valido tras suspension" pasa de hasta 15 minutos
+// a, como maximo, la duracion del cache (20 segundos) -- una mejora
+// de dos ordenes de magnitud sin agregar una consulta a BD por
+// cada peticion autenticada.
+//
+// NOTA: esto es una cache EN MEMORIA del proceso Node. En un
+// despliegue con varias instancias/replicas detras de un balanceador
+// (no es el caso actual de SISSO en Render con un solo dyno), cada
+// instancia tendria su propia cache -- seguiria acotando el hueco a
+// ORGANIZACION_CACHE_TTL_MS por instancia, pero para una garantia
+// estricta multi-instancia se necesitaria una cache compartida
+// (Redis) o el enfoque de `session_version` que tambien menciona la
+// auditoria. Se deja documentado como siguiente paso si SISSO
+// escala a mas de una instancia.
+// ------------------------------------------------------------
+const ORGANIZACION_CACHE_TTL_MS = 20 * 1000;
+const cacheEstadoOrganizacion = new Map(); // organizacionId -> { activa, suspendidaManualmente, expiraEn }
+
+async function organizacionEstaBloqueada(organizacionId) {
+  const ahora = Date.now();
+  const cacheada = cacheEstadoOrganizacion.get(organizacionId);
+  if (cacheada && cacheada.expiraEn > ahora) {
+    return !cacheada.activa || cacheada.suspendidaManualmente;
+  }
+
+  // IMPORTANTE: en este punto de `autenticar` todavia NO se llamo a
+  // ejecutarConContexto() (eso pasa mas abajo, envolviendo `next`).
+  // Sin contexto async, query() normal caeria en RLS con
+  // app.organizacion_actual/es_superadmin sin fijar y, con FORCE ROW
+  // LEVEL SECURITY (migration_045), la politica de `organizaciones`
+  // devolveria CERO filas para cualquier organizacion -- lo que
+  // haria que este chequeo bloqueara a TODO el mundo por error. Por
+  // eso se usa queryComoSuperadmin(), que fija el contexto de
+  // superadmin explicitamente para esta consulta puntual (el mismo
+  // mecanismo que ya usan login()/refrescar() antes de saber a que
+  // organizacion pertenece el usuario).
+  const orgRes = await queryComoSuperadmin(
+    `SELECT activa, suspendida_manualmente FROM organizaciones WHERE id = $1`,
+    [organizacionId]
+  );
+  const activa = orgRes.rows.length > 0 && orgRes.rows[0].activa;
+  const suspendidaManualmente = orgRes.rows.length > 0 && orgRes.rows[0].suspendida_manualmente;
+
+  cacheEstadoOrganizacion.set(organizacionId, { activa, suspendidaManualmente, expiraEn: ahora + ORGANIZACION_CACHE_TTL_MS });
+
+  return !activa || suspendidaManualmente;
+}
+
+async function autenticar(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -25,6 +90,28 @@ function autenticar(req, res, next) {
     if (payload.tipo !== 'access') {
       return res.status(401).json({ error: 'Tipo de token invalido.' });
     }
+
+    // CORREGIDO en Auditoria N.09 (G-N09-11): ver comentario arriba.
+    // El superadmin no pertenece a ninguna organizacion de cliente,
+    // asi que este chequeo no le aplica. Se separa en su propio
+    // try/catch para no confundir un fallo de BD con un token
+    // invalido (mensajes de error distintos, ver catch de abajo).
+    if (payload.rol !== 'superadmin') {
+      let bloqueada;
+      try {
+        bloqueada = await organizacionEstaBloqueada(payload.organizacionId);
+      } catch (errConsulta) {
+        console.error('Error al verificar estado de organizacion en autenticar():', errConsulta);
+        return res.status(500).json({ error: 'Error interno al verificar el estado de la cuenta.' });
+      }
+      if (bloqueada) {
+        return res.status(403).json({
+          error: 'La organizacion asociada a esta cuenta esta inactiva o suspendida.',
+          codigo: 'ORGANIZACION_BLOQUEADA',
+        });
+      }
+    }
+
     // Adjuntamos la info verificada del usuario a la peticion.
     // Los controladores usaran esto, NUNCA datos que vengan del body o query.
     req.usuario = {
@@ -137,4 +224,67 @@ function contextoInterno(req, res, next) {
   ejecutarConContexto({ organizacionId: null, usuarioId: null, esSuperadmin: true }, next);
 }
 
-module.exports = { autenticar, autorizar, autenticarOMfaPendiente, contextoInterno };
+// ------------------------------------------------------------
+// CORREGIDO en Auditoria N.09 (hallazgo GRAVE/MODERADO G-N09-10,
+// P1/P2): el refresh token vive en una cookie HttpOnly con
+// `sameSite: 'none'` (necesario porque frontend y backend estan en
+// dominios distintos: GitHub Pages y Render). sameSite=None hace
+// que el navegador SI envie esa cookie en peticiones cross-site.
+// El middleware `cors()` de index.js NO alcanza a proteger esto:
+// cors() controla si el NAVEGADOR deja que el JS de otro sitio LEA
+// la respuesta, pero no impide que el navegador ENVIE la cookie ni
+// que el servidor PROCESE la peticion -- un <form> o un
+// fetch(..., {mode:'no-cors', credentials:'include'}) desde un
+// sitio malicioso puede disparar POST /api/auth/refrescar o
+// POST /api/auth/logout con la cookie del usuario puesta, sin que
+// el atacante necesite leer la respuesta para causar dano (rotar/
+// quemar el refresh token de la victima, cerrarle la sesion, etc).
+// Eso es CSRF classico contra endpoints cookie-authenticated.
+//
+// Esta funcion valida el header Origin (o, si el navegador no lo
+// mando, Referer como respaldo) contra la misma lista blanca
+// CORS_ORIGINS que ya usa cors() en index.js -- si no coincide, se
+// rechaza ANTES de tocar la cookie o la base de datos. Peticiones
+// sin Origin ni Referer (Postman, apps moviles via HTTPS directo)
+// se siguen permitiendo, igual que ya hace cors(), porque no son
+// peticiones de navegador y no estan expuestas al vector CSRF via
+// cookie de navegador.
+// ------------------------------------------------------------
+function verificarOrigenCookie(req, res, next) {
+  const esProduccion = process.env.NODE_ENV === 'production';
+  const origenesPermitidos = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+  // En desarrollo, igual que cors() en index.js, se mantiene
+  // permisivo para no trabar el flujo local del equipo.
+  if (!esProduccion) return next();
+
+  // Sin CORS_ORIGINS configurada en produccion, cors() ya rechaza
+  // todo origen con header; aqui se aplica el mismo criterio
+  // fail-closed para no dejar un vacio si alguien desactivara cors()
+  // pero no este middleware.
+  const origin = req.headers.origin;
+  const referer = req.headers.referer || req.headers.referrer;
+
+  if (!origin && !referer) {
+    // Sin ninguno de los dos headers: no es una peticion tipica de
+    // navegador (Postman, apps moviles, health checks). Se permite,
+    // igual que hace cors() para peticiones sin Origin.
+    return next();
+  }
+
+  const origenAValidar = origin || (() => {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (origenAValidar && origenesPermitidos.includes(origenAValidar)) {
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Origen no permitido para esta operacion.' });
+}
+
+module.exports = { autenticar, autorizar, autenticarOMfaPendiente, contextoInterno, verificarOrigenCookie };

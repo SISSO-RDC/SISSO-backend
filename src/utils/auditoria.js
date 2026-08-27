@@ -64,6 +64,25 @@ const { query } = require('../db/pool');
  * `critico` se ignora en este modo porque la atomicidad ya no es
  * opcional: forma parte de la transaccion completa del llamador).
  */
+// CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-07, P1):
+// registrarAuditoria() sin `client` era best-effort para TODO,
+// incluidas lecturas de datos clinicos sensibles (historia clinica,
+// aptitud, restricciones): si el INSERT fallaba, se perdia toda
+// evidencia de que la lectura ocurrio. Se agrega el modo
+// `lecturaSensible: true`, pensado especificamente para llamadas de
+// auditoria en endpoints GET (que nunca tienen `client` porque no
+// abren una transaccion de escritura):
+//   1. Intenta el INSERT normal en `auditoria`.
+//   2. Si falla, intenta un INSERT de respaldo en la cola durable
+//      `auditoria_pendiente` (migration_049) con el error original.
+//   3. Si ese respaldo TAMBIEN falla, recien ahi se relanza el
+//      error -- fail-closed real: si no quedo evidencia en NINGUN
+//      lado, la funcion no debe devolver exito silenciosamente.
+//   4. Si el respaldo tuvo exito, no se relanza nada: hay cola
+//      durable, no hace falta tumbar la respuesta al usuario por una
+//      caida transitoria de la tabla `auditoria` (tal como pide la
+//      auditoria: "no bloquear la respuesta por una caida transitoria
+//      si existe una cola durable").
 async function registrarAuditoria({
   organizacionId = null,
   usuarioId = null,
@@ -74,6 +93,7 @@ async function registrarAuditoria({
   req = null,
   critico = false,
   client = null,
+  lecturaSensible = false,
 }) {
   const ip = req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress) : null;
   const userAgent = req ? req.headers['user-agent'] : null;
@@ -93,8 +113,28 @@ async function registrarAuditoria({
 
   try {
     await query(sentencia, valores);
+    return;
   } catch (err) {
-    console.error(`No se pudo registrar la auditoria (accion: ${accion}, critico: ${critico}):`, err.message);
+    console.error(`No se pudo registrar la auditoria (accion: ${accion}, critico: ${critico}, lecturaSensible: ${lecturaSensible}):`, err.message);
+
+    if (lecturaSensible) {
+      try {
+        await query(
+          `INSERT INTO auditoria_pendiente
+             (organizacion_id, usuario_id, accion, entidad, entidad_id, detalle, ip_origen, user_agent, error_original)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [organizacionId, usuarioId, accion, entidad, entidadId, detalle ? JSON.stringify(detalle) : null, ip, userAgent, err.message]
+        );
+        // Se guardo en la cola durable: no hace falta tumbar la
+        // respuesta, pero SI queda rastro (a diferencia del
+        // comportamiento anterior).
+        return;
+      } catch (errCola) {
+        console.error(`FALLO TOTAL DE AUDITORIA (ni auditoria ni auditoria_pendiente) para accion "${accion}". Fail-closed.`, errCola.message);
+        throw errCola;
+      }
+    }
+
     if (critico) throw err;
   }
 }

@@ -157,4 +157,52 @@ async function borrarEvidencia(publicId, tipo, opciones = {}) {
   });
 }
 
-module.exports = { subirEvidencia, borrarEvidencia, generarUrlFirmada };
+/**
+ * CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-06, P1): en
+ * varios flujos (accidentes, REBA/RULA, ausentismo, consentimientos/
+ * firmas, EPP, inspecciones) el archivo se subia a Cloudinary y
+ * DESPUES se insertaba la fila en PostgreSQL como pasos separados.
+ * Si el INSERT fallaba (validacion, constraint, caida de conexion),
+ * la transaccion de BD hacia rollback pero el archivo ya subido a
+ * Cloudinary quedaba huerfano -- y en varios de estos modulos ese
+ * archivo es sensible (foto de accidente, firma, certificado
+ * medico).
+ *
+ * Este helper implementa el patron compensatorio recomendado por la
+ * auditoria: sube el archivo, ejecuta `operacionPosterior` (tipicamente
+ * el INSERT/UPDATE en BD), y si esa operacion lanza una excepcion,
+ * intenta borrar inmediatamente el archivo recien subido ANTES de
+ * relanzar el error original. No sustituye una reconciliacion
+ * periodica Cloudinary<->BD (recomendada tambien por la auditoria
+ * para el caso en que el propio borrado de compensacion falle), pero
+ * cierra la ventana de huerfanos en el caso comun.
+ *
+ * @param {string} base64DataUri
+ * @param {string} organizacionId
+ * @param {string} [carpetaBase]
+ * @param {{privado?: boolean}} [opciones]
+ * @param {(subida: {url: string, publicId: string, tipo: 'imagen'|'video'}) => Promise<any>} operacionPosterior
+ * @returns {Promise<{subida: {url: string, publicId: string, tipo: 'imagen'|'video'}, resultado: any}>}
+ */
+async function subirEvidenciaConCompensacion(base64DataUri, organizacionId, carpetaBase, opciones, operacionPosterior) {
+  const subida = await subirEvidencia(base64DataUri, organizacionId, carpetaBase, opciones);
+  try {
+    const resultado = await operacionPosterior(subida);
+    return { subida, resultado };
+  } catch (err) {
+    try {
+      await borrarEvidencia(subida.publicId, subida.tipo, opciones);
+    } catch (errCompensacion) {
+      // No ocultar el error original por un fallo de limpieza, pero
+      // dejar rastro claro de que quedo un archivo huerfano en
+      // Cloudinary que requiere reconciliacion manual.
+      console.error(
+        `ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${subida.publicId} tras fallo posterior. Requiere limpieza manual.`,
+        errCompensacion
+      );
+    }
+    throw err;
+  }
+}
+
+module.exports = { subirEvidencia, borrarEvidencia, generarUrlFirmada, subirEvidenciaConCompensacion };
