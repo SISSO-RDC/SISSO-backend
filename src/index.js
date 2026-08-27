@@ -149,7 +149,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-23-rls-multitenant',
+    version: '2026-08-26-auditoria-n09',
   });
 });
 

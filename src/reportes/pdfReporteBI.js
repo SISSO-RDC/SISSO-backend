@@ -98,7 +98,7 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
   // aptitudMedica). Cada seccion valida su propia presencia antes
   // de intentar leer sus campos.
   tituloSeccion(doc, '2. Distribución de aptitud médica laboral');
-  if (!r.aptitudMedica) {
+  if (!r.aptitudMedica || r.aptitudMedica._restringido) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
   } else if (r.grupoPequenoRedactado) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#dc2626').text(r.aptitudMedica.nota);
@@ -112,7 +112,7 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
 
   // ---- Examenes complementarios ----
   tituloSeccion(doc, '3. Exámenes complementarios');
-  if (!r.examenesComplementarios) {
+  if (!r.examenesComplementarios || r.examenesComplementarios._restringido) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
   } else if (r.grupoPequenoRedactado) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#dc2626').text(r.examenesComplementarios.nota);
@@ -132,7 +132,7 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
 
   // ---- Ausentismo ----
   tituloSeccion(doc, '4. Ausentismo laboral');
-  if (!r.ausentismo) {
+  if (!r.ausentismo || r.ausentismo._restringido) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
   } else {
     filaDato(doc, 'Total de ausencias registradas', r.ausentismo.totalAusencias);
@@ -145,7 +145,7 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
 
   // ---- Matriz de riesgos ----
   tituloSeccion(doc, '5. Matriz de riesgos (IPER)');
-  if (!r.matrizRiesgos) {
+  if (!r.matrizRiesgos || r.matrizRiesgos._restringido) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
   } else {
     doc.fontSize(8.5).font('Helvetica-Oblique').fillColor('#94a3b8').text(r.matrizRiesgos.nota);
@@ -162,7 +162,7 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
 
   // ---- Ergonomia ----
   tituloSeccion(doc, '6. Ergonomía');
-  if (!r.ergonomia) {
+  if (!r.ergonomia || r.ergonomia._restringido) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
   } else if (r.grupoPequenoRedactado) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#dc2626').text(r.ergonomia.nota);
@@ -176,7 +176,7 @@ function generarPdfReporteBI(r, nombreOrganizacion) {
 
   // ---- Consentimientos ----
   tituloSeccion(doc, '7. Consentimientos informados');
-  if (!r.consentimientos) {
+  if (!r.consentimientos || r.consentimientos._restringido) {
     doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8').text('No disponible para su rol.');
   } else {
     filaDato(doc, 'Total registrados', r.consentimientos.total);
