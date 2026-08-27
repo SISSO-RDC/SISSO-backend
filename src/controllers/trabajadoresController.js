@@ -20,8 +20,9 @@
 //     'medico'. Para cualquier otro rol (admin, sso, th), el
 //     campo simplemente no viaja en el JSON de respuesta.
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { verificarLimitePlan } = require('../utils/planes');
 
 // ------------------------------------------------------------
 // CORREGIDO en Auditoria N.08 (hallazgo GRAVE G-N08-02): antes,
@@ -133,7 +134,15 @@ async function crear(req, res) {
   }
 
   try {
-    const resultado = await query(
+    // CORREGIDO en Auditoria N.09 (G-N09-08): verificacion del
+    // limite de trabajadores del plan, DENTRO de la misma
+    // transaccion que el INSERT (con FOR UPDATE sobre la fila de la
+    // organizacion) para que dos altas concurrentes no puedan
+    // saltarse el limite. Ver utils/planes.js.
+    const resultado = await withTransaction(async (client) => {
+      await verificarLimitePlan(client, req.usuario.organizacionId, 'trabajadores', 1);
+
+      const insertRes = await client.query(
       // La aptitud se crea siempre como 'pendiente' y NUNCA se recibe
       // del body: solo puede cambiar a traves de POST
       // /api/aptitud/trabajadores/:id/registrar (modulo medico), que
@@ -163,19 +172,26 @@ async function crear(req, res) {
         tallaCm || null,
         pesoKg || null,
       ]
-    );
+      );
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'crear_trabajador',
-      entidad: 'trabajador',
-      entidadId: resultado.rows[0].id,
-      req,
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'crear_trabajador',
+        entidad: 'trabajador',
+        entidadId: insertRes.rows[0].id,
+        req,
+        client,
+      });
+
+      return insertRes;
     });
 
     return res.status(201).json({ trabajador: resultado.rows[0] });
   } catch (err) {
+    if (err.codigo === 'LIMITE_PLAN_EXCEDIDO') {
+      return res.status(403).json({ error: err.message, codigo: err.codigo });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Ya existe un trabajador con ese documento en esta organizacion.' });
     }
@@ -218,6 +234,51 @@ async function importarMasivo(req, res) {
   let creados = 0;
   let actualizados = 0;
   let fallidos = 0;
+
+  // CORREGIDO en Auditoria N.09 (G-N09-08): verificacion previa del
+  // limite de trabajadores del plan. A diferencia de crear() (un
+  // solo INSERT dentro de una transaccion con FOR UPDATE), aqui cada
+  // fila se procesa con su propia sentencia independiente -- no hay
+  // una unica transaccion que envuelva las 1000 filas -- asi que
+  // esta comprobacion previa NO es 100% inmune a una carrera con
+  // otra importacion/alta concurrente sobre la MISMA organizacion
+  // (caso raro en la practica: importaciones masivas las hace un
+  // admin desde un solo lugar). Se estima cuantas filas son
+  // realmente nuevas (documento que no existe todavia) para no
+  // penalizar re-importar una nomina con actualizaciones.
+  try {
+    const orgRes = await query(
+      `SELECT o.id, p.limite_trabajadores AS limite
+       FROM organizaciones o LEFT JOIN planes p ON p.id = o.plan_id
+       WHERE o.id = $1`,
+      [req.usuario.organizacionId]
+    );
+    const limite = orgRes.rows[0] ? orgRes.rows[0].limite : null;
+    if (limite !== null && limite !== undefined) {
+      const documentos = filas.map((f) => (f.documento || '').toString().trim()).filter(Boolean);
+      const existentesRes = await query(
+        `SELECT COUNT(*)::int AS total FROM trabajadores WHERE organizacion_id = $1 AND activo = true`,
+        [req.usuario.organizacionId]
+      );
+      const yaExistentesRes = await query(
+        `SELECT COUNT(*)::int AS total FROM trabajadores WHERE organizacion_id = $1 AND documento = ANY($2::text[])`,
+        [req.usuario.organizacionId, documentos]
+      );
+      const actualesActivos = existentesRes.rows[0].total;
+      const filasNuevasEstimadas = documentos.length - yaExistentesRes.rows[0].total;
+      if (actualesActivos + filasNuevasEstimadas > limite) {
+        return res.status(403).json({
+          error: `Limite del plan alcanzado: ya tiene ${actualesActivos} trabajadores activos de un maximo de ${limite}. `
+            + `Esta importacion agregaria aproximadamente ${filasNuevasEstimadas} trabajadores nuevos. `
+            + `Reduzca el tamano del archivo o actualice de plan.`,
+          codigo: 'LIMITE_PLAN_EXCEDIDO',
+        });
+      }
+    }
+  } catch (errLimite) {
+    console.error('Error al verificar limite de plan antes de importar:', errLimite);
+    return res.status(500).json({ error: 'Error interno al verificar el limite del plan.' });
+  }
 
   for (let i = 0; i < filas.length; i++) {
     const fila = filas[i];

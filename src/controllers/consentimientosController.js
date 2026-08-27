@@ -17,7 +17,7 @@
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
-const { subirEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
+const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 const { generarPdfFirmado, generarPdfEnBlanco } = require('../consentimientos/pdfConsentimiento');
 
 const CARPETA_FIRMAS = 'sisso/firmas-consentimiento';
@@ -101,38 +101,49 @@ async function firmarConsentimiento(req, res) {
 
     const firma = await subirEvidencia(firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
 
-    const insertRes = await withTransaction(async (client) => {
-    const resultadoConsulta = await client.query(
-      `INSERT INTO consentimientos_firmados
-        (organizacion_id, trabajador_id, tipo_consentimiento_codigo, texto_legal_firmado, version_firmada,
-         firma_imagen_url, firma_imagen_public_id, registrado_por, metodo_firma)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'electronica')
-       RETURNING id, tipo_consentimiento_codigo, version_firmada, firma_imagen_url, metodo_firma, revocado, creado_en`,
-      [
-        req.usuario.organizacionId,
-        trabajadorId,
-        tipo.codigo,
-        tipo.texto_legal,
-        tipo.version,
-        firma.url,
-        firma.publicId,
-        req.usuario.id,
-      ]
-    );
+    // CORREGIDO en Auditoria N.09 (G-N09-06): la firma es un dato
+    // biometrico/sensible; si la transaccion de BD falla despues de
+    // subirla, se compensa borrandola de Cloudinary.
+    let insertRes;
+    try {
+      insertRes = await withTransaction(async (client) => {
+      const resultadoConsulta = await client.query(
+        `INSERT INTO consentimientos_firmados
+          (organizacion_id, trabajador_id, tipo_consentimiento_codigo, texto_legal_firmado, version_firmada,
+           firma_imagen_url, firma_imagen_public_id, registrado_por, metodo_firma)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'electronica')
+         RETURNING id, tipo_consentimiento_codigo, version_firmada, firma_imagen_url, metodo_firma, revocado, creado_en`,
+        [
+          req.usuario.organizacionId,
+          trabajadorId,
+          tipo.codigo,
+          tipo.texto_legal,
+          tipo.version,
+          firma.url,
+          firma.publicId,
+          req.usuario.id,
+        ]
+      );
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'firmar_consentimiento_informado',
-      entidad: 'consentimiento_firmado',
-      entidadId: resultadoConsulta.rows[0].id,
-      detalle: { trabajadorId, tipoConsentimientoCodigo: tipo.codigo },
-      req,
-      client,
-    });
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'firmar_consentimiento_informado',
+        entidad: 'consentimiento_firmado',
+        entidadId: resultadoConsulta.rows[0].id,
+        detalle: { trabajadorId, tipoConsentimientoCodigo: tipo.codigo },
+        req,
+        client,
+      });
 
-      return resultadoConsulta;
-    });
+        return resultadoConsulta;
+      });
+    } catch (errTransaccion) {
+      await borrarEvidencia(firma.publicId, 'imagen').catch((errBorrado) =>
+        console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${firma.publicId}.`, errBorrado)
+      );
+      throw errTransaccion;
+    }
 
     return res.status(201).json({ consentimiento: insertRes.rows[0] });
   } catch (err) {
@@ -436,38 +447,48 @@ async function firmarFisico(req, res) {
 
     const imagen = await subirEvidencia(imagenBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
 
-    const insertRes = await withTransaction(async (client) => {
-    const resultadoConsulta = await client.query(
-      `INSERT INTO consentimientos_firmados
-        (organizacion_id, trabajador_id, tipo_consentimiento_codigo, texto_legal_firmado, version_firmada,
-         firma_imagen_url, firma_imagen_public_id, registrado_por, metodo_firma)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'fisica_escaneada')
-       RETURNING id, tipo_consentimiento_codigo, version_firmada, firma_imagen_url, metodo_firma, revocado, creado_en`,
-      [
-        req.usuario.organizacionId,
-        trabajadorId,
-        tipo.codigo,
-        tipo.texto_legal,
-        tipo.version,
-        imagen.url,
-        imagen.publicId,
-        req.usuario.id,
-      ]
-    );
+    // CORREGIDO en Auditoria N.09 (G-N09-06): compensacion si la
+    // transaccion de BD falla despues de subir la imagen escaneada.
+    let insertRes;
+    try {
+      insertRes = await withTransaction(async (client) => {
+      const resultadoConsulta = await client.query(
+        `INSERT INTO consentimientos_firmados
+          (organizacion_id, trabajador_id, tipo_consentimiento_codigo, texto_legal_firmado, version_firmada,
+           firma_imagen_url, firma_imagen_public_id, registrado_por, metodo_firma)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'fisica_escaneada')
+         RETURNING id, tipo_consentimiento_codigo, version_firmada, firma_imagen_url, metodo_firma, revocado, creado_en`,
+        [
+          req.usuario.organizacionId,
+          trabajadorId,
+          tipo.codigo,
+          tipo.texto_legal,
+          tipo.version,
+          imagen.url,
+          imagen.publicId,
+          req.usuario.id,
+        ]
+      );
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'firmar_consentimiento_fisico_escaneado',
-      entidad: 'consentimiento_firmado',
-      entidadId: resultadoConsulta.rows[0].id,
-      detalle: { trabajadorId, tipoConsentimientoCodigo: tipo.codigo },
-      req,
-      client,
-    });
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'firmar_consentimiento_fisico_escaneado',
+        entidad: 'consentimiento_firmado',
+        entidadId: resultadoConsulta.rows[0].id,
+        detalle: { trabajadorId, tipoConsentimientoCodigo: tipo.codigo },
+        req,
+        client,
+      });
 
-      return resultadoConsulta;
-    });
+        return resultadoConsulta;
+      });
+    } catch (errTransaccion) {
+      await borrarEvidencia(imagen.publicId, 'imagen').catch((errBorrado) =>
+        console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${imagen.publicId}.`, errBorrado)
+      );
+      throw errTransaccion;
+    }
 
     return res.status(201).json({ consentimiento: insertRes.rows[0] });
   } catch (err) {

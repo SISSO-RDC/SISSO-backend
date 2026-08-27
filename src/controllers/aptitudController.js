@@ -349,6 +349,9 @@ async function obtenerHistorial(req, res) {
       [req.params.trabajadorId, req.usuario.organizacionId]
     );
 
+    // CORREGIDO en Auditoria N.09 (G-N09-07): lectura clinica
+    // sensible -> lecturaSensible:true (cola durable si falla el
+    // INSERT normal, ver utils/auditoria.js).
     await registrarAuditoria({
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
@@ -356,6 +359,7 @@ async function obtenerHistorial(req, res) {
       entidad: 'trabajador',
       entidadId: req.params.trabajadorId,
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ historial: historialRes.rows });

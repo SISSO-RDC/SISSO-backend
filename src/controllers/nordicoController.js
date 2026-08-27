@@ -9,6 +9,30 @@ const { REGIONES, calcularResumenNordico } = require('../nordico/nordico');
 const catalogosNordico = require('../nordico/nordico');
 
 // ------------------------------------------------------------
+// CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-01, P1): el
+// endpoint estaba autorizado para 'medico' y 'sso' por igual, y
+// devolvia a ambos el detalle nominal completo del cuestionario
+// -- incluyendo `regiones` (duracion/lado/frecuencia por zona
+// corporal, dato bastante fino sobre el estado de salud del
+// trabajador) y `observaciones_generales` (texto libre escrito
+// por el propio trabajador). Aunque el Cuestionario Nordico tiene
+// finalidad ergonomica, ese nivel de detalle asociado a una
+// persona identificable puede revelar estado de salud, que es
+// dato sensible.
+//
+// SSO sigue necesitando lo suficiente para priorizar intervencion
+// ergonomica (que zonas duelen, si hay 12 meses/7 dias de molestia,
+// si el caso quedo marcado como prioritario), pero NO el historial
+// individual de sintomas por zona ni el texto libre. Solo 'medico'
+// recibe el registro completo.
+// ------------------------------------------------------------
+function proyectarNordicoPorRol(fila, rol) {
+  if (rol === 'medico') return fila;
+  const { regiones, observaciones_generales, ...resto } = fila;
+  return resto;
+}
+
+// ------------------------------------------------------------
 // GET /api/nordico/catalogos
 // ------------------------------------------------------------
 async function obtenerCatalogos(req, res) {
@@ -104,7 +128,8 @@ async function listarCuestionarios(req, res) {
       [req.params.trabajadorId, req.usuario.organizacionId]
     );
 
-    return res.json({ cuestionarios: res2.rows });
+    const cuestionarios = res2.rows.map((fila) => proyectarNordicoPorRol(fila, req.usuario.rol));
+    return res.json({ cuestionarios });
   } catch (err) {
     console.error('Error en listarCuestionarios (nordico):', err);
     return res.status(500).json({ error: 'Error interno al listar los cuestionarios.' });
@@ -127,7 +152,7 @@ async function obtenerCuestionario(req, res) {
     if (res2.rows.length === 0) {
       return res.status(404).json({ error: 'Cuestionario no encontrado.' });
     }
-    return res.json({ cuestionario: res2.rows[0] });
+    return res.json({ cuestionario: proyectarNordicoPorRol(res2.rows[0], req.usuario.rol) });
   } catch (err) {
     console.error('Error en obtenerCuestionario (nordico):', err);
     return res.status(500).json({ error: 'Error interno al obtener el cuestionario.' });

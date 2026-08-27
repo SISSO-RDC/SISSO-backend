@@ -27,6 +27,7 @@ const {
   REFRESH_EXPIRES,
 } = require('../utils/jwt');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { verificarLimitePlan } = require('../utils/planes');
 // CORREGIDO tras auditoria de seguridad (hallazgo CRITICO): el secreto
 // TOTP ya no se guarda en texto plano. Ver src/utils/crypto.js.
 const { encriptar, desencriptar, esFormatoCifrado } = require('../utils/crypto');
@@ -224,25 +225,37 @@ async function registrarUsuario(req, res) {
 
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const userRes = await query(
-      `INSERT INTO usuarios (organizacion_id, email, password_hash, nombre_completo, rol)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email, nombre_completo, rol`,
-      [organizacion.id, email.toLowerCase().trim(), passwordHash, nombreCompleto, rol]
-    );
+    // CORREGIDO en Auditoria N.09 (G-N09-08): limite de usuarios del
+    // plan, verificado dentro de la misma transaccion que el INSERT.
+    const userRes = await withTransaction(async (client) => {
+      await verificarLimitePlan(client, organizacion.id, 'usuarios', 1);
 
-    await registrarAuditoria({
-      organizacionId: organizacion.id,
-      usuarioId: userRes.rows[0].id,
-      accion: 'usuario_creado',
-      entidad: 'usuario',
-      entidadId: userRes.rows[0].id,
-      detalle: { rol },
-      req,
+      const insertRes = await client.query(
+        `INSERT INTO usuarios (organizacion_id, email, password_hash, nombre_completo, rol)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, email, nombre_completo, rol`,
+        [organizacion.id, email.toLowerCase().trim(), passwordHash, nombreCompleto, rol]
+      );
+
+      await registrarAuditoria({
+        organizacionId: organizacion.id,
+        usuarioId: insertRes.rows[0].id,
+        accion: 'usuario_creado',
+        entidad: 'usuario',
+        entidadId: insertRes.rows[0].id,
+        detalle: { rol },
+        req,
+        client,
+      });
+
+      return insertRes;
     });
 
     return res.status(201).json({ mensaje: 'Usuario creado con exito.', usuario: userRes.rows[0] });
   } catch (err) {
+    if (err.codigo === 'LIMITE_PLAN_EXCEDIDO') {
+      return res.status(403).json({ error: err.message, codigo: err.codigo });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Ya existe un usuario con ese email en esta organizacion.' });
     }
@@ -276,25 +289,37 @@ async function registrarUsuarioInterno(req, res) {
   try {
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const userRes = await query(
-      `INSERT INTO usuarios (organizacion_id, email, password_hash, nombre_completo, rol)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email, nombre_completo, rol`,
-      [req.usuario.organizacionId, email.toLowerCase().trim(), passwordHash, nombreCompleto, rol]
-    );
+    // CORREGIDO en Auditoria N.09 (G-N09-08): limite de usuarios del
+    // plan, verificado dentro de la misma transaccion que el INSERT.
+    const userRes = await withTransaction(async (client) => {
+      await verificarLimitePlan(client, req.usuario.organizacionId, 'usuarios', 1);
 
-    await registrarAuditoria({
-      organizacionId: req.usuario.organizacionId,
-      usuarioId: req.usuario.id,
-      accion: 'usuario_creado_interno',
-      entidad: 'usuario',
-      entidadId: userRes.rows[0].id,
-      detalle: { rol, creadoPor: req.usuario.id },
-      req,
+      const insertRes = await client.query(
+        `INSERT INTO usuarios (organizacion_id, email, password_hash, nombre_completo, rol)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, email, nombre_completo, rol`,
+        [req.usuario.organizacionId, email.toLowerCase().trim(), passwordHash, nombreCompleto, rol]
+      );
+
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'usuario_creado_interno',
+        entidad: 'usuario',
+        entidadId: insertRes.rows[0].id,
+        detalle: { rol, creadoPor: req.usuario.id },
+        req,
+        client,
+      });
+
+      return insertRes;
     });
 
     return res.status(201).json({ mensaje: 'Usuario creado con exito.', usuario: userRes.rows[0] });
   } catch (err) {
+    if (err.codigo === 'LIMITE_PLAN_EXCEDIDO') {
+      return res.status(403).json({ error: err.message, codigo: err.codigo });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Ya existe un usuario con ese email en esta organizacion.' });
     }
@@ -1004,6 +1029,66 @@ async function refrescar(req, res) {
         return { tipo: 'usuario_invalido' };
       }
 
+      // CORREGIDO en Auditoria N.09 (hallazgo CRITICO C-N09-02, P0):
+      // el login revisaba vencimiento de trial/suscripcion y podia
+      // desactivar la organizacion, pero refrescar() solo validaba el
+      // refresh token y que el usuario siguiera activo. Un usuario que
+      // ya tenia un refresh token valido podia evitar volver a hacer
+      // login y seguir renovando access tokens indefinidamente aunque
+      // la organizacion hubiera sido suspendida manualmente o la
+      // suscripcion/trial hubiera vencido, hasta que alguien revocara
+      // el refresh token a mano. Ahora refrescar() aplica exactamente
+      // la misma verificacion que login() -- organizacion activa, no
+      // suspendida manualmente, y vencimiento perezoso de trial/
+      // suscripcion -- dentro de la MISMA transaccion que reclama el
+      // token, y si detecta vencimiento revoca ademas TODA la familia
+      // de refresh tokens (no solo deja de emitir uno nuevo), para que
+      // el corte sea inmediato y no dependa de que expire el resto de
+      // la cadena.
+      if (userRes.rows[0].rol !== 'superadmin') {
+        const orgRes = await client.query(
+          `SELECT id, activa, suspendida_manualmente, estado_suscripcion,
+                  fecha_fin_trial, fecha_proxima_renovacion
+           FROM organizaciones WHERE id = $1`,
+          [userRes.rows[0].organizacion_id]
+        );
+        const org = orgRes.rows[0];
+
+        if (!org || !org.activa) {
+          return { tipo: 'organizacion_inactiva' };
+        }
+        if (org.suspendida_manualmente) {
+          return { tipo: 'organizacion_suspendida' };
+        }
+
+        const hoy = new Date().toISOString().slice(0, 10);
+        const trialVencido = org.estado_suscripcion === 'trial' && org.fecha_fin_trial && org.fecha_fin_trial < hoy;
+        const suscripcionVencida = org.estado_suscripcion === 'activa' && org.fecha_proxima_renovacion && org.fecha_proxima_renovacion < hoy;
+
+        if (trialVencido || suscripcionVencida) {
+          await client.query(
+            `UPDATE organizaciones SET activa = false, estado_suscripcion = 'vencida' WHERE id = $1`,
+            [org.id]
+          );
+          // Corte inmediato: se revoca toda la familia de refresh
+          // tokens, no solo se deja de emitir uno nuevo. Sin esto, un
+          // segundo dispositivo con un refresh token de la misma
+          // familia (todavia no reclamado) podria seguir renovando.
+          await client.query('UPDATE refresh_tokens SET revocado = true WHERE familia_id = $1', [tokenFila.familia_id]);
+          await registrarAuditoria({
+            organizacionId: org.id,
+            usuarioId: userRes.rows[0].id,
+            accion: 'organizacion_vencida_automaticamente',
+            entidad: 'refresh_tokens',
+            entidadId: tokenFila.familia_id,
+            detalle: { razon: trialVencido ? 'trial_vencido' : 'suscripcion_vencida', origen: 'refrescar' },
+            req,
+            client,
+          });
+          return { tipo: 'suscripcion_vencida' };
+        }
+      }
+
       const nuevoAccessToken = generarAccessToken(userRes.rows[0]);
       const nuevoRefreshToken = generarRefreshToken(userRes.rows[0]);
       const expiraEnMs = expiresInMs(REFRESH_EXPIRES);
@@ -1041,6 +1126,18 @@ async function refrescar(req, res) {
     }
     if (resultadoRotacion.tipo === 'usuario_invalido') {
       return res.status(401).json({ error: 'Usuario no encontrado o inactivo.' });
+    }
+    if (resultadoRotacion.tipo === 'organizacion_inactiva') {
+      res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+      return res.status(403).json({ error: 'La organizacion asociada esta inactiva.' });
+    }
+    if (resultadoRotacion.tipo === 'organizacion_suspendida') {
+      res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+      return res.status(403).json({ error: 'La organizacion asociada fue suspendida. Contacte al proveedor del servicio.' });
+    }
+    if (resultadoRotacion.tipo === 'suscripcion_vencida') {
+      res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
+      return res.status(402).json({ error: 'La suscripción venció. Renueve el pago para reactivar el acceso.', codigo: 'SUSCRIPCION_VENCIDA' });
     }
 
     res.cookie(REFRESH_COOKIE_NAME, resultadoRotacion.nuevoRefreshToken, opcionesCookieRefresh(resultadoRotacion.expiraEnMs));

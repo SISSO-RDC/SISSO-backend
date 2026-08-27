@@ -9,7 +9,7 @@
 // matriz de riesgos, o enfermedad profesional). Lectura: cualquier
 // usuario autenticado, igual que accidentes.
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 const ORIGENES_VALIDOS = ['accidente', 'casi_accidente', 'matriz_riesgo', 'inspeccion', 'enfermedad_profesional', 'auditoria', 'manual'];
@@ -38,7 +38,16 @@ async function crear(req, res) {
   }
 
   try {
-    const creadaRes = await query(
+    // CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-09, P1):
+    // INSERT + registrarAuditoria en la misma transaccion (antes
+    // corrian como dos operaciones independientes; si la auditoria
+    // fallaba despues del INSERT, la API respondia 500 pero la
+    // accion CAPA ya habia quedado creada sin su registro de
+    // auditoria). El mismo patron se aplica al resto de las
+    // funciones de este controlador (actualizar, implementar,
+    // verificar, evaluarEficacia, cerrar).
+    const creadaRes = await withTransaction(async (client) => {
+      const insertRes = await client.query(
       `INSERT INTO capa_acciones
         (organizacion_id, origen_tipo, origen_id, origen_descripcion, tipo, hallazgo, descripcion_accion,
          responsable_id, fecha_limite, fecha_revision_eficacia, creado_por)
@@ -49,16 +58,20 @@ async function crear(req, res) {
         tipo || 'correctiva', hallazgo.trim(), descripcionAccion.trim(),
         responsableId, fechaLimite, fechaRevisionEficacia || null, req.usuario.id,
       ]
-    );
+      );
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'capa_creada',
-      entidad: 'capa_acciones',
-      entidadId: creadaRes.rows[0].id,
-      detalle: { origenTipo: origenTipo || 'manual' },
-      req,
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'capa_creada',
+        entidad: 'capa_acciones',
+        entidadId: insertRes.rows[0].id,
+        detalle: { origenTipo: origenTipo || 'manual' },
+        req,
+        client,
+      });
+
+      return insertRes;
     });
 
     return res.status(201).json({ capa: creadaRes.rows[0] });
@@ -141,7 +154,9 @@ async function actualizar(req, res) {
   const { hallazgo, descripcionAccion, responsableId, fechaLimite, fechaRevisionEficacia } = req.body;
 
   try {
-    const actualizadaRes = await query(
+    // CORREGIDO en Auditoria N.09 (G-N09-09).
+    const actualizadaRes = await withTransaction(async (client) => {
+      const updateRes = await client.query(
       `UPDATE capa_acciones SET
          hallazgo = COALESCE($1, hallazgo),
          descripcion_accion = COALESCE($2, descripcion_accion),
@@ -155,18 +170,26 @@ async function actualizar(req, res) {
         responsableId || null, fechaLimite || null, fechaRevisionEficacia || null,
         req.params.id, orgId,
       ]
-    );
-    if (actualizadaRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Accion CAPA no encontrada.' });
-    }
+      );
+      if (updateRes.rows.length === 0) {
+        const errNoEncontrada = new Error('Accion CAPA no encontrada.');
+        errNoEncontrada.codigo = 'NO_ENCONTRADA';
+        throw errNoEncontrada;
+      }
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_actualizada',
-      entidad: 'capa_acciones', entidadId: req.params.id, req,
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_actualizada',
+        entidad: 'capa_acciones', entidadId: req.params.id, req, client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ capa: actualizadaRes.rows[0] });
   } catch (err) {
+    if (err.codigo === 'NO_ENCONTRADA') {
+      return res.status(404).json({ error: err.message });
+    }
     console.error('Error en actualizar (CAPA):', err);
     return res.status(500).json({ error: 'Error interno al actualizar la accion CAPA.' });
   }
@@ -180,23 +203,33 @@ async function implementar(req, res) {
   const orgId = req.usuario.organizacionId;
   const { fechaImplementacion } = req.body;
   try {
-    const actualizadaRes = await query(
+    // CORREGIDO en Auditoria N.09 (G-N09-09).
+    const actualizadaRes = await withTransaction(async (client) => {
+      const updateRes = await client.query(
       `UPDATE capa_acciones SET estado = 'implementada', fecha_implementacion = $1
        WHERE id = $2 AND organizacion_id = $3 AND estado IN ('pendiente', 'en_progreso')
        RETURNING id, estado, fecha_implementacion`,
       [fechaImplementacion || new Date().toISOString().slice(0, 10), req.params.id, orgId]
-    );
-    if (actualizadaRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Accion no encontrada o ya fue implementada/verificada.' });
-    }
+      );
+      if (updateRes.rows.length === 0) {
+        const errNoEncontrada = new Error('Accion no encontrada o ya fue implementada/verificada.');
+        errNoEncontrada.codigo = 'NO_ENCONTRADA';
+        throw errNoEncontrada;
+      }
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_implementada',
-      entidad: 'capa_acciones', entidadId: req.params.id, req,
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_implementada',
+        entidad: 'capa_acciones', entidadId: req.params.id, req, client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ capa: actualizadaRes.rows[0] });
   } catch (err) {
+    if (err.codigo === 'NO_ENCONTRADA') {
+      return res.status(404).json({ error: err.message });
+    }
     console.error('Error en implementar (CAPA):', err);
     return res.status(500).json({ error: 'Error interno al marcar como implementada.' });
   }
@@ -221,16 +254,36 @@ async function verificar(req, res) {
       return res.status(400).json({ error: 'Solo se puede verificar una accion que ya fue marcada como implementada.' });
     }
 
-    const actualizadaRes = await query(
+    // CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-03, P1): el
+    // comentario del endpoint decia "OTRA persona confirma" pero no
+    // habia ninguna validacion que lo exigiera -- el mismo
+    // responsable que ejecuto/implemento la accion podia
+    // auto-verificarla, lo que anula el proposito de que un tercero
+    // confirme que realmente se hizo. Ahora se rechaza explicitamente
+    // si quien intenta verificar es la misma persona registrada como
+    // responsable de la accion.
+    if (capaRes.rows[0].responsable_id === req.usuario.id) {
+      return res.status(403).json({
+        error: 'Quien implementa la accion CAPA no puede verificarla. Debe hacerlo otra persona.',
+      });
+    }
+
+    // CORREGIDO en Auditoria N.09 (G-N09-09): UPDATE + auditoria en
+    // la misma transaccion.
+    const actualizadaRes = await withTransaction(async (client) => {
+      const updateRes = await client.query(
       `UPDATE capa_acciones SET estado = 'verificada', verificado_por = $1, fecha_verificacion = CURRENT_DATE, nota_verificacion = $2
        WHERE id = $3 AND organizacion_id = $4
        RETURNING id, estado`,
       [req.usuario.id, notaVerificacion || null, req.params.id, orgId]
-    );
+      );
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_verificada',
-      entidad: 'capa_acciones', entidadId: req.params.id, req,
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_verificada',
+        entidad: 'capa_acciones', entidadId: req.params.id, req, client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ capa: actualizadaRes.rows[0] });
@@ -270,17 +323,23 @@ async function evaluarEficacia(req, res) {
     }
 
     const nuevoEstado = eficaz ? 'eficaz' : 'no_eficaz';
-    const actualizadaRes = await query(
+    // CORREGIDO en Auditoria N.09 (G-N09-09): UPDATE + auditoria en
+    // la misma transaccion.
+    const actualizadaRes = await withTransaction(async (client) => {
+      const updateRes = await client.query(
       `UPDATE capa_acciones SET
          estado = $1, evaluado_por = $2, fecha_evaluacion_eficacia = CURRENT_DATE, nota_eficacia = $3
        WHERE id = $4 AND organizacion_id = $5
        RETURNING id, estado`,
       [nuevoEstado, req.usuario.id, notaEficacia.trim(), req.params.id, orgId]
-    );
+      );
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_eficacia_evaluada',
-      entidad: 'capa_acciones', entidadId: req.params.id, detalle: { eficaz }, req,
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_eficacia_evaluada',
+        entidad: 'capa_acciones', entidadId: req.params.id, detalle: { eficaz }, req, client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ capa: actualizadaRes.rows[0] });
@@ -311,14 +370,20 @@ async function cerrar(req, res) {
       return res.status(400).json({ error: 'Solo se puede cerrar una accion cuya eficacia fue confirmada. Si no fue eficaz, abre una nueva accion CAPA.' });
     }
 
-    const actualizadaRes = await query(
-      `UPDATE capa_acciones SET estado = 'cerrada' WHERE id = $1 AND organizacion_id = $2 RETURNING id, estado`,
-      [req.params.id, orgId]
-    );
+    // CORREGIDO en Auditoria N.09 (G-N09-09): UPDATE + auditoria en
+    // la misma transaccion.
+    const actualizadaRes = await withTransaction(async (client) => {
+      const updateRes = await client.query(
+        `UPDATE capa_acciones SET estado = 'cerrada' WHERE id = $1 AND organizacion_id = $2 RETURNING id, estado`,
+        [req.params.id, orgId]
+      );
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_cerrada',
-      entidad: 'capa_acciones', entidadId: req.params.id, req,
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'capa_cerrada',
+        entidad: 'capa_acciones', entidadId: req.params.id, req, client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ capa: actualizadaRes.rows[0] });

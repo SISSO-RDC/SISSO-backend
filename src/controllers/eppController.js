@@ -8,7 +8,7 @@
 // ============================================================
 const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
-const { subirEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
+const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 
 const CARPETA_FIRMAS_EPP = 'sisso/firmas-epp';
 
@@ -109,17 +109,30 @@ async function crearEntrega(req, res) {
       firmaPublicId = firma.publicId;
     }
 
-    const entregaRes = await query(
-      `INSERT INTO entregas_epp
-        (organizacion_id, trabajador_id, epp_id, puesto_trabajo_id, fecha_entrega, cantidad, motivo,
-         fecha_vencimiento_estimada, firma_imagen_url, firma_imagen_public_id, entregado_por)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       RETURNING id, fecha_entrega, fecha_vencimiento_estimada, estado, creado_en`,
-      [
-        orgId, trabajadorId, eppId, puestoTrabajoId || null, fechaEntrega, cantidad || 1,
-        motivo || 'entrega_inicial', fechaVencimiento, firmaUrl, firmaPublicId, req.usuario.id,
-      ]
-    );
+    // CORREGIDO en Auditoria N.09 (G-N09-06): si el INSERT falla
+    // despues de subir la firma, se compensa borrando la firma
+    // recien subida para no dejarla huerfana en Cloudinary.
+    let entregaRes;
+    try {
+      entregaRes = await query(
+        `INSERT INTO entregas_epp
+          (organizacion_id, trabajador_id, epp_id, puesto_trabajo_id, fecha_entrega, cantidad, motivo,
+           fecha_vencimiento_estimada, firma_imagen_url, firma_imagen_public_id, entregado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         RETURNING id, fecha_entrega, fecha_vencimiento_estimada, estado, creado_en`,
+        [
+          orgId, trabajadorId, eppId, puestoTrabajoId || null, fechaEntrega, cantidad || 1,
+          motivo || 'entrega_inicial', fechaVencimiento, firmaUrl, firmaPublicId, req.usuario.id,
+        ]
+      );
+    } catch (errInsert) {
+      if (firmaPublicId) {
+        await borrarEvidencia(firmaPublicId, 'imagen').catch((errBorrado) =>
+          console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${firmaPublicId}.`, errBorrado)
+        );
+      }
+      throw errInsert;
+    }
 
     await registrarAuditoria({
       organizacionId: orgId, usuarioId: req.usuario.id, accion: 'epp_entrega_creada',

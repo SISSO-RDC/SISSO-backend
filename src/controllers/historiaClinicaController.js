@@ -4,7 +4,7 @@
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
-const { subirEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
+const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 const { calcularImc, validarFactoresRiesgo } = require('../historiaClinica/historiaClinica');
 const { generarPdfPreocupacional, generarPdfRetiro, generarPdfPeriodica, generarPdfReintegro } = require('../historiaClinica/pdfPreocupacional');
 const { generarPdfCertificado } = require('../historiaClinica/pdfCertificado');
@@ -72,7 +72,9 @@ async function registrarPreocupacional(req, res) {
       firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
     }
 
-    const insertRes = await withTransaction(async (client) => {
+    let insertRes;
+    try {
+    insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
         organizacion_id, trabajador_id, medico_id, tipo_evaluacion, fecha_atencion, hora_atencion,
@@ -164,6 +166,16 @@ async function registrarPreocupacional(req, res) {
 
     return resultado;
   });
+    } catch (errTransaccion) {
+      // CORREGIDO en Auditoria N.09 (G-N09-06): compensar
+      // (borrar) la firma recien subida si la transaccion de BD falla.
+      if (firma.publicId) {
+        await borrarEvidencia(firma.publicId, 'imagen').catch((errBorrado) =>
+          console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${firma.publicId}.`, errBorrado)
+        );
+      }
+      throw errTransaccion;
+    }
 
     return res.status(201).json({ evaluacion: insertRes.rows[0] });
   } catch (err) {
@@ -209,7 +221,9 @@ async function registrarRetiro(req, res) {
       firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
     }
 
-    const insertRes = await withTransaction(async (client) => {
+    let insertRes;
+    try {
+    insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
         organizacion_id, trabajador_id, medico_id, tipo_evaluacion, fecha_atencion, hora_atencion,
@@ -278,6 +292,16 @@ async function registrarRetiro(req, res) {
 
     return resultado;
   });
+    } catch (errTransaccion) {
+      // CORREGIDO en Auditoria N.09 (G-N09-06): compensar
+      // (borrar) la firma recien subida si la transaccion de BD falla.
+      if (firma.publicId) {
+        await borrarEvidencia(firma.publicId, 'imagen').catch((errBorrado) =>
+          console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${firma.publicId}.`, errBorrado)
+        );
+      }
+      throw errTransaccion;
+    }
 
     return res.status(201).json({ evaluacion: insertRes.rows[0] });
   } catch (err) {
@@ -321,7 +345,9 @@ async function registrarPeriodica(req, res) {
       firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
     }
 
-    const insertRes = await withTransaction(async (client) => {
+    let insertRes;
+    try {
+    insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
         organizacion_id, trabajador_id, medico_id, tipo_evaluacion, fecha_atencion, hora_atencion,
@@ -404,6 +430,16 @@ async function registrarPeriodica(req, res) {
 
     return resultado;
   });
+    } catch (errTransaccion) {
+      // CORREGIDO en Auditoria N.09 (G-N09-06): compensar
+      // (borrar) la firma recien subida si la transaccion de BD falla.
+      if (firma.publicId) {
+        await borrarEvidencia(firma.publicId, 'imagen').catch((errBorrado) =>
+          console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${firma.publicId}.`, errBorrado)
+        );
+      }
+      throw errTransaccion;
+    }
 
     return res.status(201).json({ evaluacion: insertRes.rows[0] });
   } catch (err) {
@@ -447,7 +483,9 @@ async function registrarReintegro(req, res) {
       firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
     }
 
-    const insertRes = await withTransaction(async (client) => {
+    let insertRes;
+    try {
+    insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
         organizacion_id, trabajador_id, medico_id, tipo_evaluacion, fecha_atencion, hora_atencion,
@@ -508,6 +546,16 @@ async function registrarReintegro(req, res) {
 
     return resultado;
   });
+    } catch (errTransaccion) {
+      // CORREGIDO en Auditoria N.09 (G-N09-06): compensar
+      // (borrar) la firma recien subida si la transaccion de BD falla.
+      if (firma.publicId) {
+        await borrarEvidencia(firma.publicId, 'imagen').catch((errBorrado) =>
+          console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${firma.publicId}.`, errBorrado)
+        );
+      }
+      throw errTransaccion;
+    }
 
     return res.status(201).json({ evaluacion: insertRes.rows[0] });
   } catch (err) {
@@ -588,6 +636,12 @@ async function obtenerEvaluacion(req, res) {
     // G10): esta es la lectura mas sensible del sistema (detalle
     // clinico completo, incluye datos del trabajador). Se audita
     // igual que una escritura.
+    //
+    // CORREGIDO en Auditoria N.09 (G-N09-07): se marca
+    // lecturaSensible:true para que, si el INSERT normal en
+    // `auditoria` falla, no se pierda la evidencia de acceso -- cae
+    // a la cola durable auditoria_pendiente, y solo si ESA tambien
+    // falla se corta la respuesta (fail-closed).
     await registrarAuditoria({
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
@@ -595,6 +649,7 @@ async function obtenerEvaluacion(req, res) {
       entidad: 'evaluaciones_ocupacionales',
       entidadId: req.params.id,
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ evaluacion: resultado.rows[0] });

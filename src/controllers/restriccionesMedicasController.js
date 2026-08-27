@@ -154,6 +154,9 @@ async function listarRestriccionesTrabajador(req, res) {
     // clinico); sso/th consultan una vista ya minimizada que no
     // requiere el mismo nivel de trazabilidad de acceso clinico,
     // pero igual queda registrada la accion operativa.
+    //
+    // CORREGIDO en Auditoria N.09 (G-N09-07): cuando SI es lectura
+    // clinica (rol medico), se marca lecturaSensible:true.
     await registrarAuditoria({
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
@@ -161,6 +164,7 @@ async function listarRestriccionesTrabajador(req, res) {
       entidad: 'restricciones_medicas',
       detalle: { trabajadorId, resultados: restriccionesRes.rows.length },
       req,
+      lecturaSensible: req.usuario.rol === 'medico',
     });
 
     return res.json({ restricciones: restriccionesRes.rows });

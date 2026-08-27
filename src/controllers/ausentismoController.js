@@ -18,7 +18,7 @@
 // ============================================================
 const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
-const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
+const { subirEvidencia, borrarEvidencia, generarUrlFirmada, subirEvidenciaConCompensacion } = require('../servicios/cloudinaryService');
 const { TIPOS_AUSENCIA, CODIGOS_VALIDOS, esSubsidiablePorDefecto } = require('../ausentismo/ausentismo');
 
 const CARPETA_CERTIFICADOS = 'sisso/certificados-ausentismo';
@@ -40,9 +40,25 @@ const CARPETA_CERTIFICADOS = 'sisso/certificados-ausentismo';
 // ausencia, fechas, dias y si hay certificado adjunto, que es lo
 // minimo necesario para gestion laboral/preventiva sin conocer el
 // diagnostico especifico.
+//
+// CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-02, P1): el
+// servicio de Cloudinary fue migrado a recursos privados/firmados
+// (ver cloudinaryService.js y GET /:id/certificado-url), pero esta
+// funcion de minimizacion solo quitaba diagnostico_cie10 y
+// numero_certificado -- certificado_url seguia viajando intacto en
+// listar()/obtener() para CUALQUIER rol. Para registros creados
+// antes de la migracion a recursos privados, certificado_url podia
+// ser todavia una URL publica de Cloudinary: un rol no medico podia
+// abrir directamente el documento medico escaneado sin pasar por el
+// endpoint firmado ni por ningun control de acceso adicional. Ahora
+// certificado_url se retira de toda respuesta no medica igual que
+// diagnostico_cie10 y numero_certificado; el campo que SI se
+// conserva para todos (certificado_public_id, cuando exista) no es
+// una URL utilizable directamente sin pasar por
+// GET /:id/certificado-url, que ya valida el rol.
 function minimizarDatosClinicos(fila, rol) {
   if (rol === 'medico') return fila;
-  const { diagnostico_cie10, numero_certificado, ...resto } = fila;
+  const { diagnostico_cie10, numero_certificado, certificado_url, ...resto } = fila;
   return resto;
 }
 
@@ -193,27 +209,44 @@ async function crear(req, res) {
       return res.status(404).json({ error: 'El trabajador indicado no existe en esta organizacion.' });
     }
 
-    let certificadoUrl = null;
-    let certificadoPublicId = null;
+    // CORREGIDO en Auditoria N.09 (G-N09-06): subida + INSERT ahora
+    // usan el patron compensatorio -- si el INSERT falla, el
+    // certificado recien subido se borra de Cloudinary en vez de
+    // quedar huerfano. Ver subirEvidenciaConCompensacion().
+    let resultado;
     if (b.certificadoBase64) {
-      const subida = await subirEvidencia(b.certificadoBase64, orgId, CARPETA_CERTIFICADOS);
-      certificadoUrl = subida.url;
-      certificadoPublicId = subida.publicId;
+      const { resultado: filaInsertada } = await subirEvidenciaConCompensacion(
+        b.certificadoBase64, orgId, CARPETA_CERTIFICADOS, {},
+        (subida) => query(
+          `INSERT INTO ausencias (
+            organizacion_id, trabajador_id, tipo, subsidiado_iess, fecha_inicio, fecha_fin,
+            diagnostico_cie10, numero_certificado, certificado_url, certificado_public_id,
+            observaciones, origen, registrado_por
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'manual',$12)
+          RETURNING id, tipo, fecha_inicio, fecha_fin, dias_calendario, creado_en`,
+          [
+            orgId, b.trabajadorId, b.tipo, subsidiadoIess, b.fechaInicio, b.fechaFin,
+            b.diagnosticoCie10 || null, b.numeroCertificado || null, subida.url, subida.publicId,
+            b.observaciones || null, req.usuario.id,
+          ]
+        )
+      );
+      resultado = filaInsertada;
+    } else {
+      resultado = await query(
+        `INSERT INTO ausencias (
+          organizacion_id, trabajador_id, tipo, subsidiado_iess, fecha_inicio, fecha_fin,
+          diagnostico_cie10, numero_certificado, certificado_url, certificado_public_id,
+          observaciones, origen, registrado_por
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'manual',$12)
+        RETURNING id, tipo, fecha_inicio, fecha_fin, dias_calendario, creado_en`,
+        [
+          orgId, b.trabajadorId, b.tipo, subsidiadoIess, b.fechaInicio, b.fechaFin,
+          b.diagnosticoCie10 || null, b.numeroCertificado || null, null, null,
+          b.observaciones || null, req.usuario.id,
+        ]
+      );
     }
-
-    const resultado = await query(
-      `INSERT INTO ausencias (
-        organizacion_id, trabajador_id, tipo, subsidiado_iess, fecha_inicio, fecha_fin,
-        diagnostico_cie10, numero_certificado, certificado_url, certificado_public_id,
-        observaciones, origen, registrado_por
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'manual',$12)
-      RETURNING id, tipo, fecha_inicio, fecha_fin, dias_calendario, creado_en`,
-      [
-        orgId, b.trabajadorId, b.tipo, subsidiadoIess, b.fechaInicio, b.fechaFin,
-        b.diagnosticoCie10 || null, b.numeroCertificado || null, certificadoUrl, certificadoPublicId,
-        b.observaciones || null, req.usuario.id,
-      ]
-    );
 
     await registrarAuditoria({
       organizacionId: orgId,

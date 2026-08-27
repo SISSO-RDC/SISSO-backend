@@ -172,6 +172,24 @@ async function obtenerCaso(req, res) {
 // ------------------------------------------------------------
 const ESTADOS_VALIDOS = ['sospecha', 'en_evaluacion', 'confirmada', 'descartada', 'en_seguimiento', 'cerrada'];
 
+// CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-04, P1): el
+// comentario de arriba ya afirmaba que "el estado solo puede avanzar
+// dentro del ciclo clinico valido", pero solo se validaba que el
+// valor enviado perteneciera a ESTADOS_VALIDOS -- no que la
+// TRANSICION desde el estado actual fuera valida. Con eso bastaba
+// enviar { estado: 'cerrada', conclusion: '...' } sobre un caso en
+// 'sospecha' para saltarse por completo evaluacion/confirmacion o
+// descarte. Se agrega la tabla de transiciones permitidas explicita
+// que pide la auditoria.
+const TRANSICIONES_VALIDAS = {
+  sospecha: ['en_evaluacion'],
+  en_evaluacion: ['confirmada', 'descartada'],
+  confirmada: ['en_seguimiento', 'cerrada'],
+  descartada: ['cerrada'],
+  en_seguimiento: ['cerrada'],
+  cerrada: [],
+};
+
 async function actualizarCaso(req, res) {
   const { casoId } = req.params;
   const {
@@ -191,18 +209,49 @@ async function actualizarCaso(req, res) {
   if (estado === 'cerrada' && !conclusion && !req.body.conclusionExistente) {
     return res.status(400).json({ error: 'No se puede cerrar un caso sin una conclusion clinica.' });
   }
+  // 'confirmada' y 'descartada' tambien requieren conclusion propia
+  // (el diagnostico definitivo o la razon del descarte), no solo
+  // 'cerrada'. Se acepta conclusionExistente para permitir volver a
+  // guardar el mismo estado sin reenviar el texto.
+  if ((estado === 'confirmada' || estado === 'descartada') && !conclusion && !req.body.conclusionExistente) {
+    return res.status(400).json({ error: `No se puede pasar a '${estado}' sin una conclusion clinica.` });
+  }
+  if (estado === 'confirmada' && !fechaConfirmacion) {
+    return res.status(400).json({ error: `fechaConfirmacion es obligatoria para pasar a 'confirmada'.` });
+  }
+  if (estado === 'cerrada' && !fechaCierre) {
+    return res.status(400).json({ error: `fechaCierre es obligatoria para pasar a 'cerrada'.` });
+  }
 
   try {
     const existenteRes = await query(
-      `SELECT id, conclusion FROM enfermedad_profesional WHERE id = $1 AND organizacion_id = $2`,
+      `SELECT id, estado, conclusion FROM enfermedad_profesional WHERE id = $1 AND organizacion_id = $2`,
       [casoId, req.usuario.organizacionId]
     );
     if (existenteRes.rows.length === 0) {
       return res.status(404).json({ error: 'Caso no encontrado.' });
     }
+
+    const estadoActual = existenteRes.rows[0].estado;
+    if (estado && estado !== estadoActual) {
+      const transicionesPermitidas = TRANSICIONES_VALIDAS[estadoActual] || [];
+      if (!transicionesPermitidas.includes(estado)) {
+        return res.status(400).json({
+          error: `Transicion invalida: no se puede pasar de '${estadoActual}' a '${estado}'. `
+            + `Desde '${estadoActual}' solo se permite: ${transicionesPermitidas.length ? transicionesPermitidas.join(', ') : '(ningun estado, es un estado final)'}.`,
+        });
+      }
+    }
     if (estado === 'cerrada' && !conclusion && !existenteRes.rows[0].conclusion) {
       return res.status(400).json({ error: 'No se puede cerrar un caso sin una conclusion clinica.' });
     }
+
+    // fecha_confirmacion solo tiene sentido al entrar a 'confirmada';
+    // fecha_cierre solo al entrar a 'cerrada'. Si el request no esta
+    // haciendo esa transicion especifica, se ignora el valor recibido
+    // para esos campos en vez de dejarlos pisar datos existentes.
+    const fechaConfirmacionAAplicar = estado === 'confirmada' ? (fechaConfirmacion || null) : null;
+    const fechaCierreAAplicar = estado === 'cerrada' ? (fechaCierre || null) : null;
 
     const actualizadoRes = await withTransaction(async (client) => {
     const resultado = await client.query(
@@ -222,8 +271,8 @@ async function actualizarCaso(req, res) {
         diagnosticoCie10 || null,
         diagnosticoPresuntivo || null,
         evolucionClinica || null,
-        fechaConfirmacion || null,
-        fechaCierre || null,
+        fechaConfirmacionAAplicar,
+        fechaCierreAAplicar,
         conclusion || null,
         exposicionRelacionada || null,
         casoId,
@@ -237,7 +286,9 @@ async function actualizarCaso(req, res) {
       accion: 'enfermedad_profesional_actualizada',
       entidad: 'enfermedad_profesional',
       entidadId: casoId,
-      detalle: { estado },
+      // Se audita explicitamente la transicion (estado anterior ->
+      // nuevo), no solo el estado final, para trazabilidad clinica.
+      detalle: { estadoAnterior: estadoActual, estadoNuevo: estado || estadoActual },
       req,
       client,
     });

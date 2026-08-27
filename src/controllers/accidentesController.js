@@ -92,7 +92,16 @@ async function crear(req, res) {
       }
     }
 
-    const creadoRes = await query(
+    // CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-09, P1): el
+    // INSERT y su registrarAuditoria() corrian como dos operaciones
+    // independientes (dos transacciones implicitas de query()). Si
+    // el INSERT confirmaba y la auditoria fallaba despues, la API
+    // respondia 500 pero el caso de accidente ya habia quedado
+    // creado en BD sin su registro de auditoria -- el mismo patron
+    // que C-N08-01 corrigio para los controladores clinicos, aqui
+    // aplicado a un registro de cumplimiento SSO.
+    const creadoRes = await withTransaction(async (client) => {
+      const insertRes = await client.query(
       `INSERT INTO accidentes_incidentes
         (organizacion_id, tipo, trabajador_id, puesto_trabajo_id, fecha_ocurrencia, hora_ocurrencia,
          lugar, descripcion, gravedad, tipo_lesion, dias_perdidos, requiere_atencion_medica, reportado_por)
@@ -103,16 +112,20 @@ async function crear(req, res) {
         lugar.trim(), descripcion.trim(), gravedad || 'no_aplica', tipoLesion || null,
         diasPerdidos || 0, !!requiereAtencionMedica, req.usuario.id,
       ]
-    );
+      );
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'accidente_incidente_creado',
-      entidad: 'accidentes_incidentes',
-      entidadId: creadoRes.rows[0].id,
-      detalle: { tipo },
-      req,
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'accidente_incidente_creado',
+        entidad: 'accidentes_incidentes',
+        entidadId: insertRes.rows[0].id,
+        detalle: { tipo },
+        req,
+        client,
+      });
+
+      return insertRes;
     });
 
     return res.status(201).json({ caso: creadoRes.rows[0] });
@@ -247,7 +260,10 @@ async function actualizar(req, res) {
       }
     }
 
-    const actualizadoRes = await query(
+    // CORREGIDO en Auditoria N.09 (G-N09-09): UPDATE + auditoria en
+    // la misma transaccion.
+    const actualizadoRes = await withTransaction(async (client) => {
+      const updateRes = await client.query(
       `UPDATE accidentes_incidentes SET
          estado = COALESCE($1, estado),
          gravedad = COALESCE($2, gravedad),
@@ -262,23 +278,32 @@ async function actualizar(req, res) {
         typeof requiereAtencionMedica === 'boolean' ? requiereAtencionMedica : null,
         descripcion ? descripcion.trim() : null, req.params.id, orgId,
       ]
-    );
-    if (actualizadoRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Caso no encontrado.' });
-    }
+      );
+      if (updateRes.rows.length === 0) {
+        const errNoEncontrado = new Error('Caso no encontrado.');
+        errNoEncontrado.codigo = 'NO_ENCONTRADO';
+        throw errNoEncontrado;
+      }
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'accidente_incidente_actualizado',
-      entidad: 'accidentes_incidentes',
-      entidadId: req.params.id,
-      detalle: { estado },
-      req,
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'accidente_incidente_actualizado',
+        entidad: 'accidentes_incidentes',
+        entidadId: req.params.id,
+        detalle: { estado },
+        req,
+        client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ caso: actualizadoRes.rows[0] });
   } catch (err) {
+    if (err.codigo === 'NO_ENCONTRADO') {
+      return res.status(404).json({ error: err.message });
+    }
     console.error('Error en actualizar (accidentes):', err);
     return res.status(500).json({ error: 'Error interno al actualizar el caso.' });
   }
@@ -331,16 +356,21 @@ async function registrarInvestigacion(req, res) {
         [req.params.id, orgId]
       );
 
-      return investigacionRes.rows[0];
-    });
+      // CORREGIDO en Auditoria N.09 (G-N09-09): la auditoria corria
+      // DESPUES de cerrar la transaccion (fuera de withTransaction);
+      // si fallaba, la API respondia 500 pero la investigacion ya
+      // habia quedado confirmada en BD sin su registro de auditoria.
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'accidente_investigacion_registrada',
+        entidad: 'investigaciones_accidentes',
+        entidadId: req.params.id,
+        req,
+        client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'accidente_investigacion_registrada',
-      entidad: 'investigaciones_accidentes',
-      entidadId: req.params.id,
-      req,
+      return investigacionRes.rows[0];
     });
 
     return res.status(201).json({ investigacion: resultado });
@@ -385,16 +415,19 @@ async function crearAccion(req, res) {
         [req.params.id, orgId]
       );
 
-      return accionRes.rows[0];
-    });
+      // CORREGIDO en Auditoria N.09 (G-N09-09): auditoria movida
+      // dentro de la transaccion.
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'accidente_accion_creada',
+        entidad: 'accidentes_acciones',
+        entidadId: accionRes.rows[0].id,
+        req,
+        client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'accidente_accion_creada',
-      entidad: 'accidentes_acciones',
-      entidadId: resultado.id,
-      req,
+      return accionRes.rows[0];
     });
 
     return res.status(201).json({ accion: resultado });
@@ -411,27 +444,39 @@ async function crearAccion(req, res) {
 async function completarAccion(req, res) {
   const orgId = req.usuario.organizacionId;
   try {
-    const actualizadaRes = await query(
+    // CORREGIDO en Auditoria N.09 (G-N09-09): UPDATE + auditoria en
+    // la misma transaccion.
+    const actualizadaRes = await withTransaction(async (client) => {
+      const updateRes = await client.query(
       `UPDATE accidentes_acciones SET estado = 'completada', fecha_cierre = CURRENT_DATE
        WHERE id = $1 AND organizacion_id = $2 AND estado IN ('pendiente', 'en_progreso')
        RETURNING id, estado, fecha_cierre`,
       [req.params.accionId, orgId]
-    );
-    if (actualizadaRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Accion no encontrada o ya estaba completada/verificada.' });
-    }
+      );
+      if (updateRes.rows.length === 0) {
+        const errNoEncontrada = new Error('Accion no encontrada o ya estaba completada/verificada.');
+        errNoEncontrada.codigo = 'NO_ENCONTRADA';
+        throw errNoEncontrada;
+      }
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'accidente_accion_completada',
-      entidad: 'accidentes_acciones',
-      entidadId: req.params.accionId,
-      req,
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'accidente_accion_completada',
+        entidad: 'accidentes_acciones',
+        entidadId: req.params.accionId,
+        req,
+        client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ accion: actualizadaRes.rows[0] });
   } catch (err) {
+    if (err.codigo === 'NO_ENCONTRADA') {
+      return res.status(404).json({ error: err.message });
+    }
     console.error('Error en completarAccion (accidentes):', err);
     return res.status(500).json({ error: 'Error interno al completar la accion.' });
   }
@@ -460,20 +505,40 @@ async function verificarAccion(req, res) {
       return res.status(400).json({ error: 'Solo se puede verificar una accion que ya fue marcada como completada.' });
     }
 
-    const actualizadaRes = await query(
+    // CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-03, P1): el
+    // comentario de este endpoint ya afirmaba que "alguien DISTINTO
+    // al responsable debe confirmar", pero esa regla nunca se llego a
+    // implementar -- solo se restringia por rol (admin/sso), no por
+    // identidad. El propio responsable, si tenia rol admin o sso,
+    // podia marcar su accion como completada y despues verificarla
+    // el mismo. Ahora se compara explicitamente contra responsable_id.
+    if (accionRes.rows[0].responsable_id === req.usuario.id) {
+      return res.status(403).json({
+        error: 'Quien ejecuta la accion correctiva no puede verificarla. Debe hacerlo otra persona.',
+      });
+    }
+
+    // CORREGIDO en Auditoria N.09 (G-N09-09): UPDATE + auditoria en
+    // la misma transaccion.
+    const actualizadaRes = await withTransaction(async (client) => {
+      const updateRes = await client.query(
       `UPDATE accidentes_acciones SET estado = 'verificada', verificado_por = $1, nota_verificacion = $2
        WHERE id = $3 AND organizacion_id = $4
        RETURNING id, estado`,
       [req.usuario.id, notaVerificacion || null, req.params.accionId, orgId]
-    );
+      );
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'accidente_accion_verificada',
-      entidad: 'accidentes_acciones',
-      entidadId: req.params.accionId,
-      req,
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'accidente_accion_verificada',
+        entidad: 'accidentes_acciones',
+        entidadId: req.params.accionId,
+        req,
+        client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ accion: actualizadaRes.rows[0] });
@@ -503,23 +568,42 @@ async function subirEvidenciaCaso(req, res) {
       return res.status(404).json({ error: 'Caso no encontrado.' });
     }
 
+    // CORREGIDO en Auditoria N.09 (G-N09-06 + G-N09-09): se combina
+    // el patron compensatorio de Cloudinary con atomicidad BD+
+    // auditoria: INSERT y registrarAuditoria corren dentro de la
+    // MISMA transaccion (asi que si la auditoria falla, el INSERT
+    // tambien hace rollback), y si esa transaccion completa falla
+    // por cualquier motivo, se borra el archivo recien subido a
+    // Cloudinary para no dejarlo huerfano.
     const subida = await subirEvidencia(archivoBase64, orgId, CARPETA_EVIDENCIA);
+    let evidenciaRes;
+    try {
+      evidenciaRes = await withTransaction(async (client) => {
+        const insertRes = await client.query(
+          `INSERT INTO accidentes_evidencias (accidente_id, organizacion_id, tipo_archivo, public_id, descripcion, subido_por)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           RETURNING id, tipo_archivo, descripcion, creado_en`,
+          [req.params.id, orgId, subida.tipo, subida.publicId, descripcion || null, req.usuario.id]
+        );
 
-    const evidenciaRes = await query(
-      `INSERT INTO accidentes_evidencias (accidente_id, organizacion_id, tipo_archivo, public_id, descripcion, subido_por)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, tipo_archivo, descripcion, creado_en`,
-      [req.params.id, orgId, subida.tipo, subida.publicId, descripcion || null, req.usuario.id]
-    );
+        await registrarAuditoria({
+          organizacionId: orgId,
+          usuarioId: req.usuario.id,
+          accion: 'accidente_evidencia_subida',
+          entidad: 'accidentes_evidencias',
+          entidadId: insertRes.rows[0].id,
+          req,
+          client,
+        });
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'accidente_evidencia_subida',
-      entidad: 'accidentes_evidencias',
-      entidadId: evidenciaRes.rows[0].id,
-      req,
-    });
+        return insertRes;
+      });
+    } catch (errTransaccion) {
+      await borrarEvidencia(subida.publicId, subida.tipo).catch((errBorrado) =>
+        console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${subida.publicId}.`, errBorrado)
+      );
+      throw errTransaccion;
+    }
 
     return res.status(201).json({ evidencia: evidenciaRes.rows[0] });
   } catch (err) {
@@ -544,6 +628,9 @@ async function obtenerUrlEvidencia(req, res) {
       return res.status(404).json({ error: 'Evidencia no encontrada.' });
     }
 
+    // Acceso a evidencia visual de un accidente (puede incluir fotos
+    // de lesiones): mismo criterio de lecturaSensible que historia
+    // clinica/aptitud (G-N09-07).
     await registrarAuditoria({
       organizacionId: orgId,
       usuarioId: req.usuario.id,
@@ -551,6 +638,7 @@ async function obtenerUrlEvidencia(req, res) {
       entidad: 'accidentes_evidencias',
       entidadId: req.params.evidenciaId,
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ url: generarUrlFirmada(evidenciaRes.rows[0].public_id, evidenciaRes.rows[0].tipo_archivo) });
@@ -574,17 +662,25 @@ async function eliminarEvidencia(req, res) {
       return res.status(404).json({ error: 'Evidencia no encontrada.' });
     }
 
-    await query(`DELETE FROM accidentes_evidencias WHERE id = $1 AND organizacion_id = $2`, [req.params.evidenciaId, orgId]);
-    await borrarEvidencia(evidenciaRes.rows[0].public_id, evidenciaRes.rows[0].tipo_archivo);
+    // CORREGIDO en Auditoria N.09 (G-N09-09): DELETE + auditoria en
+    // la misma transaccion. El borrado en Cloudinary se hace DESPUES
+    // de que la transaccion de BD confirme, para no perder el
+    // archivo si el DELETE o la auditoria fallan y hacen rollback.
+    await withTransaction(async (client) => {
+      await client.query(`DELETE FROM accidentes_evidencias WHERE id = $1 AND organizacion_id = $2`, [req.params.evidenciaId, orgId]);
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'accidente_evidencia_eliminada',
-      entidad: 'accidentes_evidencias',
-      entidadId: req.params.evidenciaId,
-      req,
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'accidente_evidencia_eliminada',
+        entidad: 'accidentes_evidencias',
+        entidadId: req.params.evidenciaId,
+        req,
+        client,
+      });
     });
+
+    await borrarEvidencia(evidenciaRes.rows[0].public_id, evidenciaRes.rows[0].tipo_archivo);
 
     return res.json({ mensaje: 'Evidencia eliminada.' });
   } catch (err) {

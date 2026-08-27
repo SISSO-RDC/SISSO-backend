@@ -14,7 +14,7 @@
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { calcularReba } = require('../ergonomia/reba');
-const { subirEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
+const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 
 // ------------------------------------------------------------
 // POST /api/ergonomia/sesiones
@@ -222,7 +222,11 @@ async function crearEvaluacionReba(req, res) {
     }
 
     // 5. Insertar la evaluacion con los inputs observados + resultado calculado.
-    const insertRes = await query(
+    // CORREGIDO en Auditoria N.09 (G-N09-06): si el INSERT falla
+    // despues de subir evidencia, se compensa borrandola.
+    let insertRes;
+    try {
+      insertRes = await query(
       `INSERT INTO evaluaciones_reba (
           organizacion_id, sesion_id, nombre_postura, orden,
           tronco, tronco_torsion_lateral, cuello, cuello_torsion_lateral,
@@ -273,7 +277,15 @@ async function crearEvaluacionReba(req, res) {
         resultado.puntuacionActividad, resultado.puntuacionFinal, resultado.nivelRiesgo, resultado.accionRequerida,
         evidencia ? evidencia.url : null, evidencia ? evidencia.publicId : null, evidencia ? evidencia.tipo : null,
       ]
-    );
+      );
+    } catch (errInsert) {
+      if (evidencia && evidencia.publicId) {
+        await borrarEvidencia(evidencia.publicId, evidencia.tipo).catch((errBorrado) =>
+          console.error(`ORFANO EN CLOUDINARY: no se pudo compensar (borrar) ${evidencia.publicId}.`, errBorrado)
+        );
+      }
+      throw errInsert;
+    }
 
     await registrarAuditoria({
       organizacionId: req.usuario.organizacionId,
