@@ -166,8 +166,11 @@ async function cambiarEstadoUsuario(req, res) {
     // sesiones + auditoria en una sola transaccion -- mismo patron
     // que authController.js (cambiarPassword/resetearPassword).
     const resultado = await withTransaction(async (client) => {
+      // CORREGIDO en Auditoria N.10 (G10-08): auth_epoch + 1 en cada
+      // cambio de estado, para invalidar tambien cualquier access
+      // token ya emitido (antes solo se revocaban refresh tokens).
       const res2 = await client.query(
-        `UPDATE usuarios SET activo = $1 WHERE id = $2 AND rol != 'superadmin'
+        `UPDATE usuarios SET activo = $1, auth_epoch = auth_epoch + 1 WHERE id = $2 AND rol != 'superadmin'
          RETURNING id, email, nombre_completo, rol, organizacion_id, activo`,
         [activo, req.params.id]
       );
@@ -224,27 +227,53 @@ async function resetearPassword(req, res) {
 
   try {
     const passwordHash = await bcrypt.hash(passwordTemporal, SALT_ROUNDS);
-    const resultado = await query(
-      `UPDATE usuarios SET password_hash = $1, intentos_fallidos = 0, bloqueado_hasta = NULL
-       WHERE id = $2 AND rol != 'superadmin'
-       RETURNING id, email, nombre_completo, organizacion_id`,
-      [passwordHash, req.params.id]
-    );
-    if (resultado.rows.length === 0) {
-      return res.status(404).json({ error: 'Usuario no encontrado.' });
-    }
 
-    await registrarAuditoria({
-      organizacionId: resultado.rows[0].organizacion_id,
-      usuarioId: req.usuario.id,
-      accion: 'password_reseteado_por_superadmin',
-      entidad: 'usuario',
-      entidadId: resultado.rows[0].id,
-      req,
+    // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-07, P1): esta
+    // ruta actualizaba password_hash pero NO revocaba los refresh
+    // tokens existentes del usuario -- inconsistente con el reset
+    // hecho por un admin dentro de la organizacion, con el cambio de
+    // password del propio usuario, y con la desactivacion de
+    // usuario, que si revocan. Si la cuenta estaba comprometida, una
+    // sesion de refresh ya abierta podia seguir funcionando despues
+    // del reset. UPDATE password + UPDATE refresh_tokens + auditoria
+    // ahora corren en la misma transaccion. auth_epoch + 1 (Auditoria
+    // N.10, G10-08) invalida tambien cualquier access token vigente.
+    const resultado = await withTransaction(async (client) => {
+      const updateRes = await client.query(
+        `UPDATE usuarios SET password_hash = $1, intentos_fallidos = 0, bloqueado_hasta = NULL, auth_epoch = auth_epoch + 1
+         WHERE id = $2 AND rol != 'superadmin'
+         RETURNING id, email, nombre_completo, organizacion_id`,
+        [passwordHash, req.params.id]
+      );
+      if (updateRes.rows.length === 0) {
+        const errNoEncontrado = new Error('Usuario no encontrado.');
+        errNoEncontrado.codigo = 'NO_ENCONTRADO';
+        throw errNoEncontrado;
+      }
+
+      await client.query(
+        `UPDATE refresh_tokens SET revocado = true WHERE usuario_id = $1 AND revocado = false`,
+        [updateRes.rows[0].id]
+      );
+
+      await registrarAuditoria({
+        organizacionId: updateRes.rows[0].organizacion_id,
+        usuarioId: req.usuario.id,
+        accion: 'password_reseteado_por_superadmin',
+        entidad: 'usuario',
+        entidadId: updateRes.rows[0].id,
+        req,
+        client,
+      });
+
+      return updateRes;
     });
 
     return res.json({ usuario: resultado.rows[0], passwordTemporal });
   } catch (err) {
+    if (err.codigo === 'NO_ENCONTRADO') {
+      return res.status(404).json({ error: err.message });
+    }
     console.error('Error en resetearPassword:', err);
     return res.status(500).json({ error: 'Error interno al resetear la contrasena.' });
   }

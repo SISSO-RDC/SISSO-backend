@@ -167,9 +167,16 @@ async function listarPorTrabajador(req, res) {
       return res.status(404).json({ error: 'Trabajador no encontrado en su organizacion.' });
     }
 
+    // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-05, P1): esta
+    // consulta es "gestion de estado" (que consentimientos existen,
+    // vigencia, quien lo registro) y debe quedar separada de "leer
+    // el contenido firmado". Se retira firma_imagen_url de aqui: el
+    // contenido (imagen/PDF) solo se obtiene via obtenerUrlFirma()/
+    // descargarPdf(), que ahora aplican la restriccion por
+    // categoria del tipo de consentimiento.
     const resultado = await query(
-      `SELECT c.id, c.tipo_consentimiento_codigo, t.nombre AS tipo_consentimiento_nombre,
-              c.version_firmada, c.firma_imagen_url, c.metodo_firma, c.revocado, c.revocado_en, c.motivo_revocacion,
+      `SELECT c.id, c.tipo_consentimiento_codigo, t.nombre AS tipo_consentimiento_nombre, t.categoria,
+              c.version_firmada, c.metodo_firma, c.revocado, c.revocado_en, c.motivo_revocacion,
               c.creado_en, u.nombre_completo AS registrado_por_nombre
        FROM consentimientos_firmados c
        JOIN tipos_consentimiento t ON t.codigo = c.tipo_consentimiento_codigo
@@ -257,13 +264,28 @@ async function revocarConsentimiento(req, res) {
 async function obtenerUrlFirma(req, res) {
   try {
     const resultado = await query(
-      `SELECT firma_imagen_public_id FROM consentimientos_firmados
-       WHERE id = $1 AND organizacion_id = $2`,
+      `SELECT c.firma_imagen_public_id, t.categoria
+       FROM consentimientos_firmados c
+       JOIN tipos_consentimiento t ON t.codigo = c.tipo_consentimiento_codigo
+       WHERE c.id = $1 AND c.organizacion_id = $2`,
       [req.params.id, req.usuario.organizacionId]
     );
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'Consentimiento no encontrado.' });
     }
+
+    // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-05, P1): el
+    // contenido firmado de un tipo de consentimiento 'clinico' queda
+    // reservado a 'medico' -- la sola existencia de una firma para
+    // "pruebas_psicologicas" u otro tipo clinico ya revela
+    // informacion de salud. SSO/TH conservan la gestion de estado
+    // (listarPorTrabajador, revocar) pero no el contenido.
+    if (resultado.rows[0].categoria === 'clinico' && req.usuario.rol !== 'medico') {
+      return res.status(403).json({
+        error: 'Solo un usuario con rol medico puede acceder al contenido firmado de este tipo de consentimiento.',
+      });
+    }
+
     const publicId = resultado.rows[0].firma_imagen_public_id;
     if (!publicId) {
       return res.status(404).json({ error: 'Este consentimiento no tiene una imagen de firma asociada.' });
@@ -276,6 +298,7 @@ async function obtenerUrlFirma(req, res) {
       entidad: 'consentimiento_firmado',
       entidadId: req.params.id,
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ url: generarUrlFirmada(publicId, 'imagen') });
@@ -296,7 +319,7 @@ async function descargarPdf(req, res) {
     const resultado = await query(
       `SELECT c.id, c.texto_legal_firmado, c.firma_imagen_url, c.firma_imagen_public_id, c.metodo_firma,
               c.revocado, c.revocado_en, c.motivo_revocacion, c.creado_en,
-              t.nombre AS tipo_consentimiento_nombre,
+              t.nombre AS tipo_consentimiento_nombre, t.categoria,
               tr.nombre_completo AS trabajador_nombre, tr.documento AS trabajador_documento,
               u.nombre_completo AS registrado_por_nombre,
               o.nombre AS organizacion_nombre
@@ -313,6 +336,31 @@ async function descargarPdf(req, res) {
       return res.status(404).json({ error: 'Consentimiento no encontrado.' });
     }
     const c = resultado.rows[0];
+
+    // CORREGIDO en Auditoria N.10 (G10-05): mismo criterio que
+    // obtenerUrlFirma() -- el PDF firmado de un tipo 'clinico' es
+    // contenido, no gestion de estado.
+    if (c.categoria === 'clinico' && req.usuario.rol !== 'medico') {
+      return res.status(403).json({
+        error: 'Solo un usuario con rol medico puede descargar el documento firmado de este tipo de consentimiento.',
+      });
+    }
+
+    // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-05, P1):
+    // descargarPdf() generaba el documento sin ningun registro de
+    // auditoria -- un PDF descargable/imprimible es al menos tan
+    // sensible como el JSON de detalle. Se registra ANTES de
+    // generar el documento (fail-closed).
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: 'descarga_pdf_consentimiento',
+      entidad: 'consentimiento_firmado',
+      entidadId: req.params.id,
+      detalle: { tipoConsentimientoCodigo: c.tipo_consentimiento_nombre },
+      req,
+      lecturaSensible: true,
+    });
 
     let imagenFirmaBuffer = null;
     try {

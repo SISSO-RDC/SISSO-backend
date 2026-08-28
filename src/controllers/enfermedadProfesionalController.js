@@ -105,6 +105,10 @@ async function listarCasosTrabajador(req, res) {
       [trabajadorId, req.usuario.organizacionId]
     );
 
+    // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-03, P1): esta
+    // lectura clinica no usaba lecturaSensible:true, a diferencia de
+    // historia clinica/aptitud -- inconsistencia sin justificacion,
+    // ya corregida (misma cola durable / fail-closed que las demas).
     await registrarAuditoria({
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
@@ -112,6 +116,7 @@ async function listarCasosTrabajador(req, res) {
       entidad: 'enfermedad_profesional',
       detalle: { trabajadorId, resultados: casosRes.rows.length },
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ casos: casosRes.rows });
@@ -147,6 +152,8 @@ async function obtenerCaso(req, res) {
       [casoId, req.usuario.organizacionId]
     );
 
+    // CORREGIDO en Auditoria N.10 (G10-03): ver comentario en
+    // listarCasosTrabajador() arriba.
     await registrarAuditoria({
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
@@ -154,6 +161,7 @@ async function obtenerCaso(req, res) {
       entidad: 'enfermedad_profesional',
       entidadId: casoId,
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ caso: casoRes.rows[0], seguimientos: seguimientosRes.rows });

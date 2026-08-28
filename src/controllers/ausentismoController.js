@@ -200,6 +200,25 @@ async function crear(req, res) {
 
   const subsidiadoIess = typeof b.subsidiadoIess === 'boolean' ? b.subsidiadoIess : esSubsidiablePorDefecto(b.tipo);
 
+  // CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-03, P0): esta
+  // ruta esta autorizada para admin/sso/th (es correcto: registrar
+  // una ausencia es gestion de RRHH/SST, no un acto clinico), pero
+  // el diagnostico CIE-10 y el numero de certificado SI son datos
+  // clinicos reservados al medico -- el propio
+  // minimizarDatosClinicos() de este archivo ya lo trata asi en
+  // LECTURA. En escritura, sin embargo, crear() aceptaba
+  // diagnosticoCie10/numeroCertificado del body sin ninguna
+  // restriccion de rol: un sso o th podia registrar (o inventar) el
+  // diagnostico de un trabajador. La auditoria es explicita en que
+  // esto debe rechazarse con 403, no ignorarse en silencio (ignorar
+  // en silencio esconde el error al usuario y puede dar la falsa
+  // impresion de que el diagnostico se guardo).
+  if ((b.diagnosticoCie10 || b.numeroCertificado) && req.usuario.rol !== 'medico') {
+    return res.status(403).json({
+      error: 'Solo un usuario con rol medico puede registrar diagnostico CIE-10 o numero de certificado.',
+    });
+  }
+
   try {
     const trabajador = await query(
       `SELECT id FROM trabajadores WHERE id = $1 AND organizacion_id = $2`,
@@ -293,9 +312,29 @@ async function actualizar(req, res) {
     // diagnostico ya registrado. Por eso: si el rol no puede ver
     // estos campos, se preservan intactos sin importar lo que venga
     // en el body.
-    const puedeEditarDatosClinicos = ['medico', 'sso'].includes(req.usuario.rol);
-    const diagnosticoCie10Final = puedeEditarDatosClinicos ? (b.diagnosticoCie10 || null) : existente.rows[0].diagnostico_cie10;
-    const numeroCertificadoFinal = puedeEditarDatosClinicos ? (b.numeroCertificado || null) : existente.rows[0].numero_certificado;
+    //
+    // CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-03, P0): la
+    // linea original incluia 'sso' en puedeEditarDatosClinicos,
+    // contradiciendo la propia politica documentada un par de lineas
+    // mas abajo (que dice "reservados al medico"). Ahora solo
+    // 'medico' puede escribir estos campos. Ademas, la auditoria pide
+    // explicitamente que un rol no autorizado que SI intenta cambiar
+    // el valor reciba 403 (no que se ignore en silencio) -- se
+    // distingue de "el campo simplemente no vino en el body" (eso
+    // sigue preservando el valor existente, para no romper el caso ya
+    // corregido de TH editando solo la fecha).
+    const esMedico = req.usuario.rol === 'medico';
+    const intentaCambiarDatosClinicos =
+      !esMedico
+      && ((b.diagnosticoCie10 !== undefined && (b.diagnosticoCie10 || null) !== existente.rows[0].diagnostico_cie10)
+        || (b.numeroCertificado !== undefined && (b.numeroCertificado || null) !== existente.rows[0].numero_certificado));
+    if (intentaCambiarDatosClinicos) {
+      return res.status(403).json({
+        error: 'Solo un usuario con rol medico puede modificar el diagnostico CIE-10 o el numero de certificado.',
+      });
+    }
+    const diagnosticoCie10Final = esMedico ? (b.diagnosticoCie10 || null) : existente.rows[0].diagnostico_cie10;
+    const numeroCertificadoFinal = esMedico ? (b.numeroCertificado || null) : existente.rows[0].numero_certificado;
 
     let certificadoUrl;
     let certificadoPublicId = existente.rows[0].certificado_public_id;

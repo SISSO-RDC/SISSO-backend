@@ -98,7 +98,9 @@ async function registrarPreocupacional(req, res) {
         aptitud_msp, aptitud_observacion, aptitud_limitacion,
         recomendaciones_tratamiento,
         codigo_profesional_salud,
-        firma_imagen_url, firma_imagen_public_id
+        firma_imagen_url, firma_imagen_public_id,
+        norma_aplicada, version_formulario, fecha_vigencia, base_juridica,
+        finalidad_tratamiento_codigo
       ) VALUES (
         $1,$2,$3,'preocupacional_inicio',$4,$5,
         $6,$7,$8,$9,$10,$11,
@@ -121,11 +123,24 @@ async function registrarPreocupacional(req, res) {
         $47,$48,$49,
         $50,
         $51,
-        $52,$53
+        $52,$53,
+        $54,$55,$56,$57,
+        $58
       ) RETURNING id, tipo_evaluacion, fecha_atencion, aptitud_msp, imc, creado_en`,
       [
         req.usuario.organizacionId, trabajadorId, req.usuario.id, b.fechaAtencion || null, b.horaAtencion || null,
-        b.numeroArchivo || null, b.religion || null, b.grupoSanguineo || null, b.lateralidad || null, b.orientacionSexual || null, b.identidadGenero || null,
+        // CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-01, P0):
+        // orientacionSexual/identidadGenero ya NO se toman del body,
+        // sin importar lo que envie el frontend. La Sentencia
+        // 59-19-IN/24 de la Corte Constitucional (11/07/2024) declaro
+        // inconstitucional -con efectos diferidos- el Acuerdo
+        // 0341-2019 y ordeno expresamente NO solicitar esta
+        // informacion mientras el MSP no emita normativa sustitutiva.
+        // Las columnas se conservan en el esquema (datos historicos
+        // previos a esta correccion quedan bloqueados/restringidos,
+        // no borrados, hasta definir politica legal de conservacion),
+        // pero ningun flujo nuevo puede volver a escribir en ellas.
+        b.numeroArchivo || null, b.religion || null, b.grupoSanguineo || null, b.lateralidad || null, null, null,
         !!b.discapacidadTiene, b.discapacidadTipo || null, b.discapacidadPorcentaje || null, b.fechaIngresoTrabajo || null,
         b.puestoTrabajoCiuo || null, b.areaTrabajo || null, b.actividadesRelevantes || null, b.antecedentesGinecobstetricos ? JSON.stringify(b.antecedentesGinecobstetricos) : null,
         b.motivoConsulta || 'Evaluación médica ocupacional para el ingreso al puesto de trabajo.',
@@ -150,6 +165,8 @@ async function registrarPreocupacional(req, res) {
         b.recomendacionesTratamiento || null,
         b.codigoProfesionalSalud || null,
         firma.url, firma.publicId,
+        catalogos.NORMA_APLICADA_ACTUAL, catalogos.VERSION_FORMULARIO_ACTUAL, new Date().toISOString().slice(0, 10), catalogos.BASE_JURIDICA_ACTUAL,
+        'vigilancia_salud_ocupacional',
       ]
     );
 
@@ -595,6 +612,11 @@ async function listarPorTrabajador(req, res) {
     // el tipo de acceso que el punto 13.6 pide poder rastrear:
     // "saber quien accedio a un expediente, cuando y desde que
     // contexto".
+    //
+    // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-03, P1): esta
+    // lectura (listado de historia clinica de un trabajador) es tan
+    // sensible como el detalle -- se marca lecturaSensible:true para
+    // quedar bajo el mismo estandar de auditoria durable.
     await registrarAuditoria({
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
@@ -602,6 +624,7 @@ async function listarPorTrabajador(req, res) {
       entidad: 'evaluaciones_ocupacionales',
       detalle: { trabajadorId: req.params.trabajadorId, resultados: resultado.rows.length },
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ evaluaciones: resultado.rows });
@@ -632,6 +655,17 @@ async function obtenerEvaluacion(req, res) {
       return res.status(404).json({ error: 'Evaluacion no encontrada.' });
     }
 
+    // CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-01, P0): esta
+    // consulta usa `e.*`, que incluye orientacion_sexual e
+    // identidad_genero -- datos que, tras la Sentencia 59-19-IN/24,
+    // SISSO ya no debe exponer en el flujo normal de la aplicacion
+    // (ver migration_050 y catalogosRiesgo.js). Se retiran de la
+    // respuesta para CUALQUIER rol, incluido medico: el bloqueo es
+    // de lectura de aplicacion, no una minimizacion por rol.
+    const evaluacion = resultado.rows[0];
+    delete evaluacion.orientacion_sexual;
+    delete evaluacion.identidad_genero;
+
     // CORREGIDO tras Auditoria SISSO N.06 (punto 13.6 / hallazgo
     // G10): esta es la lectura mas sensible del sistema (detalle
     // clinico completo, incluye datos del trabajador). Se audita
@@ -652,7 +686,7 @@ async function obtenerEvaluacion(req, res) {
       lecturaSensible: true,
     });
 
-    return res.json({ evaluacion: resultado.rows[0] });
+    return res.json({ evaluacion });
   } catch (err) {
     console.error('Error en obtenerEvaluacion (historia clinica):', err);
     return res.status(500).json({ error: 'Error interno al obtener la evaluacion.' });
@@ -680,7 +714,29 @@ async function descargarPdf(req, res) {
       return res.status(404).json({ error: 'Evaluacion no encontrada.' });
     }
     const e = resultado.rows[0];
+    // CORREGIDO en Auditoria N.10 (C10-01): ver comentario en
+    // obtenerEvaluacion(). Los PDFs no deben incluir estos campos.
+    delete e.orientacion_sexual;
+    delete e.identidad_genero;
 
+    // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-04, P1): un PDF
+    // clinico no es menos sensible que el JSON de detalle -- de
+    // hecho es mas riesgoso porque se puede descargar, imprimir o
+    // reenviar. Antes no habia ningun registro de auditoria al
+    // generar este documento. Se registra ANTES de generar el PDF,
+    // con lecturaSensible:true (fail-closed: si ni el registro
+    // normal ni la cola durable funcionan, no se genera el
+    // documento).
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: 'descarga_pdf_historia_clinica',
+      entidad: 'evaluaciones_ocupacionales',
+      entidadId: req.params.id,
+      detalle: { tipoEvaluacion: e.tipo_evaluacion },
+      req,
+      lecturaSensible: true,
+    });
     // CORREGIDO (hallazgo G12): e.firma_imagen_url ya no es
     // directamente accesible (recurso privado en Cloudinary, ver
     // cloudinaryService.js); generamos una URL firmada de corta
@@ -736,6 +792,22 @@ async function descargarCertificado(req, res) {
       return res.status(404).json({ error: 'Evaluacion no encontrada.' });
     }
     const e = resultado.rows[0];
+    // CORREGIDO en Auditoria N.10 (C10-01).
+    delete e.orientacion_sexual;
+    delete e.identidad_genero;
+
+    // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-04, P1): ver
+    // comentario equivalente en descargarPdf(). El certificado
+    // clinico se audita como lectura sensible ANTES de generarse.
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: 'descarga_certificado_salud_trabajo',
+      entidad: 'evaluaciones_ocupacionales',
+      entidadId: req.params.id,
+      req,
+      lecturaSensible: true,
+    });
 
     // CORREGIDO (hallazgo G12): ver nota equivalente en descargarPdf().
     if (e.firma_imagen_public_id) {

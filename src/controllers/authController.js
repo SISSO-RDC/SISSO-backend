@@ -362,7 +362,7 @@ async function login(req, res) {
     const userRes = await query(
       `SELECT u.id, u.organizacion_id, u.email, u.password_hash, u.nombre_completo, u.rol,
               u.activo, u.intentos_fallidos, u.bloqueado_hasta, u.requiere_cambio_password,
-              u.mfa_habilitado,
+              u.mfa_habilitado, u.auth_epoch,
               o.activa AS organizacion_activa, o.nombre AS organizacion_nombre, o.codigo AS organizacion_codigo,
               o.logo_url AS organizacion_logo_url, o.estado_suscripcion, o.fecha_fin_trial,
               o.fecha_proxima_renovacion, o.suspendida_manualmente
@@ -709,8 +709,10 @@ async function confirmarMfa(req, res) {
       return res.status(401).json({ error: 'Codigo incorrecto. Verifique la hora de su dispositivo e intente de nuevo.' });
     }
 
+    // CORREGIDO en Auditoria N.10 (G10-08): auth_epoch + 1 al
+    // habilitar MFA (evento de seguridad de la cuenta).
     await query(
-      'UPDATE usuarios SET mfa_habilitado = true, mfa_secret = $1, mfa_secret_pendiente = NULL WHERE id = $2',
+      'UPDATE usuarios SET mfa_habilitado = true, mfa_secret = $1, mfa_secret_pendiente = NULL, auth_epoch = auth_epoch + 1 WHERE id = $2',
       [encriptar(secretoPendiente), req.usuario.id]
     );
     // req.usuario.organizacionId puede ser null aqui si se llego por
@@ -770,8 +772,12 @@ async function deshabilitarMfa(req, res) {
       return res.status(401).json({ error: 'Codigo incorrecto.' });
     }
 
+    // CORREGIDO en Auditoria N.10 (G10-08): auth_epoch + 1 al
+    // deshabilitar MFA -- si un atacante con sesion robada acaba de
+    // quitar el segundo factor, esto tambien corta cualquier otro
+    // access token que ya estuviera circulando.
     await query(
-      'UPDATE usuarios SET mfa_habilitado = false, mfa_secret = NULL, mfa_secret_pendiente = NULL WHERE id = $1',
+      'UPDATE usuarios SET mfa_habilitado = false, mfa_secret = NULL, mfa_secret_pendiente = NULL, auth_epoch = auth_epoch + 1 WHERE id = $1',
       [req.usuario.id]
     );
     await registrarAuditoria({
@@ -808,7 +814,7 @@ async function verificarCodigoMfa(req, res) {
 
     const userRes = await query(
       `SELECT u.id, u.organizacion_id, u.email, u.nombre_completo, u.rol, u.activo,
-              u.requiere_cambio_password, u.mfa_habilitado, u.mfa_secret,
+              u.requiere_cambio_password, u.mfa_habilitado, u.mfa_secret, u.auth_epoch,
               u.intentos_mfa_fallidos, u.bloqueado_mfa_hasta,
               o.activa AS organizacion_activa, o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM usuarios u LEFT JOIN organizaciones o ON o.id = u.organizacion_id
@@ -881,8 +887,10 @@ async function verificarCodigoMfa(req, res) {
     // Cero cambios de contrato/frontend: es el mismo codigo y forma
     // de respuesta que el flujo de 'rol exige MFA y no lo configuro'.
     if (!esFormatoCifrado(usuario.mfa_secret)) {
+      // CORREGIDO en Auditoria N.10 (G10-08): auth_epoch + 1, mismo
+      // criterio que deshabilitarMfa().
       await query(
-        `UPDATE usuarios SET mfa_habilitado = false, mfa_secret = NULL, mfa_secret_pendiente = NULL
+        `UPDATE usuarios SET mfa_habilitado = false, mfa_secret = NULL, mfa_secret_pendiente = NULL, auth_epoch = auth_epoch + 1
          WHERE id = $1`,
         [usuario.id]
       );
@@ -1022,7 +1030,7 @@ async function refrescar(req, res) {
       }
 
       const userRes = await client.query(
-        `SELECT id, organizacion_id, rol, activo FROM usuarios WHERE id = $1`,
+        `SELECT id, organizacion_id, rol, activo, auth_epoch FROM usuarios WHERE id = $1`,
         [payload.sub]
       );
       if (userRes.rows.length === 0 || !userRes.rows[0].activo) {
@@ -1344,10 +1352,12 @@ async function cambiarPassword(req, res) {
     // contrasena quedaba cambiada pero las sesiones viejas seguian
     // validas -- exactamente el riesgo que la revocacion buscaba
     // cerrar. Ahora ambas viven en la misma transaccion: o se
-    // confirman juntas, o ninguna de las dos.
+    // confirman juntas, o ninguna de las dos. auth_epoch + 1
+    // (Auditoria N.10, G10-08) invalida tambien el access token
+    // actual, consistente con que el refresh token tambien muere.
     await withTransaction(async (client) => {
       await client.query(
-        'UPDATE usuarios SET password_hash = $1, requiere_cambio_password = false WHERE id = $2',
+        'UPDATE usuarios SET password_hash = $1, requiere_cambio_password = false, auth_epoch = auth_epoch + 1 WHERE id = $2',
         [passwordHash, req.usuario.id]
       );
 
