@@ -1,15 +1,21 @@
 // ============================================================
 // SISSO - Certificado de Salud en el Trabajo (HCU 081).
 //
+// CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-01, P0): se
+// presentaba como "Formulario HCU 081 -- Acuerdo Ministerial MSP
+// 0341-2019", que ya no es exacto (Sentencia 59-19-IN/24, Corte
+// Constitucional del Ecuador, 11/07/2024: inconstitucionalidad con
+// efectos diferidos). Ver notaNormativaPie() en pdfPreocupacional.js
+// para el criterio completo; aqui se usa la misma nota.
+//
 // A diferencia de los otros 4 formularios, el certificado NO es
 // una evaluacion nueva: es un DOCUMENTO DERIVADO que se emite
 // despues de haber realizado una evaluacion preocupacional,
-// periodica, de reintegro o de retiro (asi lo define el
-// instructivo oficial, Bloque B: "marcar la evaluacion de la cual
-// es resultado"). Por eso no tiene tabla propia ni endpoint de
-// registro: se genera como PDF a partir de una fila YA GUARDADA en
-// evaluaciones_ocupacionales (ver historiaClinicaController.js:
-// descargarCertificado), tomando fecha de emision = hoy.
+// periodica, de reintegro o de retiro. Por eso no tiene tabla propia
+// ni endpoint de registro: se genera como PDF a partir de una fila
+// YA GUARDADA en evaluaciones_ocupacionales (ver
+// historiaClinicaController.js: descargarCertificado), tomando fecha
+// de emision = hoy.
 // ============================================================
 const PDFDocument = require('pdfkit');
 
@@ -55,7 +61,14 @@ function generarPdfCertificado(e, nombreOrganizacion) {
   doc.fontSize(17).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Certificado de Salud en el Trabajo', { align: 'center' });
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text('Formulario HCU 081 — Acuerdo Ministerial MSP 0341-2019', { align: 'center' });
+    .text('Certificado de Salud en el Trabajo (HCU 081, uso interno de SISSO)', { align: 'center' });
+  doc.moveDown(0.3);
+  doc.fontSize(7).font('Helvetica').fillColor('#94a3b8').text(
+    `Documento de vigilancia de la salud ocupacional. Base juridica: ${e && e.base_juridica ? e.base_juridica : 'medicina ocupacional (Decreto Ejecutivo 255); ' +
+      'el Acuerdo Ministerial MSP 0341-2019 fue declarado inconstitucional con efectos diferidos por la Corte ' +
+      'Constitucional del Ecuador (Sentencia 59-19-IN/24). No se solicita orientacion sexual ni identidad de genero.'}`,
+    { align: 'center', width: ANCHO_UTIL }
+  );
   doc.moveDown(1);
 
   doc.fontSize(10).font('Helvetica').fillColor('#334155');

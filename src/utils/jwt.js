@@ -26,12 +26,23 @@ if (!ACCESS_SECRET || !REFRESH_SECRET) {
  * necesaria para autorizar peticiones: quien es, de que empresa,
  * y que rol tiene.
  */
+// CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-08, P1): se
+// agrega authEpoch al payload. Es la pieza que permite invalidar un
+// access token YA EMITIDO antes de que expire (hasta ahora, un
+// access token era valido por firma+expiracion unicamente, sin
+// ninguna referencia a un estado que pudiera cambiar server-side).
+// autenticar() compara este valor contra el auth_epoch ACTUAL del
+// usuario en cada peticion (con cache corta, ver middleware/auth.js)
+// y rechaza el token si no coincide -- por ejemplo, si el usuario
+// fue desactivado, le cambiaron el rol, le resetearon el password o
+// le alternaron el MFA despues de que este token fue emitido.
 function generarAccessToken(usuario) {
   return jwt.sign(
     {
       sub: usuario.id,
       organizacionId: usuario.organizacion_id,
       rol: usuario.rol,
+      authEpoch: usuario.auth_epoch,
       tipo: 'access',
     },
     ACCESS_SECRET,

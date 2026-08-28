@@ -1,16 +1,34 @@
 // ============================================================
-// SISSO - Catalogos FIJOS del formulario oficial MSP HCU 077
-// (Acuerdo Ministerial 0341-2019). Estas listas NO son editables
-// por el usuario (a diferencia de catalogo_exposiciones, que es un
-// catalogo libre usado por el motor de reglas de contraindicacion
-// del modulo de aptitud): son la taxonomia legal exacta que exige
-// el instructivo del MSP para la matriz de riesgos laborales, la
-// revision de organos y sistemas, y el examen fisico regional.
+// SISSO - Catalogos de apoyo para la Historia Clinica Ocupacional.
 //
-// Se usan tanto para validar en el backend lo que llega del
-// frontend, como para que el frontend pueda pedir esta misma
-// lista y generar los checkboxes sin tener que mantenerla
-// duplicada en dos lugares.
+// CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-01, P0): este
+// archivo declaraba estas listas como "el formulario oficial MSP
+// HCU 077 (Acuerdo Ministerial 0341-2019)", como si ese Acuerdo
+// siguiera siendo la norma vigente que hay que replicar
+// literalmente. La Corte Constitucional del Ecuador, mediante
+// Sentencia 59-19-IN/24 (11 de julio de 2024), declaro la
+// inconstitucionalidad del Acuerdo Ministerial 0341-2019 con
+// efectos diferidos (un ano desde su notificacion para que el MSP
+// emita normativa sustitutiva), y establecio expresamente que --
+// mientras tanto -- no debe solicitarse a los trabajadores
+// informacion sobre orientacion sexual e identidad de genero.
+//
+// Mientras no exista la normativa sustitutiva, SISSO no debe tratar
+// el Acuerdo 0341-2019 como fuente de verdad obligatoria. Los
+// catalogos de riesgos laborales (Bloque F), revision de organos y
+// sistemas (Bloque I) y examen fisico regional (Bloque K) se
+// conservan porque describen contenido clinico-ocupacional general
+// razonable (no son en si mismos el problema senalado por la
+// Corte), pero se documentan como criterio operativo de SISSO, no
+// como transcripcion obligatoria de un Acuerdo declarado
+// inconstitucional.
+//
+// ORIENTACIONES_SEXUALES / IDENTIDADES_GENERO se retiran de las
+// exportaciones activas: el modulo ya NO debe ofrecer estos campos
+// en el flujo de captura por defecto (ver historiaClinicaController.js).
+// Se dejan comentadas (no eliminadas del archivo) unicamente como
+// referencia para quien necesite entender el modelo de datos
+// heredado de versiones anteriores a esta correccion.
 // ============================================================
 
 // ------------------------------------------------------------
@@ -59,7 +77,7 @@ const SISTEMAS_REVISION = [
 
 // ------------------------------------------------------------
 // Bloque K: examen fisico regional (13 regiones, cada una con
-// sus propios sub-items segun el formulario oficial)
+// sus propios sub-items)
 // ------------------------------------------------------------
 const EXAMEN_FISICO_REGIONES = {
   piel: ['cicatrices', 'tatuajes'],
@@ -78,13 +96,29 @@ const EXAMEN_FISICO_REGIONES = {
 
 const RELIGIONES = ['catolica', 'evangelica', 'testigos_jehova', 'mormona', 'otra', 'ninguna'];
 const LATERALIDADES = ['izquierdo', 'derecho', 'ambidiestro'];
-const ORIENTACIONES_SEXUALES = ['lesbiana', 'gay', 'bisexual', 'heterosexual', 'no_sabe_no_responde'];
-const IDENTIDADES_GENERO = ['femenino', 'masculino', 'transfemenino', 'transmasculino', 'ninguno', 'no_sabe_no_responde'];
+// DEPRECADO (Auditoria N.10, C10-01): NO usar para nueva captura de
+// datos. Se conserva solo como referencia del modelo heredado; ver
+// comentario de cabecera.
+// const ORIENTACIONES_SEXUALES_DEPRECADO = ['lesbiana', 'gay', 'bisexual', 'heterosexual', 'no_sabe_no_responde'];
+// const IDENTIDADES_GENERO_DEPRECADO = ['femenino', 'masculino', 'transfemenino', 'transmasculino', 'ninguno', 'no_sabe_no_responde'];
 const APTITUDES_MSP = ['apto', 'apto_en_observacion', 'apto_con_limitaciones', 'no_apto'];
+
+// CORREGIDO en Auditoria N.10 (C10-01): catalogo de la nueva capa
+// normativa. Mientras el MSP no emita la normativa sustitutiva del
+// Acuerdo 0341-2019, SISSO documenta cada evaluacion con estos
+// valores en vez de asumir el Acuerdo como marco vigente.
+const NORMA_APLICADA_ACTUAL = 'transicion_post_sentencia_59_19_IN_24';
+const VERSION_FORMULARIO_ACTUAL = '2.0-sin-orientacion-sexual-ni-identidad-genero';
+const BASE_JURIDICA_ACTUAL =
+  'Vigilancia de la salud en el trabajo (finalidad de medicina ocupacional). El Acuerdo Ministerial MSP '
+  + '0341-2019 fue declarado inconstitucional con efectos diferidos por la Corte Constitucional del Ecuador '
+  + '(Sentencia 59-19-IN/24, 11/07/2024); mientras el MSP no emita normativa sustitutiva, no se solicita '
+  + 'orientacion sexual ni identidad de genero, conforme a lo ordenado por la Corte.';
 
 module.exports = {
   RIESGOS_FISICOS, RIESGOS_MECANICOS, RIESGOS_QUIMICOS,
   RIESGOS_BIOLOGICOS, RIESGOS_ERGONOMICOS, RIESGOS_PSICOSOCIALES,
   SISTEMAS_REVISION, EXAMEN_FISICO_REGIONES,
-  RELIGIONES, LATERALIDADES, ORIENTACIONES_SEXUALES, IDENTIDADES_GENERO, APTITUDES_MSP,
+  RELIGIONES, LATERALIDADES, APTITUDES_MSP,
+  NORMA_APLICADA_ACTUAL, VERSION_FORMULARIO_ACTUAL, BASE_JURIDICA_ACTUAL,
 };

@@ -1,6 +1,19 @@
 // ============================================================
 // SISSO - Generacion de PDF para evaluaciones ocupacionales.
-// Primera pieza: preocupacional - inicio (HCU 077).
+//
+// CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-01, P0): estos
+// documentos se presentaban con titulos tipo "Formulario HCU 07X --
+// Acuerdo Ministerial MSP 0341-2019", como si ese Acuerdo siguiera
+// siendo la norma vigente de cumplimiento obligatorio. La Corte
+// Constitucional del Ecuador (Sentencia 59-19-IN/24, 11/07/2024)
+// declaro la inconstitucionalidad del Acuerdo 0341-2019 con efectos
+// diferidos. Mientras el MSP no emita la normativa sustitutiva,
+// estos documentos ya NO deben presentarse como el formulario
+// oficial vigente de ese Acuerdo -- se usa notaNormativaPie(), que
+// imprime un pie de pagina neutral explicando la base juridica
+// real (vigilancia de la salud ocupacional) y el estado de
+// transicion normativa, en vez de una referencia legal que ya no
+// es exacta.
 //
 // Con 17 bloques y varios JSONB anidados, listar cada campo vacio
 // haria un PDF de decenas de paginas ilegible. Criterio: solo se
@@ -14,6 +27,23 @@ const PDFDocument = require('pdfkit');
 
 const MARGEN = 50;
 const ANCHO_UTIL = 595.28 - MARGEN * 2;
+
+/**
+ * CORREGIDO en Auditoria N.10 (C10-01): reemplaza la linea
+ * "Formulario HCU 0XX -- Acuerdo Ministerial MSP 0341-2019" en los
+ * 4 tipos de evaluacion. No afirma que exista un formulario oficial
+ * vigente bajo ese Acuerdo (fue declarado inconstitucional con
+ * efectos diferidos); en cambio documenta la finalidad real
+ * (vigilancia de la salud en el trabajo) y el estado de transicion.
+ */
+function notaNormativaPie(doc, e) {
+  doc.fontSize(7).font('Helvetica').fillColor('#94a3b8').text(
+    `Documento de vigilancia de la salud ocupacional. Base juridica: ${e && e.base_juridica ? e.base_juridica : 'medicina ocupacional (Decreto Ejecutivo 255); ' +
+      'el Acuerdo Ministerial MSP 0341-2019 fue declarado inconstitucional con efectos diferidos por la Corte ' +
+      'Constitucional del Ecuador (Sentencia 59-19-IN/24). No se solicita orientacion sexual ni identidad de genero.'}`,
+    { width: ANCHO_UTIL }
+  );
+}
 
 const ETIQUETAS_SISTEMAS = {
   pielAnexos: 'Piel y anexos', organosSentidos: 'Órganos de los sentidos', respiratorio: 'Respiratorio',
@@ -74,7 +104,9 @@ function generarPdfPreocupacional(e, nombreOrganizacion) {
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación Preocupacional (Inicio)');
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text('Formulario HCU 077 — Acuerdo Ministerial MSP 0341-2019');
+    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 077, uso interno de SISSO)`);
+  doc.moveDown(0.5);
+  notaNormativaPie(doc, e);
   doc.moveDown(0.5);
   doc.fontSize(10).font('Helvetica').fillColor('#334155');
   doc.text(`Trabajador: ${e.trabajador_nombre}   |   Documento: ${e.trabajador_documento}`);
@@ -363,7 +395,9 @@ function generarPdfRetiro(e, nombreOrganizacion) {
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación de Retiro');
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text('Formulario HCU 080 — Acuerdo Ministerial MSP 0341-2019');
+    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 080, uso interno de SISSO)`);
+  doc.moveDown(0.5);
+  notaNormativaPie(doc, e);
   doc.moveDown(0.5);
   doc.fontSize(10).font('Helvetica').fillColor('#334155');
   doc.text(`Trabajador: ${e.trabajador_nombre}   |   Documento: ${e.trabajador_documento}`);
@@ -475,7 +509,9 @@ function generarPdfPeriodica(e, nombreOrganizacion) {
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación Periódica');
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text('Formulario HCU 078 — Acuerdo Ministerial MSP 0341-2019');
+    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 078, uso interno de SISSO)`);
+  doc.moveDown(0.5);
+  notaNormativaPie(doc, e);
   doc.moveDown(0.5);
   doc.fontSize(10).font('Helvetica').fillColor('#334155');
   doc.text(`Trabajador: ${e.trabajador_nombre}   |   Documento: ${e.trabajador_documento}`);
@@ -627,7 +663,9 @@ function generarPdfReintegro(e, nombreOrganizacion) {
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación de Reintegro');
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text('Formulario HCU 079 — Acuerdo Ministerial MSP 0341-2019');
+    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 079, uso interno de SISSO)`);
+  doc.moveDown(0.5);
+  notaNormativaPie(doc, e);
   doc.moveDown(0.5);
   doc.fontSize(10).font('Helvetica').fillColor('#334155');
   doc.text(`Trabajador: ${e.trabajador_nombre}   |   Documento: ${e.trabajador_documento}`);

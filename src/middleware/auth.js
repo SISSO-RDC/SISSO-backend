@@ -76,6 +76,47 @@ async function organizacionEstaBloqueada(organizacionId) {
   return !activa || suspendidaManualmente;
 }
 
+// ------------------------------------------------------------
+// CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-08, P1): mismo
+// problema que G-N09-11 pero a nivel de USUARIO individual en vez
+// de organizacion completa -- desactivar un usuario, cambiarle el
+// rol, resetearle el password o alternarle el MFA revocaba sus
+// refresh tokens, pero no invalidaba ningun access token ya emitido
+// (seguia siendo valido hasta sus 15 minutos de expiracion).
+//
+// Se implementa exactamente la solucion recomendada por la
+// auditoria (auth_epoch en usuarios, incluido en el access token,
+// comparado en cada peticion), con el mismo patron de cache corta
+// en memoria que organizacionEstaBloqueada() para no agregar una
+// consulta a BD por peticion. Mismo TTL, misma limitacion
+// documentada (cache por instancia de proceso).
+// ------------------------------------------------------------
+const USUARIO_EPOCH_CACHE_TTL_MS = 20 * 1000;
+const cacheEpochUsuario = new Map(); // usuarioId -> { authEpoch, expiraEn }
+
+async function obtenerAuthEpochActual(usuarioId) {
+  const ahora = Date.now();
+  const cacheada = cacheEpochUsuario.get(usuarioId);
+  if (cacheada && cacheada.expiraEn > ahora) {
+    return cacheada.authEpoch;
+  }
+
+  // Mismo motivo que en organizacionEstaBloqueada(): sin contexto
+  // async todavia fijado, hay que usar queryComoSuperadmin() para
+  // no caer en RLS con el contexto sin fijar.
+  const userRes = await queryComoSuperadmin(
+    `SELECT auth_epoch FROM usuarios WHERE id = $1`,
+    [usuarioId]
+  );
+  // Si el usuario ya no existe, se devuelve un valor que nunca
+  // coincidira con ningun token emitido (-1), forzando el rechazo.
+  const authEpoch = userRes.rows.length > 0 ? userRes.rows[0].auth_epoch : -1;
+
+  cacheEpochUsuario.set(usuarioId, { authEpoch, expiraEn: ahora + USUARIO_EPOCH_CACHE_TTL_MS });
+
+  return authEpoch;
+}
+
 async function autenticar(req, res, next) {
   const authHeader = req.headers.authorization;
 
@@ -110,6 +151,23 @@ async function autenticar(req, res, next) {
           codigo: 'ORGANIZACION_BLOQUEADA',
         });
       }
+    }
+
+    // CORREGIDO en Auditoria N.10 (G10-08): ver comentario arriba.
+    // Aplica a TODOS los roles, incluido superadmin (tambien puede
+    // ser desactivado o requerir invalidacion de sesiones).
+    let authEpochActual;
+    try {
+      authEpochActual = await obtenerAuthEpochActual(payload.sub);
+    } catch (errConsulta) {
+      console.error('Error al verificar auth_epoch en autenticar():', errConsulta);
+      return res.status(500).json({ error: 'Error interno al verificar la sesion.' });
+    }
+    if (typeof payload.authEpoch !== 'number' || payload.authEpoch !== authEpochActual) {
+      return res.status(401).json({
+        error: 'La sesion ya no es valida. Inicie sesion nuevamente.',
+        codigo: 'SESION_INVALIDADA',
+      });
     }
 
     // Adjuntamos la info verificada del usuario a la peticion.

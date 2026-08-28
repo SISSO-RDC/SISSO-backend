@@ -79,6 +79,9 @@ const eppRoutes = require('./routes/eppRoutes');
 // migration_042 y pagosController.js para el patron de seguridad
 // de confirmacion server-to-server.
 const pagosRoutes = require('./routes/pagosRoutes');
+// CREADO en Auditoria N.10 (C10-02): catalogo de finalidades/base
+// juridica de tratamiento de datos.
+const finalidadesTratamientoRoutes = require('./routes/finalidadesTratamientoRoutes');
 
 const app = express();
 
@@ -149,7 +152,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-26-auditoria-n09',
+    version: '2026-08-27-auditoria-n10',
   });
 });
 
@@ -190,6 +193,7 @@ app.use('/api/riesgo-psicosocial', riesgoPsicosocialRoutes);
 app.use('/api/higiene-industrial', higieneIndustrialRoutes);
 app.use('/api/epp', eppRoutes);
 app.use('/api/pagos', pagosRoutes);
+app.use('/api/finalidades-tratamiento', finalidadesTratamientoRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {
