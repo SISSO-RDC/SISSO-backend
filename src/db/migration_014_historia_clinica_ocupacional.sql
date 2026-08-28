@@ -1,5 +1,26 @@
 -- ============================================================
--- SISSO - Migracion 014: Historia Clinica Ocupacional segun el
+-- SISSO - Migracion 014: Historia Clinica Ocupacional.
+--
+-- NOTA AGREGADA en Auditoria N.10 (hallazgo CRITICO C10-01, P0,
+-- comentario de solo-documentacion -- no se modifica el DDL ya
+-- aplicado de una migracion historica): esta migracion se escribio
+-- originalmente tomando como base el Acuerdo Ministerial MSP
+-- 0341-2019 ("Aplicacion de la historia clinica ocupacional",
+-- formularios SNS-MSP HCU 077 a HCU 083). La Corte Constitucional
+-- del Ecuador, mediante Sentencia 59-19-IN/24 (11/07/2024), declaro
+-- la inconstitucionalidad de ese Acuerdo con efectos diferidos y
+-- ordeno no solicitar orientacion sexual ni identidad de genero
+-- mientras el MSP no emita normativa sustitutiva. Ver migration_050
+-- (capa normativa: norma_aplicada/version_formulario/fecha_vigencia/
+-- base_juridica) y los comentarios en
+-- src/historiaClinica/catalogosRiesgo.js y
+-- src/controllers/historiaClinicaController.js para el estado
+-- actual. El texto original de esta migracion se conserva abajo sin
+-- alterar el DDL, unicamente para no reescribir historia de una
+-- migracion ya aplicada en produccion.
+--
+-- Texto original:
+-- Historia Clinica Ocupacional segun el
 -- Acuerdo Ministerial MSP 0341-2019 ("Aplicacion de la historia
 -- clinica ocupacional"), formularios SNS-MSP HCU 077 a HCU 083.
 --
