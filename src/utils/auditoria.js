@@ -140,3 +140,79 @@ async function registrarAuditoria({
 }
 
 module.exports = { registrarAuditoria };
+
+// ------------------------------------------------------------
+// CREADO en Auditoria N.11 (hallazgo GRAVE G11-06, P1): la
+// migracion 049 creo la cola durable auditoria_pendiente, pero la
+// propia auditoria N.09 ya dejaba anotado que faltaba el "proceso
+// periodico que drene auditoria_pendiente hacia auditoria y alerte
+// si el backlog crece" -- este entorno (Render, sin infraestructura
+// de cron propia mas alla de "Render Cron Jobs", que es un producto
+// de pago separado) no tiene un scheduler disponible desde el
+// codigo de la aplicacion. Se implementa el DRENAJE en si (la parte
+// que si depende de este codebase) como funcion reutilizable, y se
+// expone via endpoint de superadmin para poder dispararlo
+// manualmente o desde un cron externo (ej. un GitHub Action
+// programado que haga un POST autenticado a este endpoint, o
+// Render Cron Jobs si se contrata).
+// ------------------------------------------------------------
+
+/**
+ * Intenta mover cada entrada sin drenar de auditoria_pendiente hacia
+ * la tabla auditoria real. Si el INSERT en auditoria tiene exito,
+ * marca la entrada como drenada (no la borra: queda como evidencia
+ * de que hubo una caida transitoria). Si vuelve a fallar, incrementa
+ * intentos_drenaje para poder distinguir "recien llegada" de
+ * "lleva varios intentos fallidos" (esto ultimo si amerita alerta
+ * humana).
+ *
+ * @param {number} limite - maximo de filas a procesar en una corrida (evita corridas gigantes accidentales)
+ * @returns {Promise<{procesadas: number, drenadas: number, fallidas: number}>}
+ */
+async function drenarAuditoriaPendiente(limite = 200) {
+  const pendientesRes = await query(
+    `SELECT id, organizacion_id, usuario_id, accion, entidad, entidad_id, detalle, ip_origen, user_agent
+     FROM auditoria_pendiente
+     WHERE drenado_en IS NULL
+     ORDER BY creado_en ASC
+     LIMIT $1`,
+    [limite]
+  );
+
+  let drenadas = 0;
+  let fallidas = 0;
+
+  for (const fila of pendientesRes.rows) {
+    try {
+      await query(
+        `INSERT INTO auditoria (organizacion_id, usuario_id, accion, entidad, entidad_id, detalle, ip_origen, user_agent)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [fila.organizacion_id, fila.usuario_id, fila.accion, fila.entidad, fila.entidad_id, fila.detalle, fila.ip_origen, fila.user_agent]
+      );
+      await query(`UPDATE auditoria_pendiente SET drenado_en = now() WHERE id = $1`, [fila.id]);
+      drenadas++;
+    } catch (err) {
+      console.error(`No se pudo drenar auditoria_pendiente id=${fila.id}:`, err.message);
+      await query(`UPDATE auditoria_pendiente SET intentos_drenaje = intentos_drenaje + 1 WHERE id = $1`, [fila.id]).catch(() => {});
+      fallidas++;
+    }
+  }
+
+  return { procesadas: pendientesRes.rows.length, drenadas, fallidas };
+}
+
+/**
+ * @returns {Promise<{sinDrenar: number, conMultiplesIntentos: number}>}
+ */
+async function backlogAuditoriaPendiente() {
+  const resultado = await query(
+    `SELECT
+       COUNT(*) FILTER (WHERE drenado_en IS NULL)::int AS sin_drenar,
+       COUNT(*) FILTER (WHERE drenado_en IS NULL AND intentos_drenaje >= 3)::int AS con_multiples_intentos
+     FROM auditoria_pendiente`
+  );
+  return { sinDrenar: resultado.rows[0].sin_drenar, conMultiplesIntentos: resultado.rows[0].con_multiples_intentos };
+}
+
+module.exports.drenarAuditoriaPendiente = drenarAuditoriaPendiente;
+module.exports.backlogAuditoriaPendiente = backlogAuditoriaPendiente;

@@ -19,5 +19,9 @@ router.post('/usuarios/:id/resetear-password', superadminController.resetearPass
 // CORREGIDO (Auditoria N.07, C-N07-01): rotacion forzada de
 // secretos MFA heredados en texto plano. Ver superadminController.js.
 router.post('/mfa/rotar-legado', superadminController.rotarMfaLegado);
+// CREADO en Auditoria N.11 (G11-06): drenaje/monitoreo de la cola
+// de auditoria pendiente.
+router.get('/auditoria-pendiente/backlog', superadminController.verBacklogAuditoria);
+router.post('/auditoria-pendiente/drenar', superadminController.drenarAuditoria);
 
 module.exports = router;

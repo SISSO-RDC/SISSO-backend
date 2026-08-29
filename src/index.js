@@ -82,6 +82,9 @@ const pagosRoutes = require('./routes/pagosRoutes');
 // CREADO en Auditoria N.10 (C10-02): catalogo de finalidades/base
 // juridica de tratamiento de datos.
 const finalidadesTratamientoRoutes = require('./routes/finalidadesTratamientoRoutes');
+// CREADO en Auditoria N.11 (C11-04): modulo de gobierno de datos /
+// derechos del titular.
+const solicitudesTitularRoutes = require('./routes/solicitudesTitularRoutes');
 
 const app = express();
 
@@ -152,7 +155,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-27-auditoria-n10',
+    version: '2026-08-28-auditoria-n11',
   });
 });
 
@@ -194,6 +197,7 @@ app.use('/api/higiene-industrial', higieneIndustrialRoutes);
 app.use('/api/epp', eppRoutes);
 app.use('/api/pagos', pagosRoutes);
 app.use('/api/finalidades-tratamiento', finalidadesTratamientoRoutes);
+app.use('/api/solicitudes-titular', solicitudesTitularRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {
