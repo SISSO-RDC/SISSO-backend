@@ -4,6 +4,9 @@
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+// CREADO en Auditoria N.11 (C11-03): red de seguridad centralizada
+// de minimizacion por campo, ver src/utils/politicaMinimizacion.js.
+const { aplicarBloqueoUniversal } = require('../utils/politicaMinimizacion');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 const { calcularImc, validarFactoresRiesgo } = require('../historiaClinica/historiaClinica');
 const { generarPdfPreocupacional, generarPdfRetiro, generarPdfPeriodica, generarPdfReintegro } = require('../historiaClinica/pdfPreocupacional');
@@ -655,16 +658,18 @@ async function obtenerEvaluacion(req, res) {
       return res.status(404).json({ error: 'Evaluacion no encontrada.' });
     }
 
-    // CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-01, P0): esta
-    // consulta usa `e.*`, que incluye orientacion_sexual e
-    // identidad_genero -- datos que, tras la Sentencia 59-19-IN/24,
-    // SISSO ya no debe exponer en el flujo normal de la aplicacion
-    // (ver migration_050 y catalogosRiesgo.js). Se retiran de la
-    // respuesta para CUALQUIER rol, incluido medico: el bloqueo es
-    // de lectura de aplicacion, no una minimizacion por rol.
-    const evaluacion = resultado.rows[0];
-    delete evaluacion.orientacion_sexual;
-    delete evaluacion.identidad_genero;
+    // CORREGIDO en Auditoria N.10 (hallazgo CRITICO C10-01, P0), y
+    // en Auditoria N.11 (C11-03) migrado a la politica centralizada
+    // de minimizacion: esta consulta usa `e.*`, que incluye
+    // orientacion_sexual e identidad_genero -- datos que, tras la
+    // Sentencia 59-19-IN/24, SISSO ya no debe exponer en el flujo
+    // normal de la aplicacion. Se retiran de la respuesta para
+    // CUALQUIER rol, incluido medico: el bloqueo es de lectura de
+    // aplicacion, no una minimizacion por rol. Ver
+    // src/utils/politicaMinimizacion.js para la lista completa de
+    // campos bloqueados de esta tabla (incluye tambien los bloques
+    // clinicos completos para roles no medicos).
+    const evaluacion = aplicarBloqueoUniversal(resultado.rows[0], 'evaluaciones_ocupacionales', req.usuario.rol);
 
     // CORREGIDO tras Auditoria SISSO N.06 (punto 13.6 / hallazgo
     // G10): esta es la lectura mas sensible del sistema (detalle
@@ -713,11 +718,10 @@ async function descargarPdf(req, res) {
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'Evaluacion no encontrada.' });
     }
-    const e = resultado.rows[0];
-    // CORREGIDO en Auditoria N.10 (C10-01): ver comentario en
-    // obtenerEvaluacion(). Los PDFs no deben incluir estos campos.
-    delete e.orientacion_sexual;
-    delete e.identidad_genero;
+    // CORREGIDO en Auditoria N.10 (C10-01) y N.11 (C11-03): ver
+    // comentario en obtenerEvaluacion(). Migrado a la politica
+    // centralizada.
+    const e = aplicarBloqueoUniversal(resultado.rows[0], 'evaluaciones_ocupacionales', req.usuario.rol);
 
     // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-04, P1): un PDF
     // clinico no es menos sensible que el JSON de detalle -- de
@@ -791,10 +795,9 @@ async function descargarCertificado(req, res) {
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'Evaluacion no encontrada.' });
     }
-    const e = resultado.rows[0];
-    // CORREGIDO en Auditoria N.10 (C10-01).
-    delete e.orientacion_sexual;
-    delete e.identidad_genero;
+    // CORREGIDO en Auditoria N.10 (C10-01) y N.11 (C11-03): migrado
+    // a la politica centralizada.
+    const e = aplicarBloqueoUniversal(resultado.rows[0], 'evaluaciones_ocupacionales', req.usuario.rol);
 
     // CORREGIDO en Auditoria N.10 (hallazgo GRAVE G10-04, P1): ver
     // comentario equivalente en descargarPdf(). El certificado

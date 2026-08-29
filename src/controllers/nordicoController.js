@@ -8,28 +8,32 @@ const { registrarAuditoria } = require('../utils/auditoria');
 const { REGIONES, calcularResumenNordico } = require('../nordico/nordico');
 const catalogosNordico = require('../nordico/nordico');
 
-// ------------------------------------------------------------
-// CORREGIDO en Auditoria N.09 (hallazgo GRAVE G-N09-01, P1): el
-// endpoint estaba autorizado para 'medico' y 'sso' por igual, y
-// devolvia a ambos el detalle nominal completo del cuestionario
-// -- incluyendo `regiones` (duracion/lado/frecuencia por zona
-// corporal, dato bastante fino sobre el estado de salud del
-// trabajador) y `observaciones_generales` (texto libre escrito
-// por el propio trabajador). Aunque el Cuestionario Nordico tiene
-// finalidad ergonomica, ese nivel de detalle asociado a una
-// persona identificable puede revelar estado de salud, que es
-// dato sensible.
+// CORREGIDO en Auditoria N.11 (hallazgo GRAVE G11-01, P1): la
+// correccion de N.10 (G-N09-01) ya habia quitado `regiones` y
+// `observaciones_generales` de la vista de SSO, pero la auditoria
+// N.11 senala -con razon- que lo que quedaba (conteos de regiones
+// con molestia a 12 meses/7 dias y el arreglo `regiones_prioritarias`,
+// que es una lista NOMINAL de zonas corporales por nombre) sigue
+// siendo informacion de salud asociada a una persona identificable.
+// Un conteo de "cuantas zonas duelen" y una lista de "cuales zonas
+// duelen" no dejan de ser datos de sintomas solo por no incluir el
+// detalle completo por zona.
 //
-// SSO sigue necesitando lo suficiente para priorizar intervencion
-// ergonomica (que zonas duelen, si hay 12 meses/7 dias de molestia,
-// si el caso quedo marcado como prioritario), pero NO el historial
-// individual de sintomas por zona ni el texto libre. Solo 'medico'
-// recibe el registro completo.
-// ------------------------------------------------------------
+// Ahora SSO recibe UNICAMENTE una senal preventiva ya calculada
+// (prioridad + accion sugerida), sin ningun conteo ni nombre de zona
+// corporal. Todo el detalle -incluidos los conteos y la lista de
+// zonas- queda reservado a medico.
 function proyectarNordicoPorRol(fila, rol) {
   if (rol === 'medico') return fila;
-  const { regiones, observaciones_generales, ...resto } = fila;
-  return resto;
+  return {
+    id: fila.id,
+    trabajador_id: fila.trabajador_id,
+    fecha_aplicacion: fila.fecha_aplicacion,
+    prioridad_preventiva: fila.requiere_atencion_prioritaria ? 'alta' : 'rutinaria',
+    accion_requerida: fila.requiere_atencion_prioritaria
+      ? 'Derivar a valoracion ergonomica/medica prioritaria.'
+      : 'Seguimiento preventivo rutinario.',
+  };
 }
 
 // ------------------------------------------------------------

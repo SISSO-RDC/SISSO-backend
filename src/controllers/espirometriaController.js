@@ -160,11 +160,17 @@ async function listarExamenes(req, res) {
     // proteccion respiratoria), pero no los valores medidos, los
     // porcentajes predichos ni las observaciones clinicas — eso es
     // informacion medica que corresponde al medico ocupacional.
+    // CORREGIDO en Auditoria N.11 (hallazgo GRAVE G11-04, P1): el
+    // patron nominal (normal/obstructivo/restrictivo/etc.) sigue
+    // siendo una conclusion clinica sobre funcion pulmonar, aunque no
+    // se entreguen los valores medidos. Se colapsa a una senal
+    // binaria de seguimiento preventivo, sin nombrar el patron
+    // especifico. El patron detallado queda reservado a medico.
     const examenes = req.usuario.rol === 'sso'
       ? res2.rows.map((e) => ({
           id: e.id,
           fecha_examen: e.fecha_examen,
-          patron: e.patron,
+          estado_preventivo: (e.patron && e.patron !== 'normal' && e.patron !== 'no_clasificable') ? 'requiere_seguimiento' : 'sin_novedad',
           creado_en: e.creado_en,
         }))
       : res2.rows;

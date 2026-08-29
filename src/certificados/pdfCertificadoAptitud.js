@@ -104,7 +104,12 @@ function generarPdfCertificadoAptitud(trabajador, nombreOrganizacion) {
 
   doc.moveDown(1.5);
   doc.fontSize(9.5).font('Helvetica').fillColor('#475569').text(
-    'Este certificado refleja el estado de aptitud médica laboral registrado actualmente en el sistema de gestión de SSO de la organización, con base en la última evaluación ocupacional realizada. No sustituye al Certificado de Salud en el Trabajo (Formulario HCU 081, Acuerdo Ministerial MSP 0341-2019), el cual debe solicitarse cuando se requiera el respaldo formal derivado de una evaluación específica.',
+    // CORREGIDO en Auditoria N.11 (hallazgo CRITICO C11-02, P0): este
+    // era el ultimo texto USUARIO-FACING (no un comentario interno)
+    // que seguia citando el Acuerdo Ministerial MSP 0341-2019 como si
+    // fuera la norma vigente para el "Certificado de Salud en el
+    // Trabajo" -- exactamente lo que C10-01/C11-02 buscan eliminar.
+    'Este certificado refleja el estado de aptitud médica laboral registrado actualmente en el sistema de gestión de SSO de la organización, con base en la última evaluación ocupacional realizada. No sustituye al Certificado de Salud en el Trabajo emitido por el médico ocupacional a partir de una evaluación específica, documento que debe solicitarse cuando se requiera ese respaldo formal.',
     { align: 'justify' }
   );
 

@@ -149,22 +149,28 @@ async function listarExamenes(req, res) {
       [req.params.trabajadorId, req.usuario.organizacionId]
     );
 
-    // CORREGIDO tras auditoria de seguridad (hallazgo GRAVE G3): SSO
-    // necesita la clasificacion y la aptitud ocupacional resultante
-    // (relevante, por ejemplo, para tareas que exigen discriminacion
-    // de colores o conduccion), pero no la agudeza visual cruda ni
-    // las observaciones clinicas — eso es informacion medica que
-    // corresponde al medico ocupacional.
+    // CORREGIDO en Auditoria N.11 (hallazgo GRAVE G11-02, P1): la
+    // proyeccion anterior (post G3) todavia entregaba a SSO
+    // clasificacion_ao, clasificacion_colores, aptitud_sugerida y
+    // aptitud_definida -- estos son CONCLUSIONES derivadas de un
+    // examen medico, no dejan de ser dato clinico por estar en un
+    // modulo preventivo. aptitud_definida en particular es
+    // practicamente una decision de aptitud ocupacional. Ahora SSO
+    // recibe unicamente una senal binaria de seguimiento (si
+    // requiere control adicional o no), sin ninguna clasificacion ni
+    // conclusion nominal. La clasificacion y aptitud completas
+    // quedan reservadas a medico.
+    const REQUIERE_SEGUIMIENTO = ['requiere_evaluacion_oftalmologica', 'no_apto'];
     const examenes = req.usuario.rol === 'sso'
-      ? res2.rows.map((e) => ({
-          id: e.id,
-          fecha_examen: e.fecha_examen,
-          clasificacion_ao: e.clasificacion_ao,
-          clasificacion_colores: e.clasificacion_colores,
-          aptitud_sugerida: e.aptitud_sugerida,
-          aptitud_definida: e.aptitud_definida,
-          creado_en: e.creado_en,
-        }))
+      ? res2.rows.map((e) => {
+          const requiereSeguimiento = REQUIERE_SEGUIMIENTO.includes(e.aptitud_definida) || !!e.vision_monocular_severa;
+          return {
+            id: e.id,
+            fecha_examen: e.fecha_examen,
+            estado_preventivo: requiereSeguimiento ? 'requiere_seguimiento' : 'sin_novedad',
+            creado_en: e.creado_en,
+          };
+        })
       : res2.rows;
 
     return res.json({ examenes });

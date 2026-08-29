@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { query, withTransaction } = require('../db/pool');
-const { registrarAuditoria } = require('../utils/auditoria');
+const { registrarAuditoria, drenarAuditoriaPendiente, backlogAuditoriaPendiente } = require('../utils/auditoria');
 const { rotarSecretosMfaLegados } = require('../utils/mfaLegado');
 
 const SALT_ROUNDS = 12;
@@ -420,7 +420,41 @@ async function rotarMfaLegado(req, res) {
   }
 }
 
+// CREADO en Auditoria N.11 (hallazgo GRAVE G11-06, P1): endpoints
+// para drenar y monitorear la cola de auditoria pendiente (ver
+// utils/auditoria.js). Pensados para dispararse manualmente o desde
+// un cron externo autenticado (este entorno no tiene scheduler
+// propio disponible desde el codigo).
+async function verBacklogAuditoria(req, res) {
+  try {
+    const backlog = await backlogAuditoriaPendiente();
+    return res.json(backlog);
+  } catch (err) {
+    console.error('Error en verBacklogAuditoria:', err);
+    return res.status(500).json({ error: 'Error interno al consultar el backlog de auditoria.' });
+  }
+}
+
+async function drenarAuditoria(req, res) {
+  try {
+    const resultado = await drenarAuditoriaPendiente();
+    await registrarAuditoria({
+      organizacionId: null,
+      usuarioId: req.usuario.id,
+      accion: 'auditoria_pendiente_drenada_manualmente',
+      entidad: 'auditoria_pendiente',
+      detalle: resultado,
+      req,
+    });
+    return res.json(resultado);
+  } catch (err) {
+    console.error('Error en drenarAuditoria:', err);
+    return res.status(500).json({ error: 'Error interno al drenar la cola de auditoria.' });
+  }
+}
+
 module.exports = {
   listarEmpresas, crearEmpresa, cambiarEstadoUsuario, resetearPassword,
   cambiarSuspensionOrganizacion, asignarPlan, rotarMfaLegado,
+  verBacklogAuditoria, drenarAuditoria,
 };

@@ -163,13 +163,21 @@ async function listarExamenes(req, res) {
     // clinicas — eso es informacion medica que corresponde al
     // medico ocupacional (ver tambien audiometriaRoutes.js, donde
     // el detalle completo por examen ya quedo restringido a medico).
+    // CORREGIDO en Auditoria N.11 (hallazgo GRAVE G11-03, P1): la
+    // correccion anterior (G1) ya habia quitado los umbrales crudos,
+    // pero seguia entregando sts_od_positivo/sts_oi_positivo
+    // desglosados por oido -- eso sigue siendo un resultado clinico
+    // nominal (que oido especifico tuvo cambio de umbral
+    // significativo es informacion diagnostica). Se colapsa a una
+    // sola senal no lateralizada: si HAY seguimiento requerido o no,
+    // sin precisar oido ni magnitud. El desglose por oido queda
+    // reservado a medico.
     const examenes = req.usuario.rol === 'sso'
       ? res2.rows.map((e) => ({
           id: e.id,
           fecha_examen: e.fecha_examen,
           es_basal: e.es_basal,
-          sts_od_positivo: e.sts_od_positivo,
-          sts_oi_positivo: e.sts_oi_positivo,
+          requiere_seguimiento_auditivo: !!(e.sts_od_positivo || e.sts_oi_positivo),
           creado_en: e.creado_en,
         }))
       : res2.rows;

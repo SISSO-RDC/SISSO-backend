@@ -186,7 +186,31 @@ async function listarPorTrabajador(req, res) {
       [req.params.trabajadorId, req.usuario.organizacionId]
     );
 
-    return res.json({ consentimientos: resultado.rows });
+    // CORREGIDO en Auditoria N.11 (hallazgo GRAVE G11-05, P1): N.10
+    // ya habia separado el CONTENIDO firmado (reservado a medico
+    // cuando categoria='clinico'), pero SSO/TH seguian viendo el
+    // NOMBRE del tipo de consentimiento (ej. "pruebas_psicologicas",
+    // "pruebas_toxicologicas") en el listado -- saber que un
+    // trabajador tiene ese tipo especifico de consentimiento firmado
+    // ya revela indirectamente informacion de salud, incluso sin ver
+    // el documento. SSO/TH conservan la GESTION DE ESTADO
+    // (cuantos hay, vigentes/revocados, fecha) para tipos clinicos,
+    // pero el nombre especifico del procedimiento queda oculto tras
+    // una etiqueta generica. Para tipos 'operativo' (sin equivalente
+    // clinico) se sigue mostrando el nombre completo.
+    const esRolRestringido = req.usuario.rol !== 'medico';
+    const consentimientos = resultado.rows.map((c) => {
+      if (esRolRestringido && c.categoria === 'clinico') {
+        return {
+          ...c,
+          tipo_consentimiento_codigo: 'clinico_reservado',
+          tipo_consentimiento_nombre: 'Consentimiento clínico (detalle reservado a médico)',
+        };
+      }
+      return c;
+    });
+
+    return res.json({ consentimientos });
   } catch (err) {
     console.error('Error en listarPorTrabajador (consentimientos):', err);
     return res.status(500).json({ error: 'Error interno al listar los consentimientos del trabajador.' });
