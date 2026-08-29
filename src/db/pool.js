@@ -13,10 +13,35 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+// CORREGIDO en Auditoria N.11 (hallazgo GRAVE G11-11, P1): con
+// `rejectUnauthorized: false` la conexion se cifra pero NO se
+// verifica que el certificado del servidor sea el de Neon --un
+// atacante en posicion de intermediario (DNS envenenado, red
+// comprometida, etc.) podria presentar cualquier certificado y la
+// conexion lo aceptaria igual. Para una aplicacion que mueve datos
+// clinicos, eso reduce una garantia de seguridad que SI esta
+// disponible sin costo adicional: Neon usa certificados firmados
+// por una autoridad publica reconocida (no autofirmados), asi que
+// el bundle de CAs raiz que ya trae Node de fabrica alcanza para
+// verificarlo con `rejectUnauthorized: true` -- no hace falta
+// distribuir ni mantener un archivo de CA propio.
+//
+// Se deja una valvula de escape via variable de entorno
+// (DB_SSL_REJECT_UNAUTHORIZED=false) unicamente para el caso de
+// desarrollo local contra un Postgres con certificado autofirmado;
+// en produccion NO debe definirse esa variable.
+const sslRejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false';
+if (!sslRejectUnauthorized) {
+  console.warn(
+    'ADVERTENCIA: DB_SSL_REJECT_UNAUTHORIZED=false -- la conexion a PostgreSQL no verifica el certificado '
+    + 'del servidor. Esto NUNCA debe usarse en produccion (ver hallazgo G11-11).'
+  );
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Neon y la mayoria de proveedores cloud de Postgres requieren SSL.
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: sslRejectUnauthorized },
   max: 10, // maximo de conexiones simultaneas, suficiente para empezar
   idleTimeoutMillis: 30000,
 });
