@@ -20,6 +20,8 @@
 // ampliamente en estudios de salud ocupacional en Latinoamerica).
 // ============================================================
 
+const { validarContraEsquema } = require('../utils/validarEsquemaJson');
+
 const REGIONES = [
   'cuello', 'hombro', 'columna_dorsal', 'columna_lumbar', 'codo',
   'cadera_pierna', 'rodilla', 'tobillo_pie', 'muneca_mano',
@@ -83,8 +85,58 @@ function calcularResumenNordico(regiones) {
   };
 }
 
+// CREADO en Auditoria N.12 (hallazgo GRAVE G12-10, P1): esquema tipo
+// JSON Schema de una zona del cuestionario (ver
+// src/utils/validarEsquemaJson.js). Antes solo se validaba que las
+// CLAVES del objeto `regiones` fueran zonas conocidas; el CONTENIDO
+// de cada zona (intensidad fuera de 0-5, "lado" con un valor
+// arbitrario, etc.) no se validaba y podia corromper en silencio el
+// calculo de calcularResumenNordico().
+const ESQUEMA_ZONA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['tuvoMolestias12Meses'],
+  properties: {
+    tuvoMolestias12Meses: { type: 'boolean' },
+    lado: { type: 'string', enum: OPCIONES_LADO },
+    duracionEpisodio: { type: 'string', enum: OPCIONES_DURACION_EPISODIO },
+    tiempoTotal12Meses: { type: 'string', enum: OPCIONES_TIEMPO_TOTAL_12_MESES },
+    tiempoImpedimentoTrabajo: { type: 'string', enum: OPCIONES_TIEMPO_IMPEDIMENTO },
+    cambioPuestoTrabajo: { type: 'boolean' },
+    recibioTratamiento: { type: 'boolean' },
+    molestiasUltimos7Dias: { type: 'boolean' },
+    intensidad: { type: 'integer', minimum: 0, maximum: 5 },
+    atribucion: { type: 'string' },
+  },
+};
+
+/**
+ * Valida el objeto `regiones` completo (todas las zonas presentes)
+ * contra ESQUEMA_ZONA. Solo valida las zonas que el trabajador
+ * respondio (no exige las 9 -- un cuestionario puede aplicarse de
+ * forma parcial/incremental).
+ *
+ * @param {object} regiones
+ * @returns {string[]} errores (vacio si es valido)
+ */
+function validarRegionesNordico(regiones) {
+  if (!regiones || typeof regiones !== 'object' || Array.isArray(regiones)) {
+    return ['regiones: se esperaba un objeto.'];
+  }
+  const errores = [];
+  Object.keys(regiones).forEach((clave) => {
+    if (!REGIONES.includes(clave)) {
+      errores.push(`regiones.${clave}: zona corporal no reconocida.`);
+      return;
+    }
+    errores.push(...validarContraEsquema(regiones[clave], ESQUEMA_ZONA, `regiones.${clave}`));
+  });
+  return errores;
+}
+
 module.exports = {
   REGIONES, REGIONES_BILATERALES, ETIQUETAS_REGIONES,
   OPCIONES_DURACION_EPISODIO, OPCIONES_TIEMPO_TOTAL_12_MESES, OPCIONES_TIEMPO_IMPEDIMENTO, OPCIONES_LADO,
   requiereSeguimientoPrioritario, calcularResumenNordico,
+  validarRegionesNordico,
 };

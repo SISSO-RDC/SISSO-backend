@@ -18,10 +18,13 @@
 const express = require('express');
 const router = express.Router();
 const { autenticar, autorizar } = require('../middleware/auth');
-const { registrarExamen, listarExamenes, obtenerExamen } = require('../controllers/audiometriaController');
+const { registrarExamen, listarExamenes, obtenerExamen, revisarBaseline } = require('../controllers/audiometriaController');
 
 router.post('/trabajadores/:trabajadorId', autenticar, autorizar('medico'), registrarExamen);
 router.get('/trabajadores/:trabajadorId', autenticar, autorizar('medico', 'sso'), listarExamenes);
 router.get('/:examenId', autenticar, autorizar('medico'), obtenerExamen);
+// CREADO en Auditoria N.12 (G12-03): revisar la baseline vigente es
+// una decision clinica -- reservada a 'medico', igual que registrar.
+router.put('/:examenId/revisar-baseline', autenticar, autorizar('medico'), revisarBaseline);
 
 module.exports = router;

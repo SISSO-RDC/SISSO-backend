@@ -11,6 +11,7 @@ const morgan = require('morgan');
 // authController.js: completarLogin/refrescar/logout).
 const cookieParser = require('cookie-parser');
 
+const { autenticar, autorizar } = require('./middleware/auth');
 const authRoutes = require('./routes/authRoutes');
 const ejemploRoutes = require('./routes/ejemploRoutes');
 const trabajadoresRoutes = require('./routes/trabajadoresRoutes');
@@ -85,6 +86,7 @@ const finalidadesTratamientoRoutes = require('./routes/finalidadesTratamientoRou
 // CREADO en Auditoria N.11 (C11-04): modulo de gobierno de datos /
 // derechos del titular.
 const solicitudesTitularRoutes = require('./routes/solicitudesTitularRoutes');
+const incidentesSeguridadRoutes = require('./routes/incidentesSeguridadRoutes');
 
 const app = express();
 
@@ -155,8 +157,38 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-28-auditoria-n11',
+    version: '2026-08-29-auditoria-n12',
   });
+});
+
+// --- Salud del motor de aptitud/contraindicaciones (C12-01, punto 6) ---
+// CREADO en Auditoria N.12 (hallazgo CRITICO C12-01): el fallo de
+// RLS sobre catalogos globales no producia error HTTP -- el motor
+// podia quedarse sin reglas globales y responder 200 igual. Este
+// endpoint expone SOLO el conteo de reglas/exposiciones globales
+// activas cargadas (nunca su contenido clinico), para poder
+// verificar en segundos, desde monitoreo externo o a mano, que el
+// motor tiene material de referencia disponible. Requiere
+// superadmin porque cuenta filas a traves de organizaciones.
+app.get('/api/salud/motor-aptitud', autenticar, autorizar('superadmin'), async (req, res) => {
+  try {
+    const { queryComoSuperadmin } = require('./db/pool');
+    const resultado = await queryComoSuperadmin(
+      `SELECT
+         (SELECT COUNT(*)::int FROM reglas_contraindicacion WHERE organizacion_id IS NULL AND activa = true) AS reglas_globales_activas,
+         (SELECT COUNT(*)::int FROM catalogo_exposiciones WHERE organizacion_id IS NULL AND activo = true) AS exposiciones_globales_activas`
+    );
+    const fila = resultado.rows[0];
+    const motorSaludable = fila.reglas_globales_activas > 0 && fila.exposiciones_globales_activas > 0;
+    res.status(motorSaludable ? 200 : 503).json({
+      estado: motorSaludable ? 'ok' : 'sin_reglas_globales',
+      reglasGlobalesActivas: fila.reglas_globales_activas,
+      exposicionesGlobalesActivas: fila.exposiciones_globales_activas,
+    });
+  } catch (err) {
+    console.error('Error en /api/salud/motor-aptitud:', err);
+    res.status(500).json({ error: 'Error interno al verificar la salud del motor de aptitud.' });
+  }
 });
 
 // --- Rutas de la aplicacion ---
@@ -198,6 +230,8 @@ app.use('/api/epp', eppRoutes);
 app.use('/api/pagos', pagosRoutes);
 app.use('/api/finalidades-tratamiento', finalidadesTratamientoRoutes);
 app.use('/api/solicitudes-titular', solicitudesTitularRoutes);
+// CREADO en Auditoria N.12 (C12-03, punto 3).
+app.use('/api/incidentes-seguridad', incidentesSeguridadRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {

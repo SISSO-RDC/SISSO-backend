@@ -48,7 +48,7 @@
 // cada uno para el `withTransaction(async (client) => {...})` que
 // envuelve la escritura clinica + su auditoria).
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 
 /**
  * Registra una entrada de auditoria.
@@ -182,14 +182,47 @@ async function drenarAuditoriaPendiente(limite = 200) {
   let drenadas = 0;
   let fallidas = 0;
 
+  // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-07, P1): la
+  // version anterior hacia el INSERT en `auditoria` y el UPDATE de
+  // `drenado_en` como dos sentencias sueltas via query() (que abre
+  // y cierra su PROPIA transaccion cada vez, ver db/pool.js). Si el
+  // INSERT tenia exito pero el UPDATE fallaba (ej. caida de red
+  // justo entre ambas llamadas), la fila quedaba con drenado_en aun
+  // en NULL -- la siguiente corrida del drenaje la volvia a leer con
+  // `WHERE drenado_en IS NULL` y la insertaba OTRA VEZ en
+  // `auditoria`, duplicando el evento.
+  //
+  // Con withTransaction(), ambas sentencias comparten una sola
+  // transaccion BEGIN...COMMIT: si el UPDATE fallara despues de un
+  // INSERT exitoso, el ROLLBACK deshace tambien el INSERT, la fila
+  // de auditoria_pendiente sigue con drenado_en = NULL, y la
+  // proxima corrida la reintenta desde cero sin haber creado un
+  // duplicado a mitad de camino. Un fallo intermedio ya no puede
+  // dejar un estado a medias.
   for (const fila of pendientesRes.rows) {
     try {
-      await query(
-        `INSERT INTO auditoria (organizacion_id, usuario_id, accion, entidad, entidad_id, detalle, ip_origen, user_agent)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [fila.organizacion_id, fila.usuario_id, fila.accion, fila.entidad, fila.entidad_id, fila.detalle, fila.ip_origen, fila.user_agent]
-      );
-      await query(`UPDATE auditoria_pendiente SET drenado_en = now() WHERE id = $1`, [fila.id]);
+      await withTransaction(async (client) => {
+        await client.query(
+          `INSERT INTO auditoria (organizacion_id, usuario_id, accion, entidad, entidad_id, detalle, ip_origen, user_agent)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [fila.organizacion_id, fila.usuario_id, fila.accion, fila.entidad, fila.entidad_id, fila.detalle, fila.ip_origen, fila.user_agent]
+        );
+        // Requiere que drenado_en SIGA en NULL en el momento del
+        // UPDATE (FOR UPDATE + condicion): si dos corridas del
+        // drenaje se solaparan (ej. el endpoint manual y un futuro
+        // cron externo a la vez), la segunda no vuelve a insertar
+        // en `auditoria` un evento que la primera ya confirmo,
+        // porque rowCount = 0 hace que se lance el error de abajo y
+        // toda la transaccion (incluido su propio INSERT) revierta.
+        const upd = await client.query(
+          `UPDATE auditoria_pendiente SET drenado_en = now()
+           WHERE id = $1 AND drenado_en IS NULL`,
+          [fila.id]
+        );
+        if (upd.rowCount === 0) {
+          throw new Error('La fila ya fue drenada por otra ejecucion concurrente; se revierte este INSERT para no duplicar.');
+        }
+      });
       drenadas++;
     } catch (err) {
       console.error(`No se pudo drenar auditoria_pendiente id=${fila.id}:`, err.message);

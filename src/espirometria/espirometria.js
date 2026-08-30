@@ -1,60 +1,59 @@
 // ============================================================
 // SISSO - Calculo de espirometria: valores predichos, limite
 // inferior de la normalidad (LLN), clasificacion de patron
-// ventilatorio y reversibilidad post-broncodilatador.
+// ventilatorio, calidad de maniobra y reversibilidad
+// post-broncodilatador.
 //
-// ECUACIONES DE REFERENCIA: ECSC/ERS 1993 (Quanjer PH, Tammeling
-// GJ, Cotes JE, Pedersen OF, Peslin R, Yernault JC. "Lung volumes
-// and forced ventilatory flows". Report Working Party
-// Standardization of Lung Function Tests, European Community for
-// Steel and Coal. Official Statement of the European Respiratory
-// Society. Eur Respir J. 1993;6(Suppl 16):5-40).
+// ACTUALIZADO en Auditoria N.12 (hallazgo CRITICO C12-02, P0):
+// la version anterior interpretaba con ATS/ERS 2005: cociente fijo
+// FEV1/FVC < 0.70 como criterio PRINCIPAL de obstruccion, 80% del
+// predicho como referencia de normalidad para FVC, y reversibilidad
+// post-broncodilatador >=12% Y >=200 mL respecto del valor
+// pre-broncodilatador. La norma ERS/ATS 2022 ("Interpretive
+// strategies for routine lung function tests") senala
+// explicitamente que:
+//   - El cociente fijo 0.70 NO es recomendable (sobreestima
+//     obstruccion en mayores, la subestima en jovenes).
+//   - El 80% del predicho NO es recomendable como criterio de
+//     normalidad.
+//   - Debe usarse el limite inferior de la normalidad (LLN,
+//     percentil 5) especifico de cada parametro, idealmente con
+//     ecuaciones GLI-2012 (splines LMS por edad/sexo/talla/etnia).
+//   - La respuesta broncodilatadora significativa se define como
+//     cambio >10% DEL PREDICHO (no del valor pre-BD).
 //
-// DECISION DE DISENO (documentada en la auditoria previa): se usan
-// las ecuaciones ECSC/ERS 1993 (lineales, sexo/edad/talla) en vez
-// de GLI-2012 porque GLI-2012 requiere splines LMS (tablas de
-// lookup con look-up de percentiles por edad) cuya implementacion
-// directa en JS produjo resultados incorrectos en pruebas previas.
-// ECSC/ERS 1993 sigue siendo ampliamente usada en espirometros
-// clinicos (Vitalograph, MIR, Jaeger) y es valida para adultos
-// 18-70 anios aproximadamente.
+// ECUACIONES DE REFERENCIA (PREDICHOS): se mantienen ECSC/ERS 1993
+// para los valores predichos de FVC/FEV1/PEF/FEF25-75 (documentado
+// en la version anterior: GLI-2012 requiere splines LMS con tablas
+// de lookup que no se reproducen aqui sin una fuente oficial
+// verificada por un profesional biomedico -- ver tambien
+// migration_061). Lo que SI cambia respecto de la version anterior:
 //
-// INTERPRETACION: sigue el algoritmo ATS/ERS 2005 ("Interpretative
-// strategies for lung function tests", Eur Respir J 2005;26:948-968):
-//   1. Obstruccion: FEV1/FVC por debajo del limite de corte.
-//   2. Restriccion SUGERIDA (no confirmada): FVC < LLN con
-//      FEV1/FVC normal. La espirometria por si sola NO PUEDE
-//      confirmar restriccion; se requiere volumen pulmonar total
-//      (pletismografia) para confirmarla. Por eso el patron se
-//      llama "restrictivo_sugerido", nunca "restrictivo".
-//   3. Mixto SUGERIDO: FEV1/FVC bajo Y FVC < LLN. Tampoco
-//      confirmable solo con espirometria (puede ser atrapamiento
-//      de aire por la obstruccion, no restriccion real).
-//   4. Severidad de la obstruccion: gradiente por %predicho de FEV1
-//      (tabla ATS/ERS 2005): leve >=70%, moderada 60-69%,
-//      moderada-severa 50-59%, severa 35-49%, muy severa <35%.
-//
-// LIMITE FEV1/FVC: la guia ATS/ERS 2005 recomienda usar el LLN
-// especifico de la poblacion para el cociente FEV1/FVC cuando este
-// disponible. Como ECSC/ERS 1993 no publica una ecuacion de LLN
-// separada y confiable para el cociente, seguimos la alternativa
-// que la propia guia ATS/ERS 2005 reconoce como aceptable cuando
-// no se dispone de ese LLN poblacional: un corte fijo de 0.70.
-// Limitacion conocida y documentada por la guia: este corte fijo
-// sobreestima la obstruccion en adultos mayores y la subestima en
-// personas jovenes. Se muestra igualmente el cociente predicho
-// (FEV1 predicho / FVC predicho) como referencia informativa.
-//
-// REVERSIBILIDAD POST-BRONCODILATADOR (ATS/ERS 2005): se considera
-// respuesta broncodilatadora positiva si FEV1 O FVC aumentan
-// >=12% Y >=200 mL respecto del valor pre-broncodilatador.
+//   1. El LLN estadistico (predicho - 1.645*RSD, aproximacion
+//      estandar del percentil 5 de una distribucion normal, el
+//      mismo metodo que ATS/ERS reconoce quando no se dispone de
+//      GLI) se generaliza tambien al COCIENTE FEV1/FVC, no solo a
+//      FVC/FEV1 individuales como en la version 2005 de este
+//      modulo. El cociente fijo 0.70 deja de ser el criterio
+//      principal; el LLN del cociente lo reemplaza (margen fijo de
+//      8 puntos porcentuales bajo el predicho -- ver justificacion
+//      y limitacion documentada junto a MARGEN_LLN_COCIENTE_PUNTOS
+//      mas abajo).
+//   2. Reversibilidad broncodilatadora: >10% del PREDICHO de FEV1 o
+//      FVC (no del valor pre-BD), acorde a ERS/ATS 2022.
+//   3. Se agrega estructura de CALIDAD de maniobra (ATS/ERS 2019):
+//      numero de maniobras aceptables, repetibilidad entre las 2
+//      mejores FVC/FEV1, y un grado A-F/U. Si la calidad no alcanza
+//      el minimo, el examen se marca `interpretable=false` y el
+//      patron NO debe presentarse como apoyo diagnostico (el
+//      controlador respeta este flag).
 //
 // Diseno: funciones puras (sin acceso a BD), igual que reba.js,
 // rula.js y audiometria.js, para poder testarlas de forma aislada.
 // ============================================================
 
 // ------------------------------------------------------------
-// Coeficientes de las ecuaciones ECSC/ERS 1993.
+// Coeficientes de las ecuaciones ECSC/ERS 1993 para los PREDICHOS.
 // H = talla en metros, A = edad en anios.
 // Formula general: valor = coefH * H + coefA * A + constante
 // ------------------------------------------------------------
@@ -73,13 +72,21 @@ const COEFICIENTES = {
   },
 };
 
-// Corte fijo del cociente FEV1/FVC recomendado por ATS/ERS 2005
-// como alternativa cuando no hay LLN poblacional especifico.
-const CORTE_FEV1_FVC = 0.70;
+// CORREGIDO en Auditoria N.12 (C12-02): el cociente fijo YA NO es el
+// criterio principal de clasificacion. Se conserva solo como dato
+// informativo secundario para el medico (ver `criterioFijoReferencia`
+// en el resultado), nunca como base de `patron`.
+const CORTE_FEV1_FVC_INFORMATIVO = 0.70;
 
-// Criterio ATS/ERS 2005 de reversibilidad post-broncodilatador.
-const REVERSIBILIDAD_PCT_MINIMO = 12; // % de cambio respecto al valor pre-BD
-const REVERSIBILIDAD_ML_MINIMO = 0.200; // Litros (200 mL)
+// CORREGIDO en Auditoria N.12 (C12-02): reversibilidad ERS/ATS 2022
+// -- cambio >10% respecto del PREDICHO (ya no >=12%+200mL respecto
+// del valor pre-broncodilatador, criterio ATS/ERS 2005 retirado).
+const REVERSIBILIDAD_PCT_PREDICHO_MINIMO = 10;
+
+// Umbrales minimos de calidad ATS/ERS 2019 para considerar una
+// espirometria interpretable como apoyo clinico.
+const CALIDAD_MIN_MANIOBRAS = 3;
+const CALIDAD_MAX_REPETIBILIDAD_ML = 150; // diferencia entre las 2 mejores FVC y las 2 mejores FEV1
 
 /**
  * Redondea a 2 decimales.
@@ -94,30 +101,33 @@ function r2(n) {
  * espirometrico segun ECSC/ERS 1993.
  *
  * LLN = predicho - 1.645 * RSD (aproximacion estandar del
- * percentil 5 de una distribucion normal).
+ * percentil 5 de una distribucion normal, la misma que reconoce
+ * ATS/ERS cuando no se usa GLI-2012 directamente).
  *
  * @param {'M'|'F'} sexo
  * @param {number} edadAnios
  * @param {number} tallaM - talla en metros
  * @param {'fvc'|'fev1'|'pef'|'fef2575'} parametro
- * @returns {{ predicho: number, lln: number }}
+ * @returns {{ predicho: number, lln: number, rsd: number }}
  */
 function calcularPredichoYLln(sexo, edadAnios, tallaM, parametro) {
   const c = COEFICIENTES[sexo][parametro];
   const predicho = c.coefH * tallaM + c.coefA * edadAnios + c.constante;
   const lln = predicho - 1.645 * c.rsd;
-  return { predicho: r2(predicho), lln: r2(lln) };
+  return { predicho: r2(predicho), lln: r2(lln), rsd: c.rsd };
 }
 
 /**
  * Calcula todos los valores predichos y LLN para un trabajador,
- * dado su sexo, edad y talla.
+ * dado su sexo, edad y talla, INCLUYENDO el LLN del cociente
+ * FEV1/FVC (nuevo en C12-02: antes solo existia para FVC y FEV1
+ * individuales, y el cociente usaba el corte fijo 0.70).
  *
  * @param {'M'|'F'} sexo
  * @param {number} edadAnios
  * @param {number} tallaCm - talla en centimetros
  * @returns {object} predichos y LLN de fvc, fev1, pef, fef2575,
- *   mas el cociente fev1/fvc predicho (informativo).
+ *   el cociente fev1/fvc predicho y su LLN.
  */
 function calcularValoresPredichos(sexo, edadAnios, tallaCm) {
   const s = (sexo === 'F') ? 'F' : 'M'; // por defecto M si llega un valor invalido (no deberia pasar, validado antes)
@@ -128,11 +138,41 @@ function calcularValoresPredichos(sexo, edadAnios, tallaCm) {
   const pef = calcularPredichoYLln(s, edadAnios, tallaM, 'pef');
   const fef2575 = calcularPredichoYLln(s, edadAnios, tallaM, 'fef2575');
 
-  // Cociente FEV1/FVC predicho: informativo, derivado de los dos
-  // predichos (ver nota de diseno arriba sobre por que no usamos
-  // una ecuacion de LLN separada para el cociente).
+  // Cociente FEV1/FVC predicho (%), derivado de los dos predichos.
   const fev1FvcPredicho = fvc.predicho > 0
     ? r2((fev1.predicho / fvc.predicho) * 100)
+    : null;
+
+  // LLN del cociente: CORREGIDO en C12-02. Version anterior de esta
+  // MISMA correccion (detectada y revertida en la propia sesion de
+  // correccion, dejandolo documentado para que no se reintente sin
+  // querer): se probo derivar la RSD del cociente por propagacion
+  // de error a partir de las RSD de FEV1 y FVC. Al probarla con un
+  // caso sintetico de FEV1 al 98% del predicho (claramente normal),
+  // esa formula devolvia un margen de apenas ~0.3 puntos
+  // porcentuales bajo el predicho -- tan estrecho que clasificaba
+  // como obstructivo un caso normal. Se descarto esa formula por
+  // ser clinicamente peligrosa (falsos positivos), en vez de
+  // dejarla pasar solo porque "ya no es un corte fijo".
+  //
+  // En su lugar se usa un margen fijo de 8 puntos porcentuales por
+  // debajo del predicho, valor consistente con el ORDEN DE MAGNITUD
+  // reportado en la literatura para el percentil 5 del cociente
+  // FEV1/FVC en adultos sanos, y que reproduce el sesgo que la
+  // propia auditoria describe: para una persona joven (predicho
+  // alto, ej. ~85%) el LLN resultante (~77%) es MAS ALTO que el
+  // corte fijo 0.70, evitando subestimar obstruccion en jovenes; y
+  // para una persona mayor (predicho mas bajo, ej. ~75%) el LLN
+  // resultante (~67%) es MAS BAJO que 0.70, evitando sobreestimar
+  // obstruccion en adultos mayores. Se documenta explicitamente
+  // como una APROXIMACION, no como el valor oficial GLI-2012: sigue
+  // pendiente (ver migration_061 y CAPA-02 del informe de
+  // correcciones) incorporar la tabla GLI-2012 oficial con revision
+  // bioestadistica/medica formal antes de tratar este margen como
+  // definitivo.
+  const MARGEN_LLN_COCIENTE_PUNTOS = 8;
+  const fev1FvcLln = fev1FvcPredicho !== null
+    ? r2(fev1FvcPredicho - MARGEN_LLN_COCIENTE_PUNTOS)
     : null;
 
   return {
@@ -140,7 +180,7 @@ function calcularValoresPredichos(sexo, edadAnios, tallaCm) {
     fev1Predicho: fev1.predicho, fev1Lln: fev1.lln,
     pefPredicho: pef.predicho, pefLln: pef.lln,
     fef2575Predicho: fef2575.predicho, fef2575Lln: fef2575.lln,
-    fev1FvcPredicho,
+    fev1FvcPredicho, fev1FvcLln,
   };
 }
 
@@ -155,7 +195,8 @@ function calcularPorcentajePredicho(medido, predicho) {
 
 /**
  * Clasifica la severidad de una obstruccion segun el %predicho de
- * FEV1, usando la tabla estandar ATS/ERS 2005.
+ * FEV1, usando la tabla estandar (ATS/ERS 2005/2022 mantienen la
+ * misma gradiente de severidad por %predicho de FEV1).
  * @param {number} fev1PctPredicho
  * @returns {string}
  */
@@ -168,64 +209,92 @@ function clasificarSeveridadObstruccion(fev1PctPredicho) {
 }
 
 /**
- * Clasifica el patron ventilatorio segun el algoritmo ATS/ERS 2005,
- * a partir de los valores PRE-broncodilatador.
- *
- * @param {object} p - { fev1FvcMedido (ratio en %, ej 68.5),
- *   fvcPctPredicho, fev1PctPredicho }
- * @returns {string} codigo del patron
- */
-function clasificarPatron({ fev1FvcMedido, fvcPctPredicho, fev1PctPredicho }) {
-  if (fev1FvcMedido === null || fvcPctPredicho === null || fev1PctPredicho === null) {
-    return 'no_clasificable';
-  }
-
-  const cocienteBajo = (fev1FvcMedido / 100) < CORTE_FEV1_FVC;
-  const fvcBaja = fvcPctPredicho < 80; // uso practico de 80% como referencia visual;
-  // la clasificacion real de "FVC baja" para el patron restrictivo
-  // sugerido se basa en el LLN (ver espirometriaController.js, que
-  // pasa fvcPctPredicho ya evaluado contra su LLN via fvcBajoLln).
-
-  if (cocienteBajo) {
-    // Obstruccion presente. Si ademas la FVC esta baja, es un
-    // patron MIXTO SUGERIDO (no confirmable solo con espirometria).
-    if (fvcBaja) return 'mixto_sugerido';
-    return clasificarSeveridadObstruccion(fev1PctPredicho);
-  }
-
-  // Cociente normal: sin obstruccion.
-  if (fvcBaja) return 'restrictivo_sugerido';
-
-  return 'normal';
-}
-
-/**
- * Evalua si hubo respuesta broncodilatadora positiva segun el
- * criterio ATS/ERS 2005: aumento >=12% Y >=200 mL en FEV1 o FVC.
+ * Evalua si hubo respuesta broncodilatadora positiva segun ERS/ATS
+ * 2022: cambio >10% del PREDICHO de FEV1 o FVC (ya NO se usa el
+ * criterio 2005 de >=12% Y >=200 mL respecto del valor pre-BD).
  *
  * @param {number|null} valorPre - en litros
  * @param {number|null} valorPost - en litros
- * @returns {{ cambioPct: number|null, cambioMl: number|null, esPositiva: boolean }}
+ * @param {number|null} predicho - valor predicho del mismo parametro, en litros
+ * @returns {{ cambioMl: number|null, cambioPctPredicho: number|null, esPositiva: boolean }}
  */
-function calcularReversibilidad(valorPre, valorPost) {
-  if (valorPre === null || valorPre === undefined || valorPre <= 0 ||
-      valorPost === null || valorPost === undefined) {
-    return { cambioPct: null, cambioMl: null, esPositiva: false };
+function calcularReversibilidad(valorPre, valorPost, predicho) {
+  if (valorPre === null || valorPre === undefined ||
+      valorPost === null || valorPost === undefined ||
+      !predicho || predicho <= 0) {
+    return { cambioMl: null, cambioPctPredicho: null, esPositiva: false };
   }
   const cambioL = valorPost - valorPre;
-  const cambioPct = r2((cambioL / valorPre) * 100);
   const cambioMl = Math.round(cambioL * 1000);
-  const esPositiva = cambioPct >= REVERSIBILIDAD_PCT_MINIMO && cambioL >= REVERSIBILIDAD_ML_MINIMO;
-  return { cambioPct, cambioMl, esPositiva };
+  const cambioPctPredicho = r2((cambioL / predicho) * 100);
+  const esPositiva = cambioPctPredicho > REVERSIBILIDAD_PCT_PREDICHO_MINIMO;
+  return { cambioMl, cambioPctPredicho, esPositiva };
+}
+
+/**
+ * Evalua la calidad de la maniobra segun ATS/ERS 2019: numero de
+ * maniobras aceptables y repetibilidad entre las 2 mejores FVC/FEV1.
+ *
+ * CREADO en Auditoria N.12 (hallazgo CRITICO C12-02, punto 6-7 de la
+ * correccion obligatoria): el modulo anterior no registraba NINGUNA
+ * estructura de calidad porque el backend solo recibia valores
+ * finales. Esta funcion acepta los datos de calidad SI el frontend
+ * los envia; si no se envian (compatibilidad con capturas antiguas
+ * o equipos que no exportan esas maniobras), se marca grado 'U'
+ * (no evaluable) y `interpretable=false` -- el sistema deja de
+ * asumir automaticamente que una prueba sin datos de calidad es
+ * buena.
+ *
+ * @param {object} datosCalidad - { numeroManiobras, mejorFvcL, segundaMejorFvcL, mejorFev1L, segundaMejorFev1L }
+ * @returns {{ numeroManiobras: number|null, repetibilidadFvcMl: number|null,
+ *   repetibilidadFev1Ml: number|null, grado: string, interpretable: boolean }}
+ */
+function evaluarCalidadManiobra(datosCalidad) {
+  if (!datosCalidad || typeof datosCalidad !== 'object') {
+    return { numeroManiobras: null, repetibilidadFvcMl: null, repetibilidadFev1Ml: null, grado: 'U', interpretable: false };
+  }
+
+  const { numeroManiobras, mejorFvcL, segundaMejorFvcL, mejorFev1L, segundaMejorFev1L } = datosCalidad;
+
+  const repetibilidadFvcMl = (mejorFvcL != null && segundaMejorFvcL != null)
+    ? Math.round(Math.abs(mejorFvcL - segundaMejorFvcL) * 1000)
+    : null;
+  const repetibilidadFev1Ml = (mejorFev1L != null && segundaMejorFev1L != null)
+    ? Math.round(Math.abs(mejorFev1L - segundaMejorFev1L) * 1000)
+    : null;
+
+  const tieneManiobrasMinimas = typeof numeroManiobras === 'number' && numeroManiobras >= CALIDAD_MIN_MANIOBRAS;
+  const repetibilidadOk = repetibilidadFvcMl !== null && repetibilidadFev1Ml !== null
+    && repetibilidadFvcMl <= CALIDAD_MAX_REPETIBILIDAD_ML && repetibilidadFev1Ml <= CALIDAD_MAX_REPETIBILIDAD_ML;
+
+  let grado;
+  if (tieneManiobrasMinimas && repetibilidadOk) {
+    grado = 'A';
+  } else if (typeof numeroManiobras === 'number' && numeroManiobras >= 2 && repetibilidadFvcMl !== null) {
+    grado = repetibilidadOk ? 'B' : 'D';
+  } else if (typeof numeroManiobras === 'number' && numeroManiobras >= 1) {
+    grado = 'F';
+  } else {
+    grado = 'U';
+  }
+
+  const interpretable = grado === 'A' || grado === 'B';
+
+  return {
+    numeroManiobras: typeof numeroManiobras === 'number' ? numeroManiobras : null,
+    repetibilidadFvcMl, repetibilidadFev1Ml, grado, interpretable,
+  };
 }
 
 /**
  * Calcula el resultado completo de una espirometria: predichos,
- * LLN, %predicho, patron ventilatorio y reversibilidad post-BD
- * (si se proporcionaron valores post-broncodilatador).
+ * LLN (incluido el del cociente FEV1/FVC), %predicho, calidad de
+ * maniobra, patron ventilatorio (solo si la calidad lo permite) y
+ * reversibilidad post-BD (si se proporcionaron valores post-BD).
  *
  * @param {object} medidos - fvcPre, fev1Pre, pefPre, fef2575Pre,
- *   fvcPost, fev1Post, pefPost, fef2575Post (los "Post" son opcionales)
+ *   fvcPost, fev1Post, pefPost, fef2575Post (los "Post" son opcionales),
+ *   calidad (opcional, ver evaluarCalidadManiobra)
  * @param {'M'|'F'} sexo
  * @param {number} edadAnios
  * @param {number} tallaCm
@@ -243,34 +312,48 @@ function calcularEspirometria(medidos, sexo, edadAnios, tallaCm) {
     ? r2((medidos.fev1Pre / medidos.fvcPre) * 100)
     : null;
 
-  // FVC baja respecto a su propio LLN (mas preciso que el 80% fijo
-  // que usa clasificarPatron() como respaldo cuando falta el LLN).
+  // CORREGIDO en Auditoria N.12 (C12-02): el patron ya NO se decide
+  // con el cociente fijo 0.70 ni con el 80% de FVC. Ambos criterios
+  // ahora son el LLN especifico calculado arriba.
+  const cocienteBajoLln = (fev1FvcMedido !== null && predichos.fev1FvcLln !== null)
+    ? fev1FvcMedido < predichos.fev1FvcLln
+    : null;
   const fvcBajoLln = (medidos.fvcPre !== null && medidos.fvcPre !== undefined)
     ? medidos.fvcPre < predichos.fvcLln
     : null;
 
+  const calidad = evaluarCalidadManiobra(medidos.calidad);
+
   let patron = 'no_clasificable';
-  if (fev1FvcMedido !== null && fvcPctPredicho !== null && fev1PctPredicho !== null) {
-    const cocienteBajo = (fev1FvcMedido / 100) < CORTE_FEV1_FVC;
-    if (cocienteBajo) {
-      patron = fvcBajoLln ? 'mixto_sugerido' : clasificarSeveridadObstruccion(fev1PctPredicho);
-    } else {
-      patron = fvcBajoLln ? 'restrictivo_sugerido' : 'normal';
-    }
+  if (cocienteBajoLln !== null && fvcPctPredicho !== null && fev1PctPredicho !== null) {
+    patron = cocienteBajoLln
+      ? (fvcBajoLln ? 'mixto_sugerido' : clasificarSeveridadObstruccion(fev1PctPredicho))
+      : (fvcBajoLln ? 'restrictivo_sugerido' : 'normal');
   }
 
-  // Reversibilidad post-broncodilatador (solo si hay datos post-BD)
+  // CORREGIDO en Auditoria N.12 (C12-02, correccion obligatoria
+  // punto 7): "no permitir que el backend etiquete una prueba como
+  // interpretable si no se cumplen criterios minimos de calidad".
+  // El patron se SIGUE calculando y guardando (para que el medico
+  // pueda revisarlo con contexto), pero el flag `interpretable`
+  // queda en false y el controlador/frontend deben tratarlo como
+  // "no usar como apoyo automatico" hasta que un medico lo revise
+  // con la maniobra completa.
+  const interpretable = calidad.interpretable && patron !== 'no_clasificable';
+
+  // Reversibilidad post-broncodilatador (solo si hay datos post-BD).
+  // CORREGIDO en Auditoria N.12 (C12-02): usa >10% del predicho, no
+  // >=12%+200mL del valor pre-BD.
   const tieneValoresPost = medidos.fev1Post !== undefined && medidos.fev1Post !== null;
-  let reversibilidad = { cambioPct: null, cambioMl: null, esPositiva: false };
+  let reversibilidad = { cambioMl: null, cambioPctPredicho: null, esPositiva: false };
   if (tieneValoresPost) {
-    const revFev1 = calcularReversibilidad(medidos.fev1Pre, medidos.fev1Post);
-    const revFvc = calcularReversibilidad(medidos.fvcPre, medidos.fvcPost);
-    // Positiva si CUALQUIERA de los dos (FEV1 o FVC) cumple el criterio.
+    const revFev1 = calcularReversibilidad(medidos.fev1Pre, medidos.fev1Post, predichos.fev1Predicho);
+    const revFvc = calcularReversibilidad(medidos.fvcPre, medidos.fvcPost, predichos.fvcPredicho);
     reversibilidad = {
-      cambioPct: revFev1.cambioPct,
       cambioMl: revFev1.cambioMl,
-      cambioPctFvc: revFvc.cambioPct,
+      cambioPctPredicho: revFev1.cambioPctPredicho,
       cambioMlFvc: revFvc.cambioMl,
+      cambioPctPredichoFvc: revFvc.cambioPctPredicho,
       esPositiva: revFev1.esPositiva || revFvc.esPositiva,
     };
   }
@@ -279,8 +362,12 @@ function calcularEspirometria(medidos, sexo, edadAnios, tallaCm) {
     ...predichos,
     fvcPctPredicho, fev1PctPredicho, pefPctPredicho, fef2575PctPredicho,
     fev1FvcMedido,
+    calidad,
+    interpretable,
     patron,
     reversibilidad,
+    criterioInterpretativo: 'ers_ats_2022_lln',
+    criterioFijoReferencia: CORTE_FEV1_FVC_INFORMATIVO, // solo informativo, ya NO decide el patron
   };
 }
 
@@ -288,8 +375,10 @@ module.exports = {
   calcularValoresPredichos,
   calcularPorcentajePredicho,
   clasificarSeveridadObstruccion,
-  clasificarPatron,
+  evaluarCalidadManiobra,
   calcularReversibilidad,
   calcularEspirometria,
-  CORTE_FEV1_FVC,
+  CORTE_FEV1_FVC_INFORMATIVO,
+  REVERSIBILIDAD_PCT_PREDICHO_MINIMO,
 };
+
