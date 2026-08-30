@@ -1,6 +1,13 @@
 # Matriz central de permisos y minimización — SISSO
 
 **CREADO en Auditoría N.11 (hallazgo GRAVE G11-12, P1).**
+**ACTUALIZADO en Auditoría N.12 (G12-12):** filas de Audiometría,
+Espirometría y Visiometría corregidas (ahora auditadas con
+`lecturaSensible:true`, ver G12-05); agregadas las filas de los
+módulos nuevos de N.12 (revisión de baseline audiométrica, canal
+directo del titular, incidentes de seguridad). Pendiente para el
+próximo ciclo (no bloqueante): una prueba automatizada que contraste
+esta tabla contra `src/routes/*.js` en vez de mantenimiento manual.
 
 Hasta ahora los permisos vivían repartidos entre `routes/*.js`
 (`autorizar(...)`), controladores (funciones `proyectarXPorRol`),
@@ -30,14 +37,16 @@ clínico/diagnóstico)
 | Aptitud médica | `GET /api/aptitud/trabajadores/:id/historial` | ME, AD, SSO, TH | Historial de aptitud | D1/D3 según rol (ver `historiaClinicaController`) | `vigilancia_salud_ocupacional` | Sí para lectura clínica | Sí |
 | Nordico | `GET /api/nordico/trabajadores/:id` | ME | Detalle completo (regiones, observaciones) | D3 | `evaluaciones_ergonomicas` | No (best-effort) | Sí |
 | Nordico | `GET /api/nordico/trabajadores/:id` | SSO | `prioridad_preventiva`, `accion_requerida` (sin conteos ni zonas) | D2 | `evaluaciones_ergonomicas` | No | Sí |
-| Visiometría | `GET /api/visiometria/trabajadores/:id` | ME | Detalle completo | D3 | `vigilancia_salud_ocupacional` | No | Sí |
-| Visiometría | `GET /api/visiometria/trabajadores/:id` | SSO | `estado_preventivo` (sin clasificación ni aptitud) | D2 | `vigilancia_salud_ocupacional` | No | Sí |
-| Audiometría | `GET /api/audiometria/trabajadores/:id` | ME | Detalle completo (STS por oído) | D3 | `vigilancia_salud_ocupacional` | No | Sí |
-| Audiometría | `GET /api/audiometria/trabajadores/:id` | SSO | `requiere_seguimiento_auditivo` (sin lateralidad) | D2 | `vigilancia_salud_ocupacional` | No | Sí |
-| Espirometría | `GET /api/espirometria/trabajadores/:id` | ME | Detalle completo (patrón) | D3 | `vigilancia_salud_ocupacional` | No | Sí |
-| Espirometría | `GET /api/espirometria/trabajadores/:id` | SSO | `estado_preventivo` (sin patrón nominal) | D2 | `vigilancia_salud_ocupacional` | No | Sí |
+| Visiometría | `GET /api/visiometria/trabajadores/:id` | ME | Detalle completo | D3 | `gestion_vigilancia_salud` | Sí (`lecturaSensible`, G12-05) | Sí |
+| Visiometría | `GET /api/visiometria/trabajadores/:id` | SSO | `estado_preventivo` (sin clasificación ni aptitud) | D2 | `gestion_vigilancia_salud` | No | Sí |
+| Audiometría | `GET /api/audiometria/trabajadores/:id` | ME | Detalle completo (STS por oído) | D3 | `gestion_vigilancia_salud` | Sí (`lecturaSensible`, G12-05) | Sí |
+| Audiometría | `GET /api/audiometria/trabajadores/:id` | SSO | `requiere_seguimiento_auditivo` (sin lateralidad) | D2 | `gestion_vigilancia_salud` | No | Sí |
+| Audiometría | `PUT /api/audiometria/:id/revisar-baseline` | ME | Revisión de basal vigente (motivo, fecha) | D3 | `gestion_vigilancia_salud` | Sí (G12-03) | Sí |
+| Espirometría | `GET /api/espirometria/trabajadores/:id` | ME | Detalle completo (patrón, calidad de maniobra) | D3 | `gestion_vigilancia_salud` | Sí (`lecturaSensible`, G12-05) | Sí |
+| Espirometría | `GET /api/espirometria/trabajadores/:id` | SSO | `estado_preventivo` (incluye `calidad_insuficiente`; sin patrón nominal) | D2 | `gestion_vigilancia_salud` | No | Sí |
 | Ausentismo | `GET /api/ausentismo` | ME | Incluye diagnóstico CIE-10, certificado | D3 | `gestion_ausentismo` | No | Sí |
 | Ausentismo | `GET /api/ausentismo` | AD, SSO, TH | Sin diagnóstico ni certificado | D1 | `gestion_ausentismo` | No | Sí |
+| Ausentismo | `GET /api/ausentismo/:id/certificado-url` | ME | URL firmada del certificado escaneado | D3 | `gestion_ausentismo` | Sí (`lecturaSensible`, G12-05) | Sí |
 | Ausentismo | `POST/PUT /api/ausentismo` | SSO, TH | 403 si intentan escribir diagnóstico/certificado | — | `gestion_ausentismo` | Sí (evento de escritura) | Sí |
 | Consentimientos | `GET /api/consentimientos/trabajadores/:id` | ME | Nombre real del tipo + estado | D2 | ligado al tipo (`tipos_consentimiento.categoria`) | No | Sí |
 | Consentimientos | `GET /api/consentimientos/trabajadores/:id` | SSO, TH | Tipo genérico "clínico reservado" si `categoria='clinico'`; estado sí visible | D1 | ídem | No | Sí |
@@ -53,6 +62,8 @@ clínico/diagnóstico)
 | EPP, Capacitaciones, Inspecciones, Higiene, Riesgo psicosocial | CRUD | AD, SSO | Datos operativos | D0-D1 | ver `finalidades_tratamiento` | Sí en escrituras | Sí |
 | Solicitudes del titular | `POST/GET /api/solicitudes-titular` | AD, SSO | Identidad del solicitante + descripción | D1-D2 | — (proceso de gobierno, no un tratamiento operativo) | Sí (`lecturaSensible` en detalle) | Sí |
 | Solicitudes del titular | `PATCH .../responder` | AD únicamente | — | — | — | Sí | Sí |
+| Solicitudes del titular | `POST /api/solicitudes-titular/publico` | Sin autenticar (canal directo del titular, C12-03) | Identidad + tipo de solicitud (sin verificar) | D1 | — | Sí | Sí (por `codigoOrganizacion`, respuesta genérica si no existe) |
+| Incidentes de seguridad | `POST/GET/PATCH /api/incidentes-seguridad/*` (C12-03) | AD, SSO (PATCH solo AD) | Descripción, categorías de datos afectados, notificaciones | D1-D2 | — | Sí | Sí |
 | Gestión de usuarios/organizaciones | `superadmin/*` | SA | Todo (fuera del tenant, por diseño) | — | — | Sí | N/A (es superadmin) |
 
 ## Cómo se aplica el aislamiento por tenant (columna "Aislado por tenant")
