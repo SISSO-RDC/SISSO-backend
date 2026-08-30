@@ -199,6 +199,7 @@ async function obtenerExamen(req, res) {
 
     // Auditoria de acceso a datos clinicos (mismo criterio que
     // historiaClinicaController.js tras la auditoria de seguridad).
+    // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-05, P1).
     await registrarAuditoria({
       organizacionId: req.usuario.organizacionId,
       usuarioId: req.usuario.id,
@@ -206,6 +207,7 @@ async function obtenerExamen(req, res) {
       entidad: 'examen_visiometria',
       entidadId: req.params.examenId,
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ examen: res2.rows[0] });

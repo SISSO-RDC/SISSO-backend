@@ -175,6 +175,10 @@ async function obtenerUrlCertificado(req, res) {
       return res.status(404).json({ error: 'Esta ausencia no tiene un certificado adjunto.' });
     }
 
+    // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-05, P1): faltaba
+    // lecturaSensible:true -- obtener el certificado medico escaneado
+    // es acceso a un documento clinico (mismo criterio que los demas
+    // endpoints de detalle de examenes).
     await registrarAuditoria({
       organizacionId: orgId,
       usuarioId: req.usuario.id,
@@ -182,6 +186,7 @@ async function obtenerUrlCertificado(req, res) {
       entidad: 'ausencia',
       entidadId: req.params.id,
       req,
+      lecturaSensible: true,
     });
 
     return res.json({ url: generarUrlFirmada(publicId, 'imagen') });
@@ -455,6 +460,7 @@ async function importarMasivo(req, res) {
   const resultados = [];
   let creados = 0;
   let fallidos = 0;
+  let duplicados = 0; // CREADO en Auditoria N.12 (G12-09)
 
   for (let i = 0; i < filas.length; i++) {
     const fila = filas[i];
@@ -489,6 +495,26 @@ async function importarMasivo(req, res) {
 
       const subsidiadoIess = esSubsidiablePorDefecto(tipo);
 
+      // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-09, P1): la
+      // importacion no verificaba si la fila ya existia -- reintentar
+      // una importacion (ej. tras un timeout del navegador, o subir
+      // el mismo archivo dos veces sin darse cuenta) duplicaba cada
+      // ausencia ya cargada. Se considera "la misma ausencia" el
+      // mismo trabajador + tipo + fecha_inicio + fecha_fin dentro de
+      // la organizacion; si ya existe, la fila se reporta como
+      // 'duplicado_omitido' en vez de insertarse de nuevo.
+      const existente = await query(
+        `SELECT id FROM ausencias
+         WHERE organizacion_id = $1 AND trabajador_id = $2 AND tipo = $3
+           AND fecha_inicio = $4 AND fecha_fin = $5`,
+        [orgId, trabajador.rows[0].id, tipo, fechaInicio, fechaFin]
+      );
+      if (existente.rows.length > 0) {
+        resultados.push({ fila: numeroFila, documento, estado: 'duplicado_omitido', id: existente.rows[0].id, mensaje: 'Ya existe una ausencia identica (mismo trabajador, tipo y fechas); no se creo un duplicado.' });
+        duplicados++;
+        continue;
+      }
+
       const insertado = await query(
         `INSERT INTO ausencias (
           organizacion_id, trabajador_id, tipo, subsidiado_iess, fecha_inicio, fecha_fin,
@@ -517,12 +543,12 @@ async function importarMasivo(req, res) {
     usuarioId: req.usuario.id,
     accion: 'importar_ausencias_masivo',
     entidad: 'ausencia',
-    detalle: { total: filas.length, creados, fallidos },
+    detalle: { total: filas.length, creados, fallidos, duplicados },
     req,
   });
 
   return res.status(200).json({
-    resumen: { total: filas.length, creados, fallidos },
+    resumen: { total: filas.length, creados, fallidos, duplicados },
     detalle: resultados,
   });
 }

@@ -14,7 +14,7 @@
 // el dia a dia), pero no cerrar/rechazar una solicitud por su
 // cuenta -- eso requiere 'admin'.
 // ============================================================
-const { query, withTransaction } = require('../db/pool');
+const { query, withTransaction, queryComoSuperadmin } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 async function crear(req, res) {
@@ -309,4 +309,89 @@ async function responder(req, res) {
   }
 }
 
-module.exports = { crear, listar, obtenerDetalle, asignarResponsable, marcarIdentidadVerificada, responder };
+// ------------------------------------------------------------
+// POST /api/solicitudes-titular/publico
+// CREADO en Auditoria N.12 (hallazgo CRITICO C12-03, punto 2 de la
+// correccion obligatoria): canal directo para que el propio titular
+// -- no solo RRHH/SSO en su nombre -- pueda registrar su solicitud,
+// sin necesitar una cuenta de usuario de SISSO. Identifica la
+// organizacion por su `codigo` publico (mismo codigo que ya se
+// entrega para el registro de usuarios; una organizacion tipicamente
+// lo publica en su aviso de privacidad).
+//
+// Sin autenticacion por diseno (el titular no tiene cuenta), por
+// eso: (a) va detras de un rate limiter dedicado (ver
+// solicitudesTitularRoutes.js) para prevenir spam/DoS, y (b) NO
+// permite marcar identidadVerificada=true desde este endpoint -- eso
+// solo lo puede hacer un 'admin'/'sso' despues de verificar
+// manualmente al titular (PATCH /:id/verificar-identidad), igual
+// que en el flujo interno.
+// ------------------------------------------------------------
+async function crearPublico(req, res) {
+  const { codigoOrganizacion, tipoSolicitud, descripcion, solicitanteNombre, solicitanteDocumento } = req.body;
+
+  const TIPOS_VALIDOS = ['acceso', 'rectificacion', 'actualizacion', 'bloqueo', 'eliminacion', 'oposicion', 'portabilidad'];
+  if (!codigoOrganizacion || !codigoOrganizacion.trim()) {
+    return res.status(400).json({ error: 'codigoOrganizacion es obligatorio.' });
+  }
+  if (!TIPOS_VALIDOS.includes(tipoSolicitud)) {
+    return res.status(400).json({ error: `tipoSolicitud invalido. Valores permitidos: ${TIPOS_VALIDOS.join(', ')}.` });
+  }
+  if (!descripcion || !descripcion.trim()) {
+    return res.status(400).json({ error: 'descripcion es obligatoria.' });
+  }
+  if (!solicitanteNombre || !solicitanteDocumento) {
+    return res.status(400).json({ error: 'solicitanteNombre y solicitanteDocumento son obligatorios.' });
+  }
+
+  try {
+    // Respuesta deliberadamente generica si el codigo no existe (no
+    // confirmar/negar la existencia de un codigo de organizacion a
+    // quien no esta autenticado).
+    const orgRes = await queryComoSuperadmin(
+      `SELECT id FROM organizaciones WHERE codigo = $1 AND activa = true`,
+      [codigoOrganizacion.trim()]
+    );
+    if (orgRes.rows.length === 0) {
+      return res.status(400).json({ error: 'No se pudo registrar la solicitud. Verifique el codigo de organizacion con la empresa.' });
+    }
+    const orgId = orgRes.rows[0].id;
+
+    const insertRes = await queryComoSuperadmin(
+      `INSERT INTO solicitudes_titular
+        (organizacion_id, tipo_solicitud, descripcion, solicitante_nombre, solicitante_documento,
+         identidad_verificada, origen, creado_por)
+       SELECT $1,$2,$3,$4,$5,false,'canal_directo_titular', u.id
+       FROM usuarios u WHERE u.organizacion_id = $1 AND u.rol = 'admin' AND u.activo = true
+       ORDER BY u.creado_en ASC LIMIT 1
+       RETURNING id, fecha_recibida, fecha_limite_respuesta`,
+      [orgId, tipoSolicitud, descripcion.trim(), solicitanteNombre.trim(), solicitanteDocumento.trim()]
+    );
+
+    if (insertRes.rows.length === 0) {
+      // No deberia ocurrir en una organizacion activa normal (siempre
+      // hay al menos un admin), pero se cubre por si acaso.
+      return res.status(500).json({ error: 'No se pudo registrar la solicitud: la organizacion no tiene un administrador activo asignable. Contacte directamente a la empresa.' });
+    }
+
+    await registrarAuditoria({
+      organizacionId: orgId,
+      usuarioId: null,
+      accion: 'solicitud_titular_creada_canal_directo',
+      entidad: 'solicitudes_titular',
+      entidadId: insertRes.rows[0].id,
+      detalle: { tipoSolicitud },
+      req,
+    });
+
+    return res.status(201).json({
+      mensaje: 'Su solicitud fue registrada. La organizacion se pondra en contacto para verificar su identidad y darle respuesta dentro del plazo legal.',
+      fechaLimiteRespuesta: insertRes.rows[0].fecha_limite_respuesta,
+    });
+  } catch (err) {
+    console.error('Error en crearPublico (solicitudes del titular):', err);
+    return res.status(500).json({ error: 'Error interno al registrar la solicitud.' });
+  }
+}
+
+module.exports = { crear, crearPublico, listar, obtenerDetalle, asignarResponsable, marcarIdentidadVerificada, responder };

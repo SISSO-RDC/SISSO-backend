@@ -90,9 +90,12 @@ async function certificadoAptitud(req, res) {
     const orgRes = await query(`SELECT nombre FROM organizaciones WHERE id = $1`, [orgId]);
     const doc = generarPdfCertificadoAptitud(trabajadorRes.rows[0], orgRes.rows[0]?.nombre);
 
+    // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-05, P1): el
+    // certificado de aptitud es un documento clinico.
     await registrarAuditoria({
       organizacionId: orgId, usuarioId: req.usuario.id,
       accion: 'generar_certificado_aptitud', entidad: 'trabajador', entidadId: req.params.trabajadorId, req,
+      lecturaSensible: true,
     });
 
     res.setHeader('Content-Type', 'application/pdf');

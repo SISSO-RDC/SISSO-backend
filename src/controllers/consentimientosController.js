@@ -201,10 +201,18 @@ async function listarPorTrabajador(req, res) {
     const esRolRestringido = req.usuario.rol !== 'medico';
     const consentimientos = resultado.rows.map((c) => {
       if (esRolRestringido && c.categoria === 'clinico') {
+        // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-06, P1):
+        // el mapeo anterior solo ocultaba el nombre/codigo del tipo,
+        // pero motivo_revocacion (texto libre) seguia viajando
+        // intacto -- ese campo puede contener la justificacion
+        // clinica de por que se revoco (ej. referencia a un
+        // diagnostico), exactamente el tipo de dato que esta regla
+        // ya trata como reservado para el nombre del tipo.
         return {
           ...c,
           tipo_consentimiento_codigo: 'clinico_reservado',
           tipo_consentimiento_nombre: 'Consentimiento clínico (detalle reservado a médico)',
+          motivo_revocacion: c.motivo_revocacion ? '(reservado a médico)' : null,
         };
       }
       return c;
@@ -232,6 +240,24 @@ async function revocarConsentimiento(req, res) {
   }
 
   try {
+    // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-06, P1): SSO/TH
+    // podian revocar CUALQUIER consentimiento, incluidos los de
+    // categoria='clinico' (ej. pruebas psicologicas/toxicologicas),
+    // pese a que ya tienen vedado ver su contenido firmado. Revocar
+    // un consentimiento clinico es una decision que debe involucrar
+    // al medico -- no solo un cambio de estado administrativo.
+    if (req.usuario.rol !== 'medico') {
+      const tipoRes = await query(
+        `SELECT t.categoria FROM consentimientos_firmados c
+         JOIN tipos_consentimiento t ON t.codigo = c.tipo_consentimiento_codigo
+         WHERE c.id = $1 AND c.organizacion_id = $2`,
+        [req.params.id, req.usuario.organizacionId]
+      );
+      if (tipoRes.rows.length > 0 && tipoRes.rows[0].categoria === 'clinico') {
+        return res.status(403).json({ error: 'Revocar un consentimiento clinico requiere intervencion del medico ocupacional.' });
+      }
+    }
+
     // CORREGIDO en Auditoria N.08 (C-N08-01): UPDATE + auditoria en
     // la misma transaccion -- ver firmarConsentimiento arriba para
     // la explicacion completa del patron.

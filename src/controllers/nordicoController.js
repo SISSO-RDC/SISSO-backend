@@ -5,7 +5,7 @@
 // ============================================================
 const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
-const { REGIONES, calcularResumenNordico } = require('../nordico/nordico');
+const { REGIONES, calcularResumenNordico, validarRegionesNordico } = require('../nordico/nordico');
 const catalogosNordico = require('../nordico/nordico');
 
 // CORREGIDO en Auditoria N.11 (hallazgo GRAVE G11-01, P1): la
@@ -72,6 +72,17 @@ async function registrarCuestionario(req, res) {
     const clavesInvalidas = Object.keys(regiones).filter(k => !REGIONES.includes(k));
     if (clavesInvalidas.length > 0) {
       return res.status(400).json({ error: `Zonas no reconocidas: ${clavesInvalidas.join(', ')}.` });
+    }
+
+    // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-10, P1): antes
+    // solo se validaban las CLAVES de `regiones` (arriba). Ahora
+    // tambien se valida la FORMA de cada zona (tipos, enums, rango
+    // 0-5 de intensidad) contra el esquema de nordico.js -- un valor
+    // mal formado ya no se guarda ni se usa en silencio para calcular
+    // el resumen de "atencion prioritaria".
+    const erroresEsquema = validarRegionesNordico(regiones);
+    if (erroresEsquema.length > 0) {
+      return res.status(400).json({ error: 'regiones tiene datos invalidos.', detalles: erroresEsquema });
     }
 
     const resumen = calcularResumenNordico(regiones);

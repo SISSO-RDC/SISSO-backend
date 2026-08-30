@@ -38,11 +38,21 @@ function calcularPTA(hz500, hz1000, hz2000) {
 /**
  * Calcula el promedio de agudos (2000, 3000, 4000 Hz) usado
  * por OSHA para la deteccion de STS.
- * @returns {number|null}
+ *
+ * CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-01, P1): el
+ * criterio OSHA 29 CFR 1910.95 define el STS sobre el promedio de
+ * EXACTAMENTE 2000, 3000 y 4000 Hz. La version anterior aceptaba
+ * un promedio con solo 2 de las 3 frecuencias -- eso no es un STS
+ * mas "aproximado", es un numero clinicamente distinto que puede
+ * producir un falso positivo o falso negativo. Si falta cualquiera
+ * de las tres, el resultado correcto es "no calculable", nunca un
+ * promedio con las que haya.
+ *
+ * @returns {number|null} null si falta cualquiera de las 3 frecuencias.
  */
 function calcularPromedioAgudos(hz2000, hz3000, hz4000) {
-  const valores = [hz2000, hz3000, hz4000].filter(v => v !== null && v !== undefined);
-  if (valores.length < 2) return null; // necesitamos al menos 2 de 3
+  const valores = [hz2000, hz3000, hz4000];
+  if (valores.some(v => v === null || v === undefined)) return null; // exige las 3, sin excepcion
   return Math.round((valores.reduce((a, b) => a + b, 0) / valores.length) * 10) / 10;
 }
 
@@ -63,31 +73,52 @@ function calcularPromedioAgudos(hz2000, hz3000, hz4000) {
  *
  * @param {{ hz2000, hz3000, hz4000 }} actual - umbrales del examen actual
  * @param {{ hz2000, hz3000, hz4000 }} basal - umbrales de la audiometria basal
- * @returns {{ cambio: number|null, esPositivo: boolean }}
+ * @returns {{ cambio: number|null, esPositivo: boolean, datosInsuficientes: boolean }}
  */
 function calcularSTS(actual, basal) {
   const promedioActual = calcularPromedioAgudos(actual.hz2000, actual.hz3000, actual.hz4000);
   const promedioBasal = calcularPromedioAgudos(basal.hz2000, basal.hz3000, basal.hz4000);
 
+  // CORREGIDO en Auditoria N.12 (G12-01): datosInsuficientes queda
+  // explicito en el resultado (no solo cambio=null) para que el
+  // controlador/frontend puedan distinguir "no hay STS porque esta
+  // dentro de rango normal" de "no se pudo calcular por falta de
+  // una frecuencia critica" -- son situaciones clinicas distintas.
   if (promedioActual === null || promedioBasal === null) {
-    return { cambio: null, esPositivo: false };
+    return { cambio: null, esPositivo: false, datosInsuficientes: true };
   }
 
   const cambio = Math.round((promedioActual - promedioBasal) * 10) / 10;
   return {
     cambio,
     esPositivo: cambio >= 10, // alerta OSHA: cambio >= 10 dB
+    datosInsuficientes: false,
   };
 }
 
 /**
- * Detecta si existe un "notch" tipico de hipoacusia inducida por
- * ruido (NIHL / HISNR) en las frecuencias 3000-4000-6000 Hz.
+ * Detecta un patron de tamizaje compatible con notch ocupacional en
+ * 3000-4000-6000 Hz (hallazgo de TAMIZAJE, no diagnostico de
+ * hipoacusia inducida por ruido -- ver nota extendida mas abajo).
  *
- * Criterio clinico: se considera notch ocupacional cuando la perdida
- * en 3000, 4000 o 6000 Hz es al menos 15 dB mayor que el promedio
- * de las frecuencias adyacentes (1000 y 8000 Hz), es decir, existe
- * una caida en "V" en esas frecuencias criticas.
+ * CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-04, P1): la
+ * geometria exacta del notch (profundidad, recuperacion en 8 kHz,
+ * distincion con presbiacusia/perdida conductiva) es mas compleja
+ * que "maximo de 3-4-6k supera en 15 dB a la referencia baja", y esa
+ * simplificacion puede generar falsos positivos (ej. presbiacusia
+ * temprana con caida gradual, sin verdadera geometria en V). Por
+ * eso:
+ *   1. Esta funcion se mantiene como TAMIZAJE explicito, nunca como
+ *      diagnostico -- ver el codigo de patron devuelto por
+ *      clasificarPatron(), renombrado a 'notch_ocupacional_tamizaje'.
+ *   2. La condicion de "recuperacion" en 8000 Hz ahora es
+ *      obligatoria cuando el dato existe (antes solo se usaba para
+ *      DESCARTAR, nunca exigia una recuperacion minima real).
+ *   3. Debe complementarse con revision del medico ocupacional y,
+ *      quedo pendiente como trabajo futuro (no bloqueante para esta
+ *      correccion): banco de pruebas con curvas normales,
+ *      presbiacusia, ruido puro y perdida conductiva/mixta (ver
+ *      CAPA-06 y tests/audiometria del plan de correccion).
  *
  * @param {{ hz1000, hz2000, hz3000, hz4000, hz6000, hz8000 }} umbrales
  * @returns {boolean}
@@ -113,12 +144,27 @@ function tieneNotchOcupacional(umbrales) {
   if (refBaja === null) return false;
 
   const hayNotch = maxCritica >= refBaja + 15;
+  if (!hayNotch) return false;
 
-  // Si tenemos 8k, verificamos que haya recuperacion parcial
-  // (la perdida en 8k no supera la de la zona critica)
-  if (refAlta !== null && refAlta >= maxCritica) return false; // no hay V, es pendiente plana
+  // CORREGIDO en Auditoria N.12 (G12-04): antes, la ausencia de dato
+  // en 8000 Hz simplemente omitia la verificacion de recuperacion
+  // (dejaba pasar el notch sin comprobar la "V"). Ahora, si NO hay
+  // dato de 8000 Hz, se exige recuperacion respecto de 6000 Hz como
+  // sustituto minimo -- un notch verdadero por ruido tipicamente no
+  // seguiria empeorando de forma monotona hacia agudos.
+  if (refAlta !== null) {
+    if (refAlta >= maxCritica) return false; // no hay V, es pendiente plana/descendente continua
+    return true;
+  }
 
-  return hayNotch;
+  const hz6000Valor = hz6000;
+  if (hz6000Valor !== null && hz6000Valor !== undefined && hz6000Valor >= maxCritica + 5) {
+    // 6000 Hz sigue empeorando en vez de recuperar: patron mas
+    // compatible con perdida progresiva que con notch verdadero.
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -127,7 +173,11 @@ function tieneNotchOcupacional(umbrales) {
  *
  * Criterios (en orden de evaluacion):
  *   1. normal: PTA <= 25 dB y ninguna frecuencia > 25 dB
- *   2. notch_ocupacional: caida tipica en 3-4-6k Hz (NIHL)
+ *   2. notch_ocupacional_tamizaje: caida compatible con NIHL en
+ *      3-4-6k Hz -- HALLAZGO DE TAMIZAJE, no diagnostico (ver
+ *      tieneNotchOcupacional() y G12-04). Requiere confirmacion del
+ *      medico ocupacional antes de comunicarse como hipoacusia
+ *      inducida por ruido.
  *   3. conductiva: gap aereo-oseo > 10 dB en >= 2 frecuencias
  *   4. mixta: perdida en via aerea y osea, CON gap > 10 dB
  *   5. neurosensorial: perdida aerea, SIN gap significativo (osea similar)
@@ -149,9 +199,10 @@ function clasificarPatron(aerea, osea, edadAnios = 0) {
   const todasNormales = valoresAereos.every(v => v <= 25);
   if (todasNormales && (pta === null || pta <= 25)) return 'normal';
 
-  // 3. Notch ocupacional (tiene prioridad sobre neurosensorial porque
-  //    el notch es un hallazgo especifico que cambia la conducta clinica)
-  if (tieneNotchOcupacional(aerea)) return 'notch_ocupacional';
+  // 3. Notch ocupacional -- HALLAZGO DE TAMIZAJE (tiene prioridad de
+  //    evaluacion sobre neurosensorial porque cambia la conducta
+  //    clinica), nunca se comunica como diagnostico confirmado.
+  if (tieneNotchOcupacional(aerea)) return 'notch_ocupacional_tamizaje';
 
   // 4. Evaluar gap aereo-oseo si hay datos de conduccion osea
   if (osea) {

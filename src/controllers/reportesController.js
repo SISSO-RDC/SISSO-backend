@@ -384,12 +384,26 @@ function redactarPorGrupoPequeno(resumen, totalTrabajadoresEnGrupo, huboFiltroDe
 
   const nota = `Desglose oculto: el área filtrada tiene ${totalTrabajadoresEnGrupo} trabajador(es), menos del mínimo de ${UMBRAL_K_ANONIMATO} requerido para mostrar este detalle sin riesgo de identificar a una persona en particular.`;
 
+  // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-11, P1): esta
+  // funcion solo redactaba aptitudMedica/examenesComplementarios/
+  // ergonomia. Los desgloses de ausentismo por tipo (ej. "1 licencia
+  // por maternidad" en un area de 2 personas) y el conteo de
+  // consentimientos revocados en un grupo pequeño exponen el mismo
+  // tipo de riesgo de reidentificacion y hasta ahora quedaban fuera
+  // de la supresion, aunque `ausentismo`/`consentimientos` SI llegan
+  // a roles como 'th' y 'admin' (ver proyectarResumenSegunRol).
   return {
     ...resumen,
     grupoPequenoRedactado: true,
     aptitudMedica: { redactado: true, nota },
     examenesComplementarios: { redactado: true, nota },
     ergonomia: { redactado: true, nota },
+    ausentismo: resumen.ausentismo
+      ? { totalAusencias: resumen.ausentismo.totalAusencias, totalDias: resumen.ausentismo.totalDias, porTipo: [], redactado: true, nota }
+      : resumen.ausentismo,
+    consentimientos: resumen.consentimientos
+      ? { total: resumen.consentimientos.total, redactado: true, nota }
+      : resumen.consentimientos,
   };
 }
 
