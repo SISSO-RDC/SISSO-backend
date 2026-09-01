@@ -46,6 +46,14 @@ function validarContraEsquema(valor, esquema, ruta = '') {
   const errores = [];
   const etiqueta = ruta || '(raiz)';
 
+  // CREADO en Auditoria N.13 (C-05): varios bloques clinicos
+  // permiten que un sub-campo quede en null hasta que se complete
+  // (ej. "resultado" de un examen que aun no se ha realizado).
+  // esquema.nullable:true permite null explicitamente ademas del tipo.
+  if (valor === null && esquema.nullable) {
+    return errores;
+  }
+
   if (esquema.type === 'object') {
     if (valor === null || typeof valor !== 'object' || Array.isArray(valor)) {
       errores.push(`${etiqueta}: se esperaba un objeto.`);
@@ -98,6 +106,26 @@ function validarContraEsquema(valor, esquema, ruta = '') {
   if (esquema.type === 'boolean') {
     if (typeof valor !== 'boolean') {
       errores.push(`${etiqueta}: se esperaba verdadero/falso.`);
+    }
+    return errores;
+  }
+
+  // CREADO en Auditoria N.13 (hallazgo CRITICO C-05, P0): soporte de
+  // arreglos, necesario para validar bloques JSONB de Historia
+  // Clinica Ocupacional como `diagnosticos` o
+  // `antecedentes_laborales_previos`, que son listas de objetos.
+  if (esquema.type === 'array') {
+    if (!Array.isArray(valor)) {
+      errores.push(`${etiqueta}: se esperaba una lista.`);
+      return errores;
+    }
+    if (typeof esquema.minItems === 'number' && valor.length < esquema.minItems) {
+      errores.push(`${etiqueta}: debe tener al menos ${esquema.minItems} elemento(s).`);
+    }
+    if (esquema.items) {
+      valor.forEach((elemento, i) => {
+        errores.push(...validarContraEsquema(elemento, esquema.items, `${etiqueta}[${i}]`));
+      });
     }
     return errores;
   }

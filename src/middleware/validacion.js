@@ -474,10 +474,18 @@ const validarRegistrarNiosh = [
   body('verticalCm').isFloat({ min: 0, max: 200 }).withMessage('verticalCm es obligatorio (0 a 200 cm).'),
   body('distanciaVerticalCm').isFloat({ min: 0, max: 300 }).withMessage('distanciaVerticalCm es obligatorio (0 a 300 cm).'),
   body('anguloAsimetria').isFloat({ min: 0, max: 180 }).withMessage('anguloAsimetria es obligatorio (0 a 180 grados).'),
-  body('frecuenciaPorMin').isFloat({ min: 0.1, max: 20 }).withMessage('frecuenciaPorMin es obligatorio (0.1 a 20 levantamientos/min).'),
+  body('frecuenciaPorMin').isFloat({ min: 0.1, max: 15 }).withMessage('frecuenciaPorMin es obligatorio (0.1 a 15 levantamientos/min; la Tabla 5 del NIOSH Applications Manual no cubre frecuencias mayores para tarea simple).'),
   body('duracion').isIn(['corta', 'media', 'larga']).withMessage('duracion debe ser corta, media o larga.'),
   body('calidadAgarre').isIn(['bueno', 'regular', 'malo']).withMessage('calidadAgarre debe ser bueno, regular o malo.'),
   body('pesoCargaKg').isFloat({ min: 0.1, max: 200 }).withMessage('pesoCargaKg es obligatorio (0.1 a 200 kg).'),
+  // CREADO en Auditoria N.13 (hallazgo GRAVE G-10, P1): niosh.js solo
+  // implementa la variante de tarea simple (single-task); no existe
+  // implementacion de tarea multiple/compuesta. En vez de dejar que
+  // alguien evalue una tarea compuesta con la formula de tarea
+  // simple sin darse cuenta, se exige declarar el tipo de tarea y se
+  // rechaza explicitamente 'compuesta' hasta que exista esa
+  // implementacion (ver niosh.js y nioshController.js).
+  body('tipoTarea').optional({ values: 'falsy' }).isIn(['simple', 'compuesta']).withMessage("tipoTarea debe ser 'simple' o 'compuesta'."),
   body('observaciones').optional({ values: 'falsy' }).trim().isLength({ max: 2000 }),
   manejarErroresValidacion,
 ];

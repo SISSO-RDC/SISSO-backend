@@ -4,6 +4,23 @@
 // ventilatorio, calidad de maniobra y reversibilidad
 // post-broncodilatador.
 //
+// >>> ESTADO: IMPLEMENTACION INTERINA, NO DEFINITIVA <<<
+// CORREGIDO en Auditoria N.13 (hallazgo CRITICO C-01, P0): este
+// modulo NO debe presentarse ni documentarse como una implementacion
+// "ERS/ATS 2022 definitiva". Los predichos siguen usando ecuaciones
+// ECSC/ERS 1993 (poblacion de referencia europea/caucasica, NO
+// validada para poblacion ecuatoriana/latinoamericana), y el LLN del
+// cociente FEV1/FVC usa un margen fijo de 8 puntos porcentuales
+// (ver MARGEN_LLN_COCIENTE_PUNTOS mas abajo) en vez de una tabla
+// GLI-2012 oficial. Solo se usan sexo (M/F), edad y talla -- sin
+// ajuste por etnia/poblacion, que GLI-2012 si contempla.
+// Cada resultado de calcularEspirometria() incluye ahora un objeto
+// `metadatosReferencia` con la ecuacion, version, poblacion de
+// referencia, variables usadas y metodo de LLN, para que quede
+// trazado en cada examen guardado (ver migration_067) y nunca se
+// presente como si fuera el estandar clinico completo. La
+// interpretacion final SIEMPRE es medica (ver `interpretable`).
+//
 // ACTUALIZADO en Auditoria N.12 (hallazgo CRITICO C12-02, P0):
 // la version anterior interpretaba con ATS/ERS 2005: cociente fijo
 // FEV1/FVC < 0.70 como criterio PRINCIPAL de obstruccion, 80% del
@@ -366,8 +383,23 @@ function calcularEspirometria(medidos, sexo, edadAnios, tallaCm) {
     interpretable,
     patron,
     reversibilidad,
-    criterioInterpretativo: 'ers_ats_2022_lln',
+    criterioInterpretativo: 'lln_interino_no_gli', // CORREGIDO en N.13 (C-01): ya no se llama "ers_ats_2022_lln" para no sugerir cumplimiento definitivo
     criterioFijoReferencia: CORTE_FEV1_FVC_INFORMATIVO, // solo informativo, ya NO decide el patron
+    // CREADO en Auditoria N.13 (hallazgo CRITICO C-01, P0): metadatos
+    // de trazabilidad exigidos por la correccion obligatoria --
+    // ecuacion, version, poblacion de referencia, variables usadas y
+    // metodo de LLN, para que cada examen guardado deje constancia de
+    // que este resultado es una aproximacion interina, no un
+    // estandar GLI-2012 validado.
+    metadatosReferencia: {
+      ecuacionPredichos: 'ECSC/ERS 1993 (Quanjer et al.), lineal por sexo/edad/talla',
+      versionAlgoritmo: 'interino_v1_no_gli_2012',
+      poblacionReferencia: 'Europea/caucasica (ECSC/ERS 1993) -- NO validada especificamente para poblacion ecuatoriana/latinoamericana',
+      variablesUtilizadas: ['sexo (M/F)', 'edad', 'talla'],
+      metodoLln: 'Percentil 5 (predicho - 1.645*RSD) para FVC/FEV1/PEF/FEF25-75. Para el cociente FEV1/FVC: margen fijo de 8 puntos porcentuales bajo el predicho (aproximacion documentada, no GLI-2012 oficial).',
+      esDefinitivo: false,
+      pendienteValidacion: 'Sustituir por tabla GLI-2012 oficial (splines LMS por edad/sexo/talla/etnia) con validacion bioestadistica/medica formal antes de tratar este modulo como estandar definitivo.',
+    },
   };
 }
 

@@ -24,6 +24,11 @@ const { validarCrearRegla, validarRegistrarAptitud } = require('../middleware/va
 // --- Catalogos y configuracion (admin + medico) ---
 router.get('/reglas', autenticar, autorizar('admin', 'medico'), aptitudController.listarReglas);
 router.post('/reglas', autenticar, autorizar('admin', 'medico'), validarCrearRegla, aptitudController.crearRegla);
+// CREADO en Auditoria N.13 (C-04, P0): aprobar es exclusivo de
+// 'medico' (autoridad clinica); retirar puede hacerlo tambien admin
+// (accion de gestion, no de aprobacion).
+router.patch('/reglas/:id/aprobar', autenticar, autorizar('medico'), aptitudController.aprobarRegla);
+router.patch('/reglas/:id/retirar', autenticar, autorizar('admin', 'medico'), aptitudController.retirarRegla);
 router.get('/cie10/buscar', autenticar, autorizar('admin', 'medico'), aptitudController.buscarCie10);
 router.get('/exposiciones', autenticar, autorizar('admin', 'medico'), aptitudController.listarExposiciones);
 

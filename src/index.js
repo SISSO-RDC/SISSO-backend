@@ -87,6 +87,7 @@ const finalidadesTratamientoRoutes = require('./routes/finalidadesTratamientoRou
 // derechos del titular.
 const solicitudesTitularRoutes = require('./routes/solicitudesTitularRoutes');
 const incidentesSeguridadRoutes = require('./routes/incidentesSeguridadRoutes');
+const puestoExposicionesRoutes = require('./routes/puestoExposicionesRoutes');
 
 const app = express();
 
@@ -232,6 +233,8 @@ app.use('/api/finalidades-tratamiento', finalidadesTratamientoRoutes);
 app.use('/api/solicitudes-titular', solicitudesTitularRoutes);
 // CREADO en Auditoria N.12 (C12-03, punto 3).
 app.use('/api/incidentes-seguridad', incidentesSeguridadRoutes);
+// CREADO en Auditoria N.13 (C-03).
+app.use('/api/puesto-exposiciones', puestoExposicionesRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {

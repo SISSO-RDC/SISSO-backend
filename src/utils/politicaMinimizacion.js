@@ -41,7 +41,22 @@
 const POLITICA_POR_TABLA = {
   evaluaciones_ocupacionales: {
     rolesQueVenTodo: ['medico'],
-    camposBloqueadosSiempre: ['orientacion_sexual', 'identidad_genero'], // ver migration_050 / C10-01
+    // CORREGIDO en Auditoria N.13 (hallazgo CRITICO C-02, P0): se
+    // agregan religion, antecedentes_ginecobstetricos,
+    // antecedentes_ginecologicos_examenes,
+    // antecedentes_reproductivos_masculinos y habitos_toxicos a la
+    // lista de bloqueo universal. La captura NUEVA de estos campos
+    // ya se detuvo en historiaClinicaController.js (ver comentarios
+    // ahi), pero registros anteriores a esta correccion pueden
+    // tener valores guardados; bloquearlos tambien en LECTURA evita
+    // que ese dato historico se siga exponiendo mientras no exista
+    // una decision juridica formal sobre su conservacion (ver
+    // migration_064 y docs/DPIA_SISSO.md).
+    camposBloqueadosSiempre: [
+      'orientacion_sexual', 'identidad_genero', // ver migration_050 / C10-01
+      'religion', 'antecedentes_ginecobstetricos', 'antecedentes_ginecologicos_examenes',
+      'antecedentes_reproductivos_masculinos', 'habitos_toxicos', // ver migration_064 / C-02 (N.13)
+    ],
     camposBloqueadosParaElResto: [
       'antecedentes_personales', 'antecedentes_familiares', 'antecedentes_gineco_obstetricos',
       'antecedentes_laborales', 'revision_sistemas', 'examen_fisico_regional',
