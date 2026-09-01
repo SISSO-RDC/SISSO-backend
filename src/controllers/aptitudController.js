@@ -17,21 +17,127 @@ const { registrarAuditoria } = require('../utils/auditoria');
 const { detectarContraindicaciones } = require('../aptitud/motorContraindicaciones');
 
 // ------------------------------------------------------------
+// CREADO en Auditoria N.13 (hallazgo CRITICO C-03, P0): el motor
+// recibia diagnosticosCie10 y exposicionesPuesto UNICAMENTE del
+// payload, sin ninguna garantia de que fueran el conjunto completo
+// y vigente. Esta funcion deriva ambos conjuntos desde fuentes de
+// verdad ya existentes en el sistema:
+//   - Diagnosticos: ultima Historia Clinica Ocupacional
+//     (evaluaciones_ocupacionales.diagnosticos, JSONB), casos de
+//     enfermedad profesional confirmados/en seguimiento, y
+//     restricciones medicas activas/prorrogadas con diagnostico
+//     relacionado.
+//   - Exposiciones: puesto_exposiciones (migration_065) del puesto
+//     asignado al trabajador -- fuente declarada explicitamente por
+//     la organizacion con los mismos codigos que ya usa el motor
+//     (ver el comentario de esa migracion sobre por que NO se
+//     intenta traducir puestos_trabajo.factores_riesgo por texto).
+//
+// El payload (diagnosticosPayload/exposicionesPayload) se sigue
+// aceptando, pero como COMPLEMENTO -- nunca como reemplazo silencioso
+// de lo derivado. Se devuelve tambien la procedencia de cada dato
+// (derivado vs. agregado manualmente) para que quede trazado que
+// datos vinieron de una fuente clinica confiable y cuales fueron
+// declarados a mano por quien hizo la evaluacion.
+//
+// `evaluacionIncompleta` es true cuando el trabajador no tiene un
+// puesto asignado (no se puede derivar exposiciones en absoluto) --
+// el motor debe comunicar esto explicitamente en vez de proceder
+// como si "sin exposiciones derivadas" significara "sin riesgo".
+// ------------------------------------------------------------
+async function derivarDatosClinicosParaAptitud(trabajadorId, organizacionId, diagnosticosPayload, exposicionesPayload) {
+  const trabajadorRes = await query(
+    `SELECT puesto_trabajo_id FROM trabajadores WHERE id = $1 AND organizacion_id = $2`,
+    [trabajadorId, organizacionId]
+  );
+  const puestoTrabajoId = trabajadorRes.rows.length > 0 ? trabajadorRes.rows[0].puesto_trabajo_id : null;
+
+  // --- Diagnosticos derivados ---
+  const evaluacionRes = await query(
+    `SELECT diagnosticos FROM evaluaciones_ocupacionales
+     WHERE trabajador_id = $1 AND organizacion_id = $2
+     ORDER BY fecha_atencion DESC, creado_en DESC LIMIT 1`,
+    [trabajadorId, organizacionId]
+  );
+  const diagnosticosHistoriaClinica = (evaluacionRes.rows[0]?.diagnosticos || [])
+    .map((d) => d.codigoCie10)
+    .filter(Boolean);
+
+  const enfProfRes = await query(
+    `SELECT diagnostico_cie10 FROM enfermedad_profesional
+     WHERE trabajador_id = $1 AND organizacion_id = $2 AND estado IN ('confirmada', 'en_seguimiento')
+       AND diagnostico_cie10 IS NOT NULL`,
+    [trabajadorId, organizacionId]
+  );
+  const restrMedRes = await query(
+    `SELECT diagnostico_cie10_relacionado FROM restricciones_medicas
+     WHERE trabajador_id = $1 AND organizacion_id = $2 AND estado IN ('activa', 'prorrogada')
+       AND diagnostico_cie10_relacionado IS NOT NULL`,
+    [trabajadorId, organizacionId]
+  );
+
+  const diagnosticosDerivados = [...new Set([
+    ...diagnosticosHistoriaClinica,
+    ...enfProfRes.rows.map((r) => r.diagnostico_cie10),
+    ...restrMedRes.rows.map((r) => r.diagnostico_cie10_relacionado),
+  ])];
+
+  // --- Exposiciones derivadas ---
+  let exposicionesDerivadas = [];
+  if (puestoTrabajoId) {
+    const expRes = await query(
+      `SELECT exposicion_codigo FROM puesto_exposiciones WHERE puesto_trabajo_id = $1 AND organizacion_id = $2`,
+      [puestoTrabajoId, organizacionId]
+    );
+    exposicionesDerivadas = expRes.rows.map((r) => r.exposicion_codigo);
+  }
+
+  const diagnosticosManualAdicionales = (diagnosticosPayload || []).filter((d) => !diagnosticosDerivados.includes(d));
+  const exposicionesManualAdicionales = (exposicionesPayload || []).filter((e) => !exposicionesDerivadas.includes(e));
+
+  return {
+    diagnosticosCie10: [...new Set([...diagnosticosDerivados, ...diagnosticosManualAdicionales])],
+    exposicionesPuesto: [...new Set([...exposicionesDerivadas, ...exposicionesManualAdicionales])],
+    procedencia: {
+      diagnosticosDerivados,
+      diagnosticosManualAdicionales,
+      exposicionesDerivadas,
+      exposicionesManualAdicionales,
+    },
+    // Solo se marca incompleta por falta de puesto (no poder derivar
+    // exposiciones en absoluto). Si el puesto existe pero no tiene
+    // exposiciones declaradas en puesto_exposiciones, es una
+    // afirmacion valida ("este puesto no tiene exposiciones
+    // registradas"), no una ausencia de dato.
+    evaluacionIncompleta: !puestoTrabajoId,
+    motivoIncompleta: !puestoTrabajoId ? 'El trabajador no tiene un puesto de trabajo asignado; no fue posible derivar sus exposiciones ocupacionales automaticamente.' : null,
+  };
+}
+
+// ------------------------------------------------------------
 // GET /api/aptitud/reglas
-// Lista las reglas de contraindicacion activas (globales + las
-// propias de la organizacion, si las hubiera).
+// Lista las reglas de contraindicacion (globales + las propias de la
+// organizacion, si las hubiera).
+//
+// CORREGIDO en Auditoria N.13 (C-04, P0): por defecto solo muestra
+// reglas 'aprobada' (las que el motor realmente usa). Con
+// ?estado=borrador se puede ver la cola pendiente de aprobacion
+// medica -- necesario para que exista un flujo de revision real y
+// no solo un campo que nadie consulta.
 // ------------------------------------------------------------
 async function listarReglas(req, res) {
+  const estadoFiltro = ['borrador', 'aprobada', 'retirada'].includes(req.query.estado) ? req.query.estado : 'aprobada';
   try {
     const reglasRes = await query(
       `SELECT id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo,
-              severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, activa, organizacion_id
+              severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, activa, organizacion_id,
+              estado, autor_id, revisor_medico_id, fecha_revision, version
        FROM reglas_contraindicacion
-       WHERE activa = true AND (organizacion_id IS NULL OR organizacion_id = $1)
+       WHERE activa = true AND estado = $2 AND (organizacion_id IS NULL OR organizacion_id = $1)
        ORDER BY severidad ASC, nombre ASC`,
-      [req.usuario.organizacionId]
+      [req.usuario.organizacionId, estadoFiltro]
     );
-    return res.json({ reglas: reglasRes.rows });
+    return res.json({ reglas: reglasRes.rows, estadoFiltro });
   } catch (err) {
     console.error('Error en listarReglas:', err);
     return res.status(500).json({ error: 'Error interno al listar las reglas de contraindicacion.' });
@@ -58,12 +164,22 @@ async function crearRegla(req, res) {
       return res.status(400).json({ error: 'exposicionCodigo no existe en el catalogo de exposiciones.' });
     }
 
+    // CORREGIDO en Auditoria N.13 (hallazgo CRITICO C-04, P0): separa
+    // gestion tecnica de aprobacion clinica. Si quien crea la regla
+    // es 'medico', se autoaprueba (el medico ya es la autoridad
+    // clinica para esto). Si es 'admin', nace en 'borrador' y NO
+    // participa en detectarContraindicaciones hasta que un medico la
+    // apruebe explicitamente via PATCH /reglas/:id/aprobar.
+    const autoAprobada = req.usuario.rol === 'medico';
+
     const insertRes = await withTransaction(async (client) => {
       const res = await client.query(
         `INSERT INTO reglas_contraindicacion
-          (organizacion_id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, creado_por)
-         VALUES ($1, $2, $3, COALESCE($4, 'exacto'), $5, $6, $7, $8, $9, $10)
-         RETURNING id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, creado_en`,
+          (organizacion_id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, creado_por,
+           autor_id, estado, revisor_medico_id, fecha_revision)
+         VALUES ($1, $2, $3, COALESCE($4, 'exacto'), $5, $6, $7, $8, $9, $10,
+           $10, $11, $12, $13)
+         RETURNING id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, estado, creado_en`,
         [
           req.usuario.organizacionId,
           nombre,
@@ -75,6 +191,9 @@ async function crearRegla(req, res) {
           sugerenciaAccion || null,
           fuenteReferencia || null,
           req.usuario.id,
+          autoAprobada ? 'aprobada' : 'borrador',
+          autoAprobada ? req.usuario.id : null,
+          autoAprobada ? new Date() : null,
         ]
       );
 
@@ -87,7 +206,7 @@ async function crearRegla(req, res) {
         accion: 'crear_regla_contraindicacion',
         entidad: 'regla_contraindicacion',
         entidadId: res.rows[0].id,
-        detalle: { nombre, severidad },
+        detalle: { nombre, severidad, estado: res.rows[0].estado },
         req,
         client,
       });
@@ -99,6 +218,107 @@ async function crearRegla(req, res) {
   } catch (err) {
     console.error('Error en crearRegla:', err);
     return res.status(500).json({ error: 'Error interno al crear la regla de contraindicacion.' });
+  }
+}
+
+// ------------------------------------------------------------
+// PATCH /api/aptitud/reglas/:id/aprobar
+// CREADO en Auditoria N.13 (C-04, P0). Solo 'medico'. Aprueba una
+// regla en 'borrador' -- a partir de este momento SI participa en
+// detectarContraindicaciones.
+// ------------------------------------------------------------
+async function aprobarRegla(req, res) {
+  try {
+    const resultado = await withTransaction(async (client) => {
+      const actual = await client.query(
+        `SELECT id, estado FROM reglas_contraindicacion
+         WHERE id = $1 AND (organizacion_id IS NULL OR organizacion_id = $2) FOR UPDATE`,
+        [req.params.id, req.usuario.organizacionId]
+      );
+      if (actual.rows.length === 0) {
+        const err = new Error('Regla no encontrada.');
+        err.codigo = 'NO_ENCONTRADA';
+        throw err;
+      }
+      if (actual.rows[0].estado === 'retirada') {
+        const err = new Error('No se puede aprobar una regla retirada; cree una nueva version.');
+        err.codigo = 'ESTADO_INVALIDO';
+        throw err;
+      }
+
+      const updateRes = await client.query(
+        `UPDATE reglas_contraindicacion
+         SET estado = 'aprobada', revisor_medico_id = $1, fecha_revision = now()
+         WHERE id = $2
+         RETURNING id, nombre, estado, revisor_medico_id, fecha_revision`,
+        [req.usuario.id, req.params.id]
+      );
+
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'aprobar_regla_contraindicacion',
+        entidad: 'regla_contraindicacion',
+        entidadId: req.params.id,
+        req,
+        client,
+      });
+
+      return updateRes;
+    });
+
+    return res.json({ regla: resultado.rows[0] });
+  } catch (err) {
+    if (err.codigo === 'NO_ENCONTRADA') return res.status(404).json({ error: err.message });
+    if (err.codigo === 'ESTADO_INVALIDO') return res.status(409).json({ error: err.message });
+    console.error('Error en aprobarRegla:', err);
+    return res.status(500).json({ error: 'Error interno al aprobar la regla.' });
+  }
+}
+
+// ------------------------------------------------------------
+// PATCH /api/aptitud/reglas/:id/retirar
+// CREADO en Auditoria N.13 (C-04, P0). 'medico' o 'admin'. Retira
+// una regla (deja de participar en el motor) sin borrarla, para
+// mantener trazabilidad.
+// ------------------------------------------------------------
+async function retirarRegla(req, res) {
+  const { motivo } = req.body;
+  if (!motivo || !motivo.trim()) {
+    return res.status(400).json({ error: 'motivo es obligatorio para retirar una regla.' });
+  }
+  try {
+    const resultado = await withTransaction(async (client) => {
+      const updateRes = await client.query(
+        `UPDATE reglas_contraindicacion SET estado = 'retirada'
+         WHERE id = $1 AND (organizacion_id IS NULL OR organizacion_id = $2)
+         RETURNING id, nombre, estado`,
+        [req.params.id, req.usuario.organizacionId]
+      );
+      if (updateRes.rows.length === 0) {
+        const err = new Error('Regla no encontrada.');
+        err.codigo = 'NO_ENCONTRADA';
+        throw err;
+      }
+
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'retirar_regla_contraindicacion',
+        entidad: 'regla_contraindicacion',
+        entidadId: req.params.id,
+        detalle: { motivo: motivo.trim() },
+        req,
+        client,
+      });
+
+      return updateRes;
+    });
+    return res.json({ regla: resultado.rows[0] });
+  } catch (err) {
+    if (err.codigo === 'NO_ENCONTRADA') return res.status(404).json({ error: err.message });
+    console.error('Error en retirarRegla:', err);
+    return res.status(500).json({ error: 'Error interno al retirar la regla.' });
   }
 }
 
@@ -197,16 +417,29 @@ async function evaluarContraindicaciones(req, res) {
       return res.status(404).json({ error: 'Trabajador no encontrado en su organizacion.' });
     }
 
+    // CORREGIDO en Auditoria N.13 (C-03, P0): derivar automaticamente
+    // en vez de confiar unicamente en el payload.
+    const derivado = await derivarDatosClinicosParaAptitud(
+      req.params.trabajadorId, req.usuario.organizacionId, diagnosticosCie10, exposicionesPuesto
+    );
+
     const reglasRes = await query(
       `SELECT id, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, nombre
        FROM reglas_contraindicacion
-       WHERE activa = true AND (organizacion_id IS NULL OR organizacion_id = $1)`,
+       WHERE activa = true AND estado = 'aprobada' AND (organizacion_id IS NULL OR organizacion_id = $1)`,
       [req.usuario.organizacionId]
     );
 
-    const alertas = detectarContraindicaciones(diagnosticosCie10, exposicionesPuesto, reglasRes.rows);
+    const alertas = detectarContraindicaciones(derivado.diagnosticosCie10, derivado.exposicionesPuesto, reglasRes.rows);
 
-    return res.json({ alertas });
+    return res.json({
+      alertas,
+      diagnosticosCie10Usados: derivado.diagnosticosCie10,
+      exposicionesPuestoUsadas: derivado.exposicionesPuesto,
+      procedencia: derivado.procedencia,
+      evaluacionIncompleta: derivado.evaluacionIncompleta,
+      motivoIncompleta: derivado.motivoIncompleta,
+    });
   } catch (err) {
     console.error('Error en evaluarContraindicaciones:', err);
     return res.status(500).json({ error: 'Error interno al evaluar contraindicaciones.' });
@@ -242,10 +475,41 @@ async function registrarAptitud(req, res) {
     const reglasRes = await query(
       `SELECT id, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo, severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia, nombre
        FROM reglas_contraindicacion
-       WHERE activa = true AND (organizacion_id IS NULL OR organizacion_id = $1)`,
+       WHERE activa = true AND estado = 'aprobada' AND (organizacion_id IS NULL OR organizacion_id = $1)`,
       [req.usuario.organizacionId]
     );
-    const alertas = detectarContraindicaciones(diagnosticosCie10 || [], exposicionesPuesto || [], reglasRes.rows);
+    // CORREGIDO en Auditoria N.13 (C-03, P0): mismo criterio de
+    // derivacion automatica que evaluarContraindicaciones. Si la
+    // evaluacion queda incompleta (sin puesto asignado) y la
+    // aptitud a registrar no es 'no_apto', se exige confirmar
+    // explicitamente que se procede sin ese dato -- evita que la
+    // ausencia silenciosa de exposiciones derivadas se traduzca en
+    // una aptitud sin restricciones por simple falta de dato.
+    const derivado = await derivarDatosClinicosParaAptitud(
+      trabajadorId, req.usuario.organizacionId, diagnosticosCie10, exposicionesPuesto
+    );
+    if (derivado.evaluacionIncompleta && aptitud !== 'no_apto' && !req.body.confirmarEvaluacionIncompleta) {
+      return res.status(409).json({
+        error: 'Evaluacion incompleta: ' + derivado.motivoIncompleta,
+        evaluacionIncompleta: true,
+        solucion: 'Asigne un puesto de trabajo al trabajador, o reenvie la solicitud con confirmarEvaluacionIncompleta:true si el medico decide continuar de todas formas (quedara registrado en el historial).',
+      });
+    }
+    const alertas = detectarContraindicaciones(derivado.diagnosticosCie10, derivado.exposicionesPuesto, reglasRes.rows);
+
+    // CREADO en Auditoria N.13 (seccion 6.2, refuerzo de C-04): una
+    // alerta ABSOLUTA no puede quedar simplemente "mostrada" sin que
+    // conste que el medico la vio y decidio contradecirla a
+    // sabiendas -- se exige confirmacion explicita antes de registrar
+    // una aptitud que no sea 'no_apto'.
+    const alertasAbsolutas = alertas.filter((a) => a.severidad === 'absoluta');
+    if (alertasAbsolutas.length > 0 && aptitud !== 'no_apto' && !req.body.alertasAbsolutasRevisadas) {
+      return res.status(409).json({
+        error: 'Existen alertas de severidad absoluta que contradicen la aptitud propuesta.',
+        alertasAbsolutas,
+        solucion: 'Revise las alertas y reenvie con alertasAbsolutasRevisadas:true si, con justificacion clinica, decide continuar de todas formas.',
+      });
+    }
 
     const insertRes = await withTransaction(async (client) => {
       // CORREGIDO en Auditoria N.08 (hallazgo CRITICO/P0 C-N08-01):
@@ -264,22 +528,25 @@ async function registrarAptitud(req, res) {
         `INSERT INTO historial_aptitud_medica
           (organizacion_id, trabajador_id, medico_id, aptitud, puesto_evaluado,
            diagnosticos_cie10, exposiciones_puesto, alertas_detectadas, justificacion_clinica,
-           restricciones, vigencia_hasta)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           restricciones, vigencia_hasta, procedencia_datos, evaluacion_incompleta)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id, aptitud, puesto_evaluado, diagnosticos_cie10, exposiciones_puesto,
-                   alertas_detectadas, justificacion_clinica, restricciones, vigencia_hasta, creado_en`,
+                   alertas_detectadas, justificacion_clinica, restricciones, vigencia_hasta,
+                   evaluacion_incompleta, creado_en`,
         [
           req.usuario.organizacionId,
           trabajadorId,
           req.usuario.id,
           aptitud,
           puestoEvaluado,
-          diagnosticosCie10 || [],
-          exposicionesPuesto || [],
+          derivado.diagnosticosCie10,
+          derivado.exposicionesPuesto,
           JSON.stringify(alertas),
           justificacionClinica,
           restricciones || null,
           vigenciaHasta || null,
+          JSON.stringify(derivado.procedencia),
+          derivado.evaluacionIncompleta,
         ]
       );
 
@@ -302,6 +569,7 @@ async function registrarAptitud(req, res) {
           aptitud,
           cantidadAlertas: alertas.length,
           alertasAbsolutas: alertas.filter((a) => a.severidad === 'absoluta').length,
+          evaluacionIncompleta: derivado.evaluacionIncompleta,
         },
         req,
         client,
@@ -372,6 +640,8 @@ async function obtenerHistorial(req, res) {
 module.exports = {
   listarReglas,
   crearRegla,
+  aprobarRegla,
+  retirarRegla,
   buscarCie10,
   listarExposiciones,
   evaluarContraindicaciones,

@@ -14,6 +14,16 @@ async function registrarEvaluacion(req, res) {
   const { trabajadorId } = req.params;
   const b = req.body;
 
+  // CREADO en Auditoria N.13 (G-10, P1): esta implementacion SOLO
+  // cubre la variante de tarea simple de la Ecuacion NIOSH revisada
+  // (1994). Se rechaza explicitamente en vez de calcular con la
+  // formula equivocada.
+  if (b.tipoTarea === 'compuesta') {
+    return res.status(400).json({
+      error: 'Esta version de SISSO solo implementa la Ecuacion NIOSH para tarea simple (single-task). La variante de tarea multiple/compuesta no esta implementada todavia.',
+    });
+  }
+
   try {
     const tRes = await query(
       `SELECT id FROM trabajadores WHERE id = $1 AND organizacion_id = $2`,
@@ -29,8 +39,13 @@ async function registrarEvaluacion(req, res) {
       calidadAgarre: b.calidadAgarre, pesoCarga: b.pesoCargaKg,
     });
 
+    // CORREGIDO en Auditoria N.13 (G-10, P1): mensaje mas especifico
+    // que "verifica que los campos tengan valores validos" -- la
+    // causa mas comun de 'no_calculable' con datos aparentemente
+    // completos es una frecuencia fuera del rango que cubre la
+    // Tabla 5 (0.1 a 15 lev/min para tarea simple).
     if (resultado.clasificacion === 'no_calculable') {
-      return res.status(400).json({ error: 'No se pudo calcular con los datos proporcionados. Verifica que todos los campos requeridos tengan valores validos.' });
+      return res.status(400).json({ error: 'No se pudo calcular con los datos proporcionados. Verifique que horizontalCm, verticalCm, distanciaVerticalCm y anguloAsimetria esten dentro de rango, y que frecuenciaPorMin no supere 15 lev/min (limite de la Tabla 5 para tarea simple).' });
     }
 
     const insertRes = await query(

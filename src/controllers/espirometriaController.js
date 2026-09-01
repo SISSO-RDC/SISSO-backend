@@ -87,7 +87,7 @@ async function registrarExamen(req, res) {
         patron,
         reversibilidad_positiva, cambio_fev1_pct_predicho, cambio_fev1_ml, cambio_fvc_pct_predicho, cambio_fvc_ml,
         calidad_numero_maniobras, calidad_repetibilidad_fvc_ml, calidad_repetibilidad_fev1_ml, calidad_grado,
-        interpretable, criterio_interpretativo,
+        interpretable, criterio_interpretativo, metadatos_referencia,
         observaciones
       ) VALUES (
         $1,$2,$3,$4,
@@ -100,8 +100,8 @@ async function registrarExamen(req, res) {
         $31,
         $32,$33,$34,$35,$36,
         $37,$38,$39,$40,
-        $41,$42,
-        $43
+        $41,$42,$43,
+        $44
       ) RETURNING id, fecha_examen, fvc_pre, fev1_pre, fev1_fvc_medido,
                   fvc_pct_predicho, fev1_pct_predicho, patron,
                   reversibilidad_positiva, cambio_fev1_pct_predicho, interpretable, calidad_grado`,
@@ -118,7 +118,12 @@ async function registrarExamen(req, res) {
         resultado.reversibilidad.esPositiva, resultado.reversibilidad.cambioPctPredicho, resultado.reversibilidad.cambioMl,
         resultado.reversibilidad.cambioPctPredichoFvc ?? null, resultado.reversibilidad.cambioMlFvc ?? null,
         resultado.calidad.numeroManiobras, resultado.calidad.repetibilidadFvcMl, resultado.calidad.repetibilidadFev1Ml, resultado.calidad.grado,
-        resultado.interpretable, resultado.criterioInterpretativo,
+        // CORREGIDO en Auditoria N.13 (C-01, P0): se persiste tambien
+        // metadatosReferencia (ecuacion/version/poblacion/variables/
+        // metodo LLN), para que quede trazado en cada examen que el
+        // resultado es una aproximacion interina, no un estandar
+        // GLI-2012 definitivo.
+        resultado.interpretable, resultado.criterioInterpretativo, JSON.stringify(resultado.metadatosReferencia),
         input.observaciones || null,
       ]
     );

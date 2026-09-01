@@ -8,7 +8,8 @@ const { registrarAuditoria } = require('../utils/auditoria');
 // de minimizacion por campo, ver src/utils/politicaMinimizacion.js.
 const { aplicarBloqueoUniversal } = require('../utils/politicaMinimizacion');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
-const { calcularImc, validarFactoresRiesgo } = require('../historiaClinica/historiaClinica');
+const { calcularImc, validarFactoresRiesgo, validarBloquesJsonbHistoriaClinica } = require('../historiaClinica/historiaClinica');
+const { detectarBanderasRojasSignosVitales } = require('../aptitud/banderasRojas');
 const { generarPdfPreocupacional, generarPdfRetiro, generarPdfPeriodica, generarPdfReintegro } = require('../historiaClinica/pdfPreocupacional');
 const { generarPdfCertificado } = require('../historiaClinica/pdfCertificado');
 const catalogos = require('../historiaClinica/catalogosRiesgo');
@@ -62,6 +63,18 @@ async function registrarPreocupacional(req, res) {
       return res.status(400).json({ error: errorRiesgos });
     }
 
+    // CREADO en Auditoria N.13 (hallazgo CRITICO C-05, P0): valida
+    // los bloques JSONB con esquema definido (diagnosticos,
+    // resultadosExamenes, antecedentesLaboralesPrevios,
+    // accidentesTrabajoPrevios, enfermedadesProfesionalesPrevias,
+    // antecedentesFamiliares) antes de persistir. Rechaza el payload
+    // completo si algun bloque no cumple su forma esperada, en vez
+    // de guardarlo "tal cual llegue".
+    const erroresEsquemaJsonb = validarBloquesJsonbHistoriaClinica(b);
+    if (erroresEsquemaJsonb.length > 0) {
+      return res.status(400).json({ error: 'Uno o mas bloques clinicos tienen datos invalidos.', detalles: erroresEsquemaJsonb });
+    }
+
     // Bloque N: si se selecciono una aptitud, debe ser una de las 4
     // categorias oficiales del MSP (la validacion de formato basica
     // -que exista si se envia- ya la hace validarRegistrarHistoriaClinica).
@@ -77,6 +90,19 @@ async function registrarPreocupacional(req, res) {
 
     let insertRes;
     try {
+    // CREADO en Auditoria N.13 (hallazgo GRAVE G-05, P1): motor de
+    // banderas rojas sobre signos vitales -- se computa antes de
+    // insertar y se agrega a la respuesta para que quede visible al
+    // medico de inmediato ("requiere revision medica", nunca un
+    // diagnostico automatico).
+    const banderasRojas = detectarBanderasRojasSignosVitales({
+      presionArterialSistolica: b.presionArterialSistolica,
+      presionArterialDiastolica: b.presionArterialDiastolica,
+      frecuenciaCardiaca: b.frecuenciaCardiaca,
+      saturacionOxigeno: b.saturacionOxigeno,
+      frecuenciaRespiratoria: b.frecuenciaRespiratoria,
+    });
+
     insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
@@ -143,13 +169,26 @@ async function registrarPreocupacional(req, res) {
         // previos a esta correccion quedan bloqueados/restringidos,
         // no borrados, hasta definir politica legal de conservacion),
         // pero ningun flujo nuevo puede volver a escribir en ellas.
-        b.numeroArchivo || null, b.religion || null, b.grupoSanguineo || null, b.lateralidad || null, null, null,
+        // CORREGIDO en Auditoria N.13 (hallazgo CRITICO C-02, P0):
+        // religion, antecedentesGinecobstetricos,
+        // antecedentesGinecologicosExamenes,
+        // antecedentesReproductivosMasculinos y habitosToxicos ya NO
+        // se toman del body, por el mismo fundamento que
+        // orientacionSexual/identidadGenero (Sentencia 59-19-IN/24):
+        // la propia sentencia identifica estos campos, junto con los
+        // dos ya bloqueados en N.10, como parte de la informacion que
+        // el Acuerdo 0341-2019 exigia capturar y que la Corte ordeno
+        // dejar de solicitar mientras el MSP no emita normativa
+        // sustitutiva. Las columnas se conservan (mismo criterio que
+        // N.10: no se borran datos historicos sin decision juridica
+        // formal), pero ningun flujo nuevo puede volver a escribirlas.
+        b.numeroArchivo || null, null, b.grupoSanguineo || null, b.lateralidad || null, null, null,
         !!b.discapacidadTiene, b.discapacidadTipo || null, b.discapacidadPorcentaje || null, b.fechaIngresoTrabajo || null,
-        b.puestoTrabajoCiuo || null, b.areaTrabajo || null, b.actividadesRelevantes || null, b.antecedentesGinecobstetricos ? JSON.stringify(b.antecedentesGinecobstetricos) : null,
+        b.puestoTrabajoCiuo || null, b.areaTrabajo || null, b.actividadesRelevantes || null, null,
         b.motivoConsulta || 'Evaluación médica ocupacional para el ingreso al puesto de trabajo.',
-        b.antecedentesClinicosQuirurgicos || null, b.antecedentesGinecologicosExamenes ? JSON.stringify(b.antecedentesGinecologicosExamenes) : null,
-        b.antecedentesReproductivosMasculinos ? JSON.stringify(b.antecedentesReproductivosMasculinos) : null,
-        b.habitosToxicos ? JSON.stringify(b.habitosToxicos) : null,
+        b.antecedentesClinicosQuirurgicos || null, null,
+        null,
+        null,
         b.estiloVida ? JSON.stringify(b.estiloVida) : null,
         JSON.stringify(b.antecedentesLaboralesPrevios || []),
         b.accidentesTrabajoPrevios ? JSON.stringify(b.accidentesTrabajoPrevios) : null,
@@ -197,7 +236,22 @@ async function registrarPreocupacional(req, res) {
       throw errTransaccion;
     }
 
-    return res.status(201).json({ evaluacion: insertRes.rows[0] });
+    // CREADO en Auditoria N.13 (G-05, P1): se expone la senal de
+    // banderas rojas en la respuesta, para que el frontend/medico la
+    // vea de inmediato al guardar.
+    if (banderasRojas.requiereRevisionPrioritaria) {
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'bandera_roja_signos_vitales_detectada',
+        entidad: 'evaluacion_ocupacional',
+        entidadId: insertRes.rows[0].id,
+        detalle: { banderas: banderasRojas.banderas.map((x) => x.codigo) },
+        req,
+      });
+    }
+
+    return res.status(201).json({ evaluacion: insertRes.rows[0], banderasRojas });
   } catch (err) {
     console.error('Error en registrarPreocupacional:', err);
     return res.status(500).json({ error: 'Error interno al registrar la evaluacion preocupacional.' });
@@ -227,6 +281,13 @@ async function registrarRetiro(req, res) {
 
     const imc = calcularImc(b.pesoKg, b.tallaCm);
 
+    // CREADO en Auditoria N.13 (C-05, P0): ver comentario extenso en
+    // registrarPreocupacional().
+    const erroresEsquemaJsonbRetiro = validarBloquesJsonbHistoriaClinica(b);
+    if (erroresEsquemaJsonbRetiro.length > 0) {
+      return res.status(400).json({ error: 'Uno o mas bloques clinicos tienen datos invalidos.', detalles: erroresEsquemaJsonbRetiro });
+    }
+
     // Tiempo de permanencia: si no lo mandan explicito, se calcula
     // a partir de fechaInicioLabores/fechaSalida cuando ambas existen.
     let tiempoPermanenciaMeses = b.tiempoPermanenciaMeses || null;
@@ -243,6 +304,19 @@ async function registrarRetiro(req, res) {
 
     let insertRes;
     try {
+    // CREADO en Auditoria N.13 (hallazgo GRAVE G-05, P1): motor de
+    // banderas rojas sobre signos vitales -- se computa antes de
+    // insertar y se agrega a la respuesta para que quede visible al
+    // medico de inmediato ("requiere revision medica", nunca un
+    // diagnostico automatico).
+    const banderasRojas = detectarBanderasRojasSignosVitales({
+      presionArterialSistolica: b.presionArterialSistolica,
+      presionArterialDiastolica: b.presionArterialDiastolica,
+      frecuenciaCardiaca: b.frecuenciaCardiaca,
+      saturacionOxigeno: b.saturacionOxigeno,
+      frecuenciaRespiratoria: b.frecuenciaRespiratoria,
+    });
+
     insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
@@ -323,7 +397,22 @@ async function registrarRetiro(req, res) {
       throw errTransaccion;
     }
 
-    return res.status(201).json({ evaluacion: insertRes.rows[0] });
+    // CREADO en Auditoria N.13 (G-05, P1): se expone la senal de
+    // banderas rojas en la respuesta, para que el frontend/medico la
+    // vea de inmediato al guardar.
+    if (banderasRojas.requiereRevisionPrioritaria) {
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'bandera_roja_signos_vitales_detectada',
+        entidad: 'evaluacion_ocupacional',
+        entidadId: insertRes.rows[0].id,
+        detalle: { banderas: banderasRojas.banderas.map((x) => x.codigo) },
+        req,
+      });
+    }
+
+    return res.status(201).json({ evaluacion: insertRes.rows[0], banderasRojas });
   } catch (err) {
     console.error('Error en registrarRetiro:', err);
     return res.status(500).json({ error: 'Error interno al registrar la evaluacion de retiro.' });
@@ -358,6 +447,13 @@ async function registrarPeriodica(req, res) {
       return res.status(400).json({ error: errorRiesgos });
     }
 
+    // CREADO en Auditoria N.13 (C-05, P0): ver comentario extenso en
+    // registrarInicio().
+    const erroresEsquemaJsonbPeriodica = validarBloquesJsonbHistoriaClinica(b);
+    if (erroresEsquemaJsonbPeriodica.length > 0) {
+      return res.status(400).json({ error: 'Uno o mas bloques clinicos tienen datos invalidos.', detalles: erroresEsquemaJsonbPeriodica });
+    }
+
     const imc = calcularImc(b.pesoKg, b.tallaCm);
 
     let firma = { url: null, publicId: null };
@@ -367,6 +463,19 @@ async function registrarPeriodica(req, res) {
 
     let insertRes;
     try {
+    // CREADO en Auditoria N.13 (hallazgo GRAVE G-05, P1): motor de
+    // banderas rojas sobre signos vitales -- se computa antes de
+    // insertar y se agrega a la respuesta para que quede visible al
+    // medico de inmediato ("requiere revision medica", nunca un
+    // diagnostico automatico).
+    const banderasRojas = detectarBanderasRojasSignosVitales({
+      presionArterialSistolica: b.presionArterialSistolica,
+      presionArterialDiastolica: b.presionArterialDiastolica,
+      frecuenciaCardiaca: b.frecuenciaCardiaca,
+      saturacionOxigeno: b.saturacionOxigeno,
+      frecuenciaRespiratoria: b.frecuenciaRespiratoria,
+    });
+
     insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
@@ -415,7 +524,10 @@ async function registrarPeriodica(req, res) {
         b.puestoTrabajoCiuo || null,
         'Evaluación médica periódica en el puesto de trabajo.',
         b.antecedentesClinicosQuirurgicos || null,
-        b.habitosToxicos ? JSON.stringify(b.habitosToxicos) : null,
+        // CORREGIDO en Auditoria N.13 (C-02, P0): ver comentario
+        // extenso en registrarInicio() sobre por que habitosToxicos
+        // ya no se captura desde el body.
+        null,
         b.estiloVida ? JSON.stringify(b.estiloVida) : null,
         b.incidentes || null,
         b.accidentesTrabajoPrevios ? JSON.stringify(b.accidentesTrabajoPrevios) : null,
@@ -461,7 +573,22 @@ async function registrarPeriodica(req, res) {
       throw errTransaccion;
     }
 
-    return res.status(201).json({ evaluacion: insertRes.rows[0] });
+    // CREADO en Auditoria N.13 (G-05, P1): se expone la senal de
+    // banderas rojas en la respuesta, para que el frontend/medico la
+    // vea de inmediato al guardar.
+    if (banderasRojas.requiereRevisionPrioritaria) {
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'bandera_roja_signos_vitales_detectada',
+        entidad: 'evaluacion_ocupacional',
+        entidadId: insertRes.rows[0].id,
+        detalle: { banderas: banderasRojas.banderas.map((x) => x.codigo) },
+        req,
+      });
+    }
+
+    return res.status(201).json({ evaluacion: insertRes.rows[0], banderasRojas });
   } catch (err) {
     console.error('Error en registrarPeriodica:', err);
     return res.status(500).json({ error: 'Error interno al registrar la evaluacion periodica.' });
@@ -491,6 +618,13 @@ async function registrarReintegro(req, res) {
 
     const imc = calcularImc(b.pesoKg, b.tallaCm);
 
+    // CREADO en Auditoria N.13 (C-05, P0): ver comentario extenso en
+    // registrarPreocupacional().
+    const erroresEsquemaJsonbReintegro = validarBloquesJsonbHistoriaClinica(b);
+    if (erroresEsquemaJsonbReintegro.length > 0) {
+      return res.status(400).json({ error: 'Uno o mas bloques clinicos tienen datos invalidos.', detalles: erroresEsquemaJsonbReintegro });
+    }
+
     let totalDiasAusencia = b.totalDiasAusencia || null;
     if (!totalDiasAusencia && b.fechaUltimoDiaLaboral && b.fechaReingreso) {
       const ultimo = new Date(b.fechaUltimoDiaLaboral);
@@ -505,6 +639,19 @@ async function registrarReintegro(req, res) {
 
     let insertRes;
     try {
+    // CREADO en Auditoria N.13 (hallazgo GRAVE G-05, P1): motor de
+    // banderas rojas sobre signos vitales -- se computa antes de
+    // insertar y se agrega a la respuesta para que quede visible al
+    // medico de inmediato ("requiere revision medica", nunca un
+    // diagnostico automatico).
+    const banderasRojas = detectarBanderasRojasSignosVitales({
+      presionArterialSistolica: b.presionArterialSistolica,
+      presionArterialDiastolica: b.presionArterialDiastolica,
+      frecuenciaCardiaca: b.frecuenciaCardiaca,
+      saturacionOxigeno: b.saturacionOxigeno,
+      frecuenciaRespiratoria: b.frecuenciaRespiratoria,
+    });
+
     insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
@@ -577,7 +724,22 @@ async function registrarReintegro(req, res) {
       throw errTransaccion;
     }
 
-    return res.status(201).json({ evaluacion: insertRes.rows[0] });
+    // CREADO en Auditoria N.13 (G-05, P1): se expone la senal de
+    // banderas rojas en la respuesta, para que el frontend/medico la
+    // vea de inmediato al guardar.
+    if (banderasRojas.requiereRevisionPrioritaria) {
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'bandera_roja_signos_vitales_detectada',
+        entidad: 'evaluacion_ocupacional',
+        entidadId: insertRes.rows[0].id,
+        detalle: { banderas: banderasRojas.banderas.map((x) => x.codigo) },
+        req,
+      });
+    }
+
+    return res.status(201).json({ evaluacion: insertRes.rows[0], banderasRojas });
   } catch (err) {
     console.error('Error en registrarReintegro:', err);
     return res.status(500).json({ error: 'Error interno al registrar la evaluacion de reintegro.' });
