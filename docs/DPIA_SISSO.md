@@ -31,10 +31,24 @@ rápida y bien informada, no para saltarla.
   (PostgreSQL), con almacenamiento de archivos en Cloudinary.
 - **Finalidad:** gestión de seguridad y salud ocupacional conforme a
   la normativa ecuatoriana aplicable (Decreto Ejecutivo 255/2024,
-  Acuerdo Ministerial MSP 0341-2019, IESS), incluyendo vigilancia de
-  la salud, evaluación de riesgos, gestión de incidentes/accidentes y
-  cumplimiento documental. Cada módulo tiene su finalidad codificada
-  en `finalidades_tratamiento` (ver `migration_051`, `056`, `063`).
+  IESS). **Aclaración exigida por Auditoría N.13 (hallazgo GRAVE
+  G-07):** el Acuerdo Ministerial MSP 0341-2019 fue la base histórica
+  del formulario HCU 077/081, pero desde la Sentencia 59-19-IN/24 de
+  la Corte Constitucional (11/07/2024) esa base quedó parcialmente
+  invalidada respecto a los campos que la propia sentencia identificó
+  (orientación sexual, identidad de género, religión, antecedentes
+  ginecobstétricos/reproductivos, hábitos tóxicos — ver `migration_050`
+  y `migration_064`, secciones 3 y 4). SISSO NO cita el Acuerdo
+  0341-2019 como base jurídica vigente para esos campos específicos;
+  para el resto del formulario (datos no afectados por la sentencia)
+  sigue siendo la referencia histórica mientras el MSP no emita
+  normativa sustitutiva. Esta distinción se mantenía implícita en
+  versiones anteriores de este documento y ahora queda explícita para
+  evitar la impresión de un cumplimiento normativo cerrado que no
+  existe — ver sección 4 para los riesgos residuales derivados de
+  esto.
+  Cada módulo tiene su finalidad codificada en `finalidades_tratamiento`
+  (ver `migration_051`, `056`, `063`).
 - **Categorías de datos:** identificativos (nombre, documento),
   laborales (puesto, jornada), y de **salud** (diagnósticos,
   resultados de exámenes ocupacionales, restricciones médicas,
@@ -100,6 +114,13 @@ corrección y requieren decisión organizacional, no solo código:
 4. **Aprobación formal**: este documento no ha sido revisado por un
    DPO ni por asesoría jurídica. Se recomienda esa revisión antes de
    asumir que la evaluación de impacto está "cerrada".
+5. **Base jurídica mixta (G-07, Auditoría N.13)**: aunque la sección 1
+   ya distingue qué partes del Acuerdo 0341-2019 siguen citándose y
+   cuáles no (por la Sentencia 59-19-IN/24), la plataforma en su
+   conjunto opera todavía bajo un marco normativo en transición: el
+   MSP no ha emitido el formulario sustitutivo. Mientras eso no
+   ocurra, cualquier afirmación de "cumplimiento normativo completo"
+   sería prematura — este documento evita hacerla intencionalmente.
 
 ## 5. Próximos pasos recomendados
 
