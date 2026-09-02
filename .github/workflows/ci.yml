@@ -60,6 +60,10 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://sisso_ci:sisso_ci_password@localhost:5432/sisso_ci
+      # El Postgres efimero del servicio de CI (arriba) no soporta
+      # SSL en absoluto -- ver comentario junto a DB_SSL_DISABLED en
+      # src/db/pool.js. NUNCA definir esta variable en Render/produccion.
+      DB_SSL_DISABLED: 'true'
       JWT_ACCESS_SECRET: ci_test_secret_access_do_not_use_in_prod_0000000000000000
       JWT_REFRESH_SECRET: ci_test_secret_refresh_do_not_use_in_prod_0000000000000000
       NODE_ENV: test
