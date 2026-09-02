@@ -1,0 +1,107 @@
+# ============================================================
+# CI de SISSO-backend.
+#
+# CREADO en Auditoria N.14 (hallazgo CRITICO C14-03, P0): la
+# entrega N13 declaro en CORRECCIONES_N13.md que este archivo
+# existia y que el CI instalaba dependencias, levantaba PostgreSQL
+# efimero, aplicaba migraciones y ejecutaba la suite completa -- esa
+# afirmacion NO tenia respaldo en el ZIP auditado (el directorio
+# .github/workflows no estaba presente). Este archivo cierra esa
+# discrepancia: ahora es una garantia real, versionada dentro del
+# repositorio auditado, no solo documentacion.
+#
+# Que hace en cada push/PR a main:
+#   1. Levanta un servicio PostgreSQL efimero (mismo motor que Neon).
+#   2. npm ci en entorno limpio (no npm install: exige que
+#      package-lock.json este sincronizado).
+#   3. Aplica TODAS las migraciones desde cero (npm run migrate,
+#      que corre schema.sql + migration_002...N en orden), es decir
+#      valida el camino completo 001->ultima migracion, no solo las
+#      nuevas 064-068.
+#   4. Ejecuta node --check sobre todo src/ y tests/ (deteccion
+#      temprana de errores de sintaxis).
+#   5. Ejecuta la suite completa (npm test) contra ese PostgreSQL
+#      real -- NO mocks, igual que exige tests/README.md.
+#   6. Sube como artefacto el log de resultados para evidencia de
+#      auditoria (numero de pruebas aprobadas/fallidas, commit, Node,
+#      Postgres).
+#
+# Cualquier fallo en migraciones o en la suite marca el pipeline en
+# rojo y bloquea el merge (branch protection debe exigir este check).
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sisso_ci
+          POSTGRES_PASSWORD: sisso_ci_password
+          POSTGRES_DB: sisso_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sisso_ci -d sisso_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://sisso_ci:sisso_ci_password@localhost:5432/sisso_ci
+      JWT_ACCESS_SECRET: ci_test_secret_access_do_not_use_in_prod_0000000000000000
+      JWT_REFRESH_SECRET: ci_test_secret_refresh_do_not_use_in_prod_0000000000000000
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: npm ci (entorno limpio)
+        run: npm ci
+
+      - name: node --check sobre src/ y tests/
+        run: |
+          set -e
+          find src tests -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      - name: Esperar PostgreSQL
+        run: |
+          for i in $(seq 1 20); do
+            pg_isready -h localhost -p 5432 -U sisso_ci && break
+            sleep 2
+          done
+
+      - name: Aplicar TODAS las migraciones desde cero (001 -> ultima)
+        run: npm run migrate
+
+      - name: Verificar que schema_migrations refleje todas las migraciones del repo
+        run: node scripts/ci_verificar_migraciones.js
+
+      - name: Ejecutar suite completa (npm test) contra PostgreSQL real
+        run: npm test 2>&1 | tee /tmp/resultado-tests.log
+
+      - name: Subir evidencia de pruebas como artefacto
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultado-tests-${{ github.sha }}
+          path: /tmp/resultado-tests.log
+          retention-days: 90
