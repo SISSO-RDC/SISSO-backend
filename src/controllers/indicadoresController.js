@@ -37,6 +37,34 @@
 //     anormales detallados).
 // ============================================================
 const { query } = require('../db/pool');
+const { esGrupoPequeno } = require('../utils/kAnonimato');
+
+// CREADO en Auditoria N.14 (hallazgo GRAVE G14-11, P1): definicion
+// REPRODUCIBLE y VERSIONADA de la tasa de incidencia de enfermedad
+// profesional, para dejar de tener formulas de "porcentaje de
+// casos" implicitas y no documentadas dispersas entre reportes.
+//
+// Formula (formato estandar de tasas de incidencia ocupacional,
+// analogo al usado por OSHA/IESS para tasas por cada 100
+// trabajadores-año): 
+//   tasaIncidencia = (casos NUEVOS confirmados en los ultimos 12
+//   meses / trabajadores activos actuales) * 100
+//
+// LIMITACION DOCUMENTADA (misma transparencia que ya se aplica a
+// espirometria/LLN): se usa el conteo de trabajadores ACTIVOS HOY
+// como aproximacion del denominador de "trabajadores-año expuestos"
+// del periodo, no un calculo exacto de persona-tiempo (que
+// requeriria reconstruir altas/bajas dia a dia). Para una plantilla
+// razonablemente estable en 12 meses esta aproximacion es adecuada;
+// en organizaciones con alta rotacion puede subestimar o
+// sobreestimar la tasa real. Se documenta la version de la formula
+// (`version`) para que un cambio futuro a persona-tiempo exacto sea
+// rastreable en el tiempo.
+const DEFINICION_TASA_INCIDENCIA_EP = {
+  version: 'tasa_incidencia_ep_v1_aproximada_100_trabajadores',
+  formula: '(casos nuevos confirmados en 12 meses / trabajadores activos actuales) * 100',
+  limitacion: 'Usa trabajadores activos HOY como aproximacion del denominador de persona-tiempo; no reconstruye altas/bajas del periodo.',
+};
 
 function pct(numerador, denominador) {
   if (!denominador || denominador === 0) return 0;
@@ -58,6 +86,7 @@ const COBERTURA_EXAMENES_VACIA = { audiometria: EXAMEN_VACIO, espirometria: EXAM
 const HALLAZGO_ANORMAL_VACIO = { total: 0, anormales: 0, porcentaje: 0 };
 const HALLAZGOS_ANORMALES_VACIOS = { audiometria: HALLAZGO_ANORMAL_VACIO, espirometria: HALLAZGO_ANORMAL_VACIO, visiometria: HALLAZGO_ANORMAL_VACIO };
 const CONSENTIMIENTOS_VACIO = { total: 0, electronica: 0, fisica: 0, revocados: 0, porcentajeRevocados: 0 };
+const EPIDEMIOLOGIA_VACIA = { casosConfirmados12m: null, tasaIncidencia: null, ...DEFINICION_TASA_INCIDENCIA_EP };
 
 /**
  * Proyecta el objeto de indicadores ya calculado segun el rol de
@@ -82,11 +111,11 @@ const CONSENTIMIENTOS_VACIO = { total: 0, electronica: 0, fisica: 0, revocados: 
  * campo tumbe la pagina.
  */
 function proyectarIndicadoresSegunRol(indicadores, rol) {
-  const { totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, matrizRiesgos, ergonomia, consentimientos } = indicadores;
+  const { totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, matrizRiesgos, ergonomia, consentimientos, epidemiologia } = indicadores;
 
   if (rol === 'medico') {
     return {
-      totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, consentimientos,
+      totalTrabajadores, coberturaEmo, aptitudMedica, coberturaExamenes, hallazgosAnormales, consentimientos, epidemiologia,
       matrizRiesgos: { ...MATRIZ_RIESGOS_VACIA, _restringido: true },
       ergonomia: { ...ERGONOMIA_VACIA, _restringido: true },
     };
@@ -96,6 +125,7 @@ function proyectarIndicadoresSegunRol(indicadores, rol) {
       totalTrabajadores, coberturaEmo, coberturaExamenes, matrizRiesgos, ergonomia, consentimientos,
       aptitudMedica: { ...APTITUD_MEDICA_VACIA, _restringido: true },
       hallazgosAnormales: { ...HALLAZGOS_ANORMALES_VACIOS, _restringido: true },
+      epidemiologia: { ...EPIDEMIOLOGIA_VACIA, _restringido: true },
     };
   }
   if (rol === 'th') {
@@ -107,6 +137,7 @@ function proyectarIndicadoresSegunRol(indicadores, rol) {
       matrizRiesgos: { ...MATRIZ_RIESGOS_VACIA, _restringido: true },
       ergonomia: { ...ERGONOMIA_VACIA, _restringido: true },
       consentimientos: { ...CONSENTIMIENTOS_VACIO, _restringido: true },
+      epidemiologia: { ...EPIDEMIOLOGIA_VACIA, _restringido: true },
     };
   }
   // admin: gestion empresarial, sin convertirse en lector clinico.
@@ -115,6 +146,7 @@ function proyectarIndicadoresSegunRol(indicadores, rol) {
     aptitudMedica: { ...APTITUD_MEDICA_VACIA, _restringido: true },
     hallazgosAnormales: { ...HALLAZGOS_ANORMALES_VACIOS, _restringido: true },
     ergonomia: { ...ERGONOMIA_VACIA, _restringido: true },
+    epidemiologia: { ...EPIDEMIOLOGIA_VACIA, _restringido: true },
   };
 }
 
@@ -136,6 +168,13 @@ async function obtenerIndicadores(req, res) {
       nordicoRes,
       nioshRes,
       consentimientosRes,
+      // CREADO en Auditoria N.14 (hallazgo GRAVE G14-11, P1): la
+      // tasa de incidencia de enfermedad profesional se calcula aqui
+      // con una FORMULA REPRODUCIBLE Y VERSIONADA (ver
+      // DEFINICION_TASA_INCIDENCIA_EP mas abajo), en vez de dejar
+      // que cada reporte calcule "porcentaje de casos" de forma ad
+      // hoc con su propio criterio de periodo/denominador.
+      enfermedadProfesionalRes,
     ] = await Promise.all([
 
       // ---- Total de trabajadores activos ----
@@ -262,6 +301,17 @@ async function obtenerIndicadores(req, res) {
          WHERE organizacion_id = $1`,
         [orgId]
       ),
+
+      // ---- Casos NUEVOS de enfermedad profesional CONFIRMADA en los
+      // ultimos 12 meses (fecha_confirmacion), para la tasa de
+      // incidencia epidemiologica -- ver DEFINICION_TASA_INCIDENCIA_EP.
+      query(
+        `SELECT COUNT(*) AS casos_confirmados_12m
+         FROM enfermedad_profesional
+         WHERE organizacion_id = $1 AND estado = 'confirmada'
+           AND fecha_confirmacion >= CURRENT_DATE - INTERVAL '12 months'`,
+        [orgId]
+      ),
     ]);
 
     const totalTrabajadores = parseInt(totalTrabajadoresRes.rows[0].total, 10);
@@ -371,6 +421,19 @@ async function obtenerIndicadores(req, res) {
         revocados: parseInt(cons.revocados, 10),
         porcentajeRevocados: pct(parseInt(cons.revocados, 10), totalConsentimientos),
       },
+
+      // CREADO en Auditoria N.14 (G14-11): tasa de incidencia
+      // reproducible/versionada (ver DEFINICION_TASA_INCIDENCIA_EP).
+      // Aplica el mismo principio de k-anonimato que dashboard/
+      // reportes: con una organizacion muy pequeña, "1 caso
+      // confirmado" identificaria practicamente a una persona.
+      epidemiologia: esGrupoPequeno(totalTrabajadores)
+        ? { ...EPIDEMIOLOGIA_VACIA, redactado: true, nota: `Desglose oculto: la organización tiene ${totalTrabajadores} trabajador(es) activo(s), menos del mínimo requerido para mostrar una tasa de incidencia sin riesgo de identificar a una persona en particular.` }
+        : {
+          casosConfirmados12m: parseInt(enfermedadProfesionalRes.rows[0].casos_confirmados_12m, 10),
+          tasaIncidencia: pct(parseInt(enfermedadProfesionalRes.rows[0].casos_confirmados_12m, 10), totalTrabajadores),
+          ...DEFINICION_TASA_INCIDENCIA_EP,
+        },
     }, req.usuario.rol));
 
   } catch (err) {

@@ -44,6 +44,27 @@ const { detectarContraindicaciones } = require('../aptitud/motorContraindicacion
 // puesto asignado (no se puede derivar exposiciones en absoluto) --
 // el motor debe comunicar esto explicitamente en vez de proceder
 // como si "sin exposiciones derivadas" significara "sin riesgo".
+//
+// CORREGIDO en Auditoria N.14 (hallazgo CRITICO C14-02, P0): la
+// version anterior solo consideraba incompleta la evaluacion cuando
+// faltaba el puesto (!puestoTrabajoId). Si el puesto existia pero
+// puesto_exposiciones tenia 0 filas, se asumia sin mas que el
+// puesto realmente no tenia exposiciones -- una omision
+// administrativa (matriz nunca configurada) podia producir
+// silenciosamente una falsa ausencia de contraindicacion. Ahora se
+// distinguen TRES estados (ver migration_068):
+//   SIN_PUESTO                  -> no se puede derivar nada
+//   PUESTO_SIN_MATRIZ           -> puesto existe, 0 exposiciones
+//                                  Y nadie confirmo explicitamente
+//                                  que el puesto no tiene riesgo
+//   PUESTO_CON_MATRIZ_VALIDADA  -> >=1 exposicion declarada, O un
+//                                  responsable confirmo explicitamente
+//                                  "sin exposiciones" (con motivo,
+//                                  usuario y fecha -- ver
+//                                  puestosTrabajoController.confirmarSinExposiciones)
+// `evaluacionIncompleta` ahora es true tanto para SIN_PUESTO como
+// para PUESTO_SIN_MATRIZ: en ambos casos el motor NO puede afirmar
+// que conoce el perfil de exposicion real del trabajador.
 // ------------------------------------------------------------
 async function derivarDatosClinicosParaAptitud(trabajadorId, organizacionId, diagnosticosPayload, exposicionesPayload) {
   const trabajadorRes = await query(
@@ -51,6 +72,15 @@ async function derivarDatosClinicosParaAptitud(trabajadorId, organizacionId, dia
     [trabajadorId, organizacionId]
   );
   const puestoTrabajoId = trabajadorRes.rows.length > 0 ? trabajadorRes.rows[0].puesto_trabajo_id : null;
+
+  let puestoConfirmadoSinRiesgo = false;
+  if (puestoTrabajoId) {
+    const puestoRes = await query(
+      `SELECT matriz_exposicion_confirmada_sin_riesgo FROM puestos_trabajo WHERE id = $1 AND organizacion_id = $2`,
+      [puestoTrabajoId, organizacionId]
+    );
+    puestoConfirmadoSinRiesgo = puestoRes.rows[0]?.matriz_exposicion_confirmada_sin_riesgo === true;
+  }
 
   // --- Diagnosticos derivados ---
   const evaluacionRes = await query(
@@ -95,6 +125,26 @@ async function derivarDatosClinicosParaAptitud(trabajadorId, organizacionId, dia
   const diagnosticosManualAdicionales = (diagnosticosPayload || []).filter((d) => !diagnosticosDerivados.includes(d));
   const exposicionesManualAdicionales = (exposicionesPayload || []).filter((e) => !exposicionesDerivadas.includes(e));
 
+  // CORREGIDO en Auditoria N.14 (C14-02): calculo explicito del
+  // estado de la matriz de exposicion, en vez de un booleano que
+  // solo distinguia "hay puesto" / "no hay puesto".
+  let estadoMatrizExposicion;
+  if (!puestoTrabajoId) {
+    estadoMatrizExposicion = 'SIN_PUESTO';
+  } else if (exposicionesDerivadas.length > 0 || puestoConfirmadoSinRiesgo) {
+    estadoMatrizExposicion = 'PUESTO_CON_MATRIZ_VALIDADA';
+  } else {
+    estadoMatrizExposicion = 'PUESTO_SIN_MATRIZ';
+  }
+  const evaluacionIncompleta = estadoMatrizExposicion !== 'PUESTO_CON_MATRIZ_VALIDADA';
+
+  let motivoIncompleta = null;
+  if (estadoMatrizExposicion === 'SIN_PUESTO') {
+    motivoIncompleta = 'El trabajador no tiene un puesto de trabajo asignado; no fue posible derivar sus exposiciones ocupacionales automaticamente.';
+  } else if (estadoMatrizExposicion === 'PUESTO_SIN_MATRIZ') {
+    motivoIncompleta = 'El puesto de trabajo no tiene exposiciones registradas en puesto_exposiciones y nadie ha confirmado explicitamente que el puesto carece de exposiciones ocupacionales. Esto NO equivale a "sin exposicion": la matriz puede simplemente no haber sido configurada. Registre las exposiciones del puesto o confirme explicitamente "sin exposiciones" (con motivo) antes de continuar.';
+  }
+
   return {
     diagnosticosCie10: [...new Set([...diagnosticosDerivados, ...diagnosticosManualAdicionales])],
     exposicionesPuesto: [...new Set([...exposicionesDerivadas, ...exposicionesManualAdicionales])],
@@ -104,13 +154,9 @@ async function derivarDatosClinicosParaAptitud(trabajadorId, organizacionId, dia
       exposicionesDerivadas,
       exposicionesManualAdicionales,
     },
-    // Solo se marca incompleta por falta de puesto (no poder derivar
-    // exposiciones en absoluto). Si el puesto existe pero no tiene
-    // exposiciones declaradas en puesto_exposiciones, es una
-    // afirmacion valida ("este puesto no tiene exposiciones
-    // registradas"), no una ausencia de dato.
-    evaluacionIncompleta: !puestoTrabajoId,
-    motivoIncompleta: !puestoTrabajoId ? 'El trabajador no tiene un puesto de trabajo asignado; no fue posible derivar sus exposiciones ocupacionales automaticamente.' : null,
+    estadoMatrizExposicion,
+    evaluacionIncompleta,
+    motivoIncompleta,
   };
 }
 
@@ -278,9 +324,25 @@ async function aprobarRegla(req, res) {
 
 // ------------------------------------------------------------
 // PATCH /api/aptitud/reglas/:id/retirar
-// CREADO en Auditoria N.13 (C-04, P0). 'medico' o 'admin'. Retira
-// una regla (deja de participar en el motor) sin borrarla, para
-// mantener trazabilidad.
+//
+// CORREGIDO en Auditoria N.14 (hallazgo CRITICO C14-05, P0): la
+// version N.13 permitia que 'admin' retirara CUALQUIER regla,
+// incluidas las globales (organizacion_id IS NULL) que forman
+// parte del motor clinico compartido por todas las organizaciones.
+// Un administrador administrativo podia asi desactivar una
+// salvaguarda clinica global sin ninguna revision medica -- el
+// problema no era la creacion (ya corregida en N.13: nace como
+// borrador y solo Medico aprueba), sino la capacidad de retirar.
+//
+// Regla nueva:
+//   - 'medico' puede retirar CUALQUIER regla (global o de su
+//     organizacion), siempre con motivo clinico auditado.
+//   - 'admin' SOLO puede retirar reglas propias de su organizacion
+//     (organizacion_id = su tenant). Un intento de admin de retirar
+//     una regla global (organizacion_id IS NULL) devuelve 403.
+// La regla retirada nunca se borra: queda inactiva para el motor
+// (estado='retirada', ver listarReglas/detectarContraindicaciones)
+// pero preservada en el historial para trazabilidad.
 // ------------------------------------------------------------
 async function retirarRegla(req, res) {
   const { motivo } = req.body;
@@ -288,6 +350,20 @@ async function retirarRegla(req, res) {
     return res.status(400).json({ error: 'motivo es obligatorio para retirar una regla.' });
   }
   try {
+    const reglaRes = await query(
+      `SELECT id, organizacion_id FROM reglas_contraindicacion WHERE id = $1 AND (organizacion_id IS NULL OR organizacion_id = $2)`,
+      [req.params.id, req.usuario.organizacionId]
+    );
+    if (reglaRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Regla no encontrada.' });
+    }
+    const esGlobal = reglaRes.rows[0].organizacion_id === null;
+    if (esGlobal && req.usuario.rol !== 'medico') {
+      return res.status(403).json({
+        error: 'Solo un Medico Ocupacional puede retirar una regla global de contraindicacion. Un administrador no puede desactivar una salvaguarda clinica compartida por todas las organizaciones sin revision medica.',
+      });
+    }
+
     const resultado = await withTransaction(async (client) => {
       const updateRes = await client.query(
         `UPDATE reglas_contraindicacion SET estado = 'retirada'
@@ -307,7 +383,7 @@ async function retirarRegla(req, res) {
         accion: 'retirar_regla_contraindicacion',
         entidad: 'regla_contraindicacion',
         entidadId: req.params.id,
-        detalle: { motivo: motivo.trim() },
+        detalle: { motivo: motivo.trim(), esGlobal, retiradaPorRol: req.usuario.rol },
         req,
         client,
       });
@@ -492,7 +568,10 @@ async function registrarAptitud(req, res) {
       return res.status(409).json({
         error: 'Evaluacion incompleta: ' + derivado.motivoIncompleta,
         evaluacionIncompleta: true,
-        solucion: 'Asigne un puesto de trabajo al trabajador, o reenvie la solicitud con confirmarEvaluacionIncompleta:true si el medico decide continuar de todas formas (quedara registrado en el historial).',
+        estadoMatrizExposicion: derivado.estadoMatrizExposicion,
+        solucion: derivado.estadoMatrizExposicion === 'PUESTO_SIN_MATRIZ'
+          ? 'Registre las exposiciones reales del puesto en puesto_exposiciones, o confirme explicitamente que el puesto no tiene exposiciones (PATCH /api/puestos-trabajo/:id/confirmar-sin-exposiciones). Si el medico decide continuar de todas formas sin resolverlo, reenvie con confirmarEvaluacionIncompleta:true (quedara registrado en el historial).'
+          : 'Asigne un puesto de trabajo al trabajador, o reenvie la solicitud con confirmarEvaluacionIncompleta:true si el medico decide continuar de todas formas (quedara registrado en el historial).',
       });
     }
     const alertas = detectarContraindicaciones(derivado.diagnosticosCie10, derivado.exposicionesPuesto, reglasRes.rows);
@@ -528,11 +607,11 @@ async function registrarAptitud(req, res) {
         `INSERT INTO historial_aptitud_medica
           (organizacion_id, trabajador_id, medico_id, aptitud, puesto_evaluado,
            diagnosticos_cie10, exposiciones_puesto, alertas_detectadas, justificacion_clinica,
-           restricciones, vigencia_hasta, procedencia_datos, evaluacion_incompleta)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+           restricciones, vigencia_hasta, procedencia_datos, evaluacion_incompleta, estado_matriz_exposicion)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING id, aptitud, puesto_evaluado, diagnosticos_cie10, exposiciones_puesto,
                    alertas_detectadas, justificacion_clinica, restricciones, vigencia_hasta,
-                   evaluacion_incompleta, creado_en`,
+                   evaluacion_incompleta, estado_matriz_exposicion, creado_en`,
         [
           req.usuario.organizacionId,
           trabajadorId,
@@ -547,6 +626,7 @@ async function registrarAptitud(req, res) {
           vigenciaHasta || null,
           JSON.stringify(derivado.procedencia),
           derivado.evaluacionIncompleta,
+          derivado.estadoMatrizExposicion,
         ]
       );
 

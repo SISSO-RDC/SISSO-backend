@@ -144,6 +144,22 @@ async function listarCuestionarios(req, res) {
     );
 
     const cuestionarios = res2.rows.map((fila) => proyectarNordicoPorRol(fila, req.usuario.rol));
+
+    // CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-04, P1): igual
+    // que restriccionesMedicasController.js/audiometriaController.js,
+    // la lectura de datos ergonomico-sensibles por trabajador debe
+    // quedar auditada, con lecturaSensible:true cuando el lector
+    // recibe el detalle clinico completo (medico).
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: req.usuario.rol === 'medico' ? 'lectura_nordico_clinica' : 'lectura_nordico_operativa',
+      entidad: 'cuestionario_nordico',
+      detalle: { trabajadorId: req.params.trabajadorId, resultados: cuestionarios.length },
+      req,
+      lecturaSensible: req.usuario.rol === 'medico',
+    });
+
     return res.json({ cuestionarios });
   } catch (err) {
     console.error('Error en listarCuestionarios (nordico):', err);
@@ -167,6 +183,17 @@ async function obtenerCuestionario(req, res) {
     if (res2.rows.length === 0) {
       return res.status(404).json({ error: 'Cuestionario no encontrado.' });
     }
+
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: req.usuario.rol === 'medico' ? 'lectura_nordico_clinica' : 'lectura_nordico_operativa',
+      entidad: 'cuestionario_nordico',
+      entidadId: req.params.cuestionarioId,
+      req,
+      lecturaSensible: req.usuario.rol === 'medico',
+    });
+
     return res.json({ cuestionario: proyectarNordicoPorRol(res2.rows[0], req.usuario.rol) });
   } catch (err) {
     console.error('Error en obtenerCuestionario (nordico):', err);

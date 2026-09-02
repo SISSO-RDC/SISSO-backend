@@ -41,6 +41,7 @@
 // nunca incluya esa fuente para quien no sea medico.
 // ============================================================
 const { query } = require('../db/pool');
+const { esGrupoPequeno, redactarFilasPorGrupoPequeno } = require('../utils/kAnonimato');
 
 async function obtenerResumen(req, res) {
   const orgId = req.usuario.organizacionId;
@@ -200,10 +201,36 @@ async function obtenerResumen(req, res) {
       return resto;
     });
 
+    // CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-02, P1): el
+    // grafico de REBA promedio/maximo por area no aplicaba ninguna
+    // redaccion por grupo pequeño (a diferencia de reportesController.js,
+    // que si lo hace desde la Auditoria N.06/N.12). Un area con 1-2
+    // trabajadores evaluados exponia en la practica el puntaje
+    // ergonomico de una persona identificable disfrazado de
+    // "promedio de area". Se redactan las filas cuyo
+    // trabajadores_evaluados sea menor al umbral de k-anonimato,
+    // dejando visible unicamente que el area existe.
+    const rebaPorAreaRedactado = redactarFilasPorGrupoPequeno(
+      rebaPorArea.rows,
+      (fila) => parseInt(fila.trabajadores_evaluados, 10),
+      'area'
+    );
+
+    // CORREGIDO en Auditoria N.14 (G14-02): si la organizacion
+    // COMPLETA tiene menos trabajadores activos que el umbral de
+    // k-anonimato, la distribucion de aptitud por categoria
+    // ("1 apto, 0 no aptos") equivale a revelar la aptitud de una
+    // persona identificable -- se redacta el desglose y se deja
+    // solo el total ya visible en totalTrabajadores.
+    const totalTrabajadoresActivos = parseInt(trabajadores.rows[0].total, 10);
+    const distribucionAptitudRedactada = esGrupoPequeno(totalTrabajadoresActivos)
+      ? [{ redactado: true, nota: `Desglose oculto: la organización tiene ${totalTrabajadoresActivos} trabajador(es) activo(s), menos del mínimo requerido para mostrar la distribución sin riesgo de identificar a una persona en particular.` }]
+      : aptitud.rows;
+
     return res.json({
-      totalTrabajadores: parseInt(trabajadores.rows[0].total, 10),
-      distribucionAptitud: aptitud.rows,
-      rebaPorArea: rebaPorArea.rows,
+      totalTrabajadores: totalTrabajadoresActivos,
+      distribucionAptitud: distribucionAptitudRedactada,
+      rebaPorArea: rebaPorAreaRedactado,
       emosProximas: emosProximasFiltrado,
       consentimientosRecientes: consentimientosRecientes.rows,
       rulaResumen: rulaResumen.rows,

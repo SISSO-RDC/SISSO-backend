@@ -56,13 +56,21 @@ async function registrarExamen(req, res) {
       // maniobra (opcionales, ver evaluarCalidadManiobra en
       // espirometria.js). Si el frontend/equipo no los envia, el
       // examen queda marcado interpretable=false automaticamente.
+      // AMPLIADO en Auditoria N.14 (G14-07): aceptabilidad por
+      // maniobra y metadatos de equipo/operador, tambien opcionales.
       calidad: input.calidad ? {
         numeroManiobras: input.calidad.numeroManiobras ?? null,
         mejorFvcL: input.calidad.mejorFvcL ?? null,
         segundaMejorFvcL: input.calidad.segundaMejorFvcL ?? null,
         mejorFev1L: input.calidad.mejorFev1L ?? null,
         segundaMejorFev1L: input.calidad.segundaMejorFev1L ?? null,
+        aceptabilidad: Array.isArray(input.calidad.aceptabilidad) ? input.calidad.aceptabilidad : null,
+        equipo: input.calidad.equipo ?? null,
       } : null,
+      // CREADO en Auditoria N.14 (G14-08): protocolo de
+      // broncodilatador, obligatorio para que la reversibilidad sea
+      // evaluable (ver calcularReversibilidad en espirometria.js).
+      protocoloBd: input.protocoloBd ?? null,
     };
 
     if (!medidos.fvcPre || !medidos.fev1Pre) {
@@ -87,6 +95,8 @@ async function registrarExamen(req, res) {
         patron,
         reversibilidad_positiva, cambio_fev1_pct_predicho, cambio_fev1_ml, cambio_fvc_pct_predicho, cambio_fvc_ml,
         calidad_numero_maniobras, calidad_repetibilidad_fvc_ml, calidad_repetibilidad_fev1_ml, calidad_grado,
+        calidad_numero_maniobras_aceptables, calidad_evaluacion_simplificada, calidad_aceptabilidad_maniobras, calidad_equipo,
+        reversibilidad_protocolo, reversibilidad_protocolo_valido, reversibilidad_motivo_no_evaluable,
         interpretable, criterio_interpretativo, metadatos_referencia,
         observaciones
       ) VALUES (
@@ -100,8 +110,10 @@ async function registrarExamen(req, res) {
         $31,
         $32,$33,$34,$35,$36,
         $37,$38,$39,$40,
-        $41,$42,$43,
-        $44
+        $41,$42,$43,$44,
+        $45,$46,$47,
+        $48,$49,$50,
+        $51
       ) RETURNING id, fecha_examen, fvc_pre, fev1_pre, fev1_fvc_medido,
                   fvc_pct_predicho, fev1_pct_predicho, patron,
                   reversibilidad_positiva, cambio_fev1_pct_predicho, interpretable, calidad_grado`,
@@ -118,6 +130,11 @@ async function registrarExamen(req, res) {
         resultado.reversibilidad.esPositiva, resultado.reversibilidad.cambioPctPredicho, resultado.reversibilidad.cambioMl,
         resultado.reversibilidad.cambioPctPredichoFvc ?? null, resultado.reversibilidad.cambioMlFvc ?? null,
         resultado.calidad.numeroManiobras, resultado.calidad.repetibilidadFvcMl, resultado.calidad.repetibilidadFev1Ml, resultado.calidad.grado,
+        resultado.calidad.numeroManiobrasAceptables, resultado.calidad.evaluacionSimplificada,
+        resultado.calidad.evaluacionSimplificada ? null : JSON.stringify(medidos.calidad.aceptabilidad),
+        resultado.calidad.equipo ? JSON.stringify(resultado.calidad.equipo) : null,
+        medidos.protocoloBd ? JSON.stringify(medidos.protocoloBd) : null,
+        resultado.reversibilidad.protocoloValido, resultado.reversibilidad.motivoNoEvaluable,
         // CORREGIDO en Auditoria N.13 (C-01, P0): se persiste tambien
         // metadatosReferencia (ecuacion/version/poblacion/variables/
         // metodo LLN), para que quede trazado en cada examen que el

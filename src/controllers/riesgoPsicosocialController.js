@@ -160,6 +160,20 @@ async function obtenerEvaluacion(req, res) {
       [orgId, req.params.id]
     );
 
+    // CREADO en Auditoria N.14 (G14-01, P1): leer el detalle
+    // completo de una evaluacion psicosocial individual (factores +
+    // identidad del trabajador) es lectura de dato sensible; queda
+    // auditada igual que historia clinica/restricciones medicas.
+    await registrarAuditoria({
+      organizacionId: orgId,
+      usuarioId: req.usuario.id,
+      accion: 'lectura_evaluacion_psicosocial_individual',
+      entidad: 'evaluaciones_psicosociales',
+      entidadId: req.params.id,
+      req,
+      lecturaSensible: true,
+    });
+
     return res.json({ evaluacion: evalRes.rows[0], factores: factoresRes.rows, historial: historialRes.rows });
   } catch (err) {
     console.error('Error en obtenerEvaluacion (riesgo psicosocial):', err);
@@ -275,4 +289,47 @@ async function generarCapaDesdeEvaluacion(req, res) {
   }
 }
 
-module.exports = { crearEvaluacion, listarEvaluaciones, obtenerEvaluacion, actualizarEvaluacion, generarCapaDesdeEvaluacion };
+module.exports = { crearEvaluacion, listarEvaluaciones, obtenerEvaluacion, actualizarEvaluacion, generarCapaDesdeEvaluacion, obtenerResumenAgregado };
+
+// ------------------------------------------------------------
+// GET /api/riesgo-psicosocial/evaluaciones/resumen-agregado
+//
+// CREADO en Auditoria N.14 (G14-01, P1): unico endpoint al que
+// 'admin' tiene acceso para riesgo psicosocial a partir de esta
+// correccion. Devuelve conteos por area y nivel de riesgo (nunca
+// identidad de trabajador ni factores individuales), con la misma
+// redaccion por k-anonimato usada en dashboard/reportes: un area
+// con menos de UMBRAL_K_ANONIMATO evaluaciones queda redactada.
+// ------------------------------------------------------------
+async function obtenerResumenAgregado(req, res) {
+  const orgId = req.usuario.organizacionId;
+  try {
+    const resultado = await query(
+      `SELECT COALESCE(e.area, 'Sin área') AS area, e.nivel_riesgo, COUNT(*) AS cantidad
+       FROM evaluaciones_psicosociales e
+       WHERE e.organizacion_id = $1
+       GROUP BY e.area, e.nivel_riesgo
+       ORDER BY area, nivel_riesgo`,
+      [orgId]
+    );
+
+    // Conteo total de evaluaciones distintas por area, para saber
+    // si el area en su conjunto supera el umbral de k-anonimato
+    // (la fila desagregada por nivel_riesgo puede ser pequeña aunque
+    // el area completa no lo sea, asi que se agrupa primero).
+    const totalPorArea = new Map();
+    for (const fila of resultado.rows) {
+      totalPorArea.set(fila.area, (totalPorArea.get(fila.area) || 0) + parseInt(fila.cantidad, 10));
+    }
+
+    const filasVisibles = resultado.rows.filter((fila) => (totalPorArea.get(fila.area) || 0) >= 5);
+    const areasRedactadas = [...totalPorArea.entries()]
+      .filter(([, total]) => total < 5)
+      .map(([area, total]) => ({ area, redactado: true, nota: `Desglose oculto: esta área tiene ${total} evaluación(es), menos del mínimo requerido para mostrar el detalle por nivel de riesgo sin riesgo de identificar a una persona en particular.` }));
+
+    return res.json({ resumen: [...filasVisibles, ...areasRedactadas] });
+  } catch (err) {
+    console.error('Error en obtenerResumenAgregado (riesgo psicosocial):', err);
+    return res.status(500).json({ error: 'Error interno al obtener el resumen agregado.' });
+  }
+}

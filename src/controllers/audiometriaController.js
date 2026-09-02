@@ -86,7 +86,10 @@ async function registrarExamen(req, res) {
         co_od_500, co_od_1000, co_od_2000, co_od_3000, co_od_4000,
         co_oi_500, co_oi_1000, co_oi_2000, co_oi_3000, co_oi_4000,
         pta_od, pta_oi, sts_od, sts_oi, sts_od_positivo, sts_oi_positivo,
-        id_audiometria_basal, patron_od, patron_oi, observaciones
+        id_audiometria_basal, patron_od, patron_oi, observaciones,
+        equipo_marca, equipo_modelo, equipo_numero_serie, equipo_fecha_calibracion, equipo_resultado_verificacion_biologica,
+        ambiente_cabina_sonoamortiguada, ambiente_nivel_ruido_fondo_dba, ambiente_cumple_ansi_s3_1,
+        operador_id, es_retest_confirmatorio, examen_original_retest_id
       ) VALUES (
         $1,$2,$3,$4,$5,$6,
         $7,$8,$9,$10,$11,$12,$13,
@@ -94,7 +97,10 @@ async function registrarExamen(req, res) {
         $21,$22,$23,$24,$25,
         $26,$27,$28,$29,$30,
         $31,$32,$33,$34,$35,$36,
-        $37,$38,$39,$40
+        $37,$38,$39,$40,
+        $41,$42,$43,$44,$45,
+        $46,$47,$48,
+        $49,$50,$51
       ) RETURNING id, fecha_examen, es_basal, baseline_vigente, pta_od, pta_oi,
                   sts_od, sts_oi, sts_od_positivo, sts_oi_positivo,
                   patron_od, patron_oi`,
@@ -115,6 +121,14 @@ async function registrarExamen(req, res) {
         basal ? basal.id : null,
         resultado.patronOd, resultado.patronOi,
         input.observaciones || null,
+        // CREADO en Auditoria N.14 (G14-09): equipo/calibracion,
+        // ambiente/cabina y retest confirmatorio -- todos opcionales
+        // para no romper capturas existentes, pero ahora
+        // representables y auditables.
+        input.equipo?.marca || null, input.equipo?.modelo || null, input.equipo?.numeroSerie || null,
+        input.equipo?.fechaCalibracion || null, input.equipo?.resultadoVerificacionBiologica || null,
+        input.ambiente?.cabinaSonoamortiguada ?? null, numOrNull(input.ambiente?.nivelRuidoFondoDba), input.ambiente?.cumpleAnsiS31 ?? null,
+        req.usuario.id, !!input.esRetestConfirmatorio, input.examenOriginalRetestId || null,
       ]
     );
 
@@ -334,4 +348,55 @@ async function revisarBaseline(req, res) {
   }
 }
 
-module.exports = { registrarExamen, listarExamenes, obtenerExamen, revisarBaseline };
+module.exports = { registrarExamen, listarExamenes, obtenerExamen, revisarBaseline, documentarDecisionRetestSts };
+
+// ------------------------------------------------------------
+// PATCH /api/audiometria/:examenId/decision-retest-sts
+//
+// CREADO en Auditoria N.14 (G14-09, P1): cierra el workflow de
+// retest confirmatorio de un STS. El examen debe tener
+// es_retest_confirmatorio=true (ver registrarExamen); un medico
+// registra aqui si el retest CONFIRMA o DESCARTA el STS original, y
+// la decision clinica documentada correspondiente (obligatoria,
+// minimo 15 caracteres) -- sin esto, un STS "pendiente de retest"
+// puede quedar indefinidamente sin resolucion clinica visible.
+// ------------------------------------------------------------
+async function documentarDecisionRetestSts(req, res) {
+  const { examenId } = req.params;
+  const { stsConfirmado, decision } = req.body;
+
+  if (typeof stsConfirmado !== 'boolean') {
+    return res.status(400).json({ error: 'stsConfirmado (true/false) es obligatorio.' });
+  }
+  if (!decision || decision.trim().length < 15) {
+    return res.status(400).json({ error: 'decision es obligatoria (minimo 15 caracteres): documente la decision medica derivada del retest.' });
+  }
+
+  try {
+    const resultado = await query(
+      `UPDATE examenes_audiometria
+       SET sts_confirmado_en_retest = $1, decision_medica_documentada = $2
+       WHERE id = $3 AND organizacion_id = $4 AND es_retest_confirmatorio = true
+       RETURNING id, trabajador_id, examen_original_retest_id, sts_confirmado_en_retest`,
+      [stsConfirmado, decision.trim(), examenId, req.usuario.organizacionId]
+    );
+    if (resultado.rows.length === 0) {
+      return res.status(404).json({ error: 'Examen no encontrado o no esta marcado como retest confirmatorio (es_retest_confirmatorio debe ser true).' });
+    }
+
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: 'audiometria_decision_retest_sts',
+      entidad: 'examen_audiometria',
+      entidadId: examenId,
+      detalle: { stsConfirmado, decision: decision.trim() },
+      req,
+    });
+
+    return res.json({ examen: resultado.rows[0] });
+  } catch (err) {
+    console.error('Error en documentarDecisionRetestSts (audiometria):', err);
+    return res.status(500).json({ error: 'Error interno al documentar la decision del retest.' });
+  }
+}

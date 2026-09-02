@@ -174,4 +174,69 @@ async function desactivar(req, res) {
   }
 }
 
-module.exports = { obtenerCatalogos, crear, listar, obtener, actualizar, desactivar };
+// ------------------------------------------------------------
+// PATCH /api/puestos-trabajo/:id/confirmar-sin-exposiciones
+//
+// CREADO en Auditoria N.14 (hallazgo CRITICO C14-02, P0): unico
+// mecanismo por el cual un puesto sin filas en puesto_exposiciones
+// puede pasar de "PUESTO_SIN_MATRIZ" (no revisado, el motor de
+// aptitud lo trata como evaluacion incompleta) a
+// "PUESTO_CON_MATRIZ_VALIDADA" (revisado, confirmado sin riesgo).
+// Exige un motivo explicito (minimo 15 caracteres) y queda
+// auditado con usuario y fecha. Cualquier exposicion declarada
+// despues invalida automaticamente esta confirmacion (ver trigger
+// fn_invalidar_confirmacion_sin_riesgo en migration_068), forzando
+// una nueva revision si alguien intenta volver a marcarlo sin
+// exposiciones.
+//
+// Restringido a admin/sso (configuracion organizacional del
+// puesto, no dato clinico de un trabajador) y medico (puede
+// necesitarlo al evaluar aptitud).
+// ------------------------------------------------------------
+async function confirmarSinExposiciones(req, res) {
+  const { motivo } = req.body;
+  if (typeof motivo !== 'string' || motivo.trim().length < 15) {
+    return res.status(400).json({ error: 'Debe indicar un motivo (minimo 15 caracteres) que justifique por que este puesto no tiene exposiciones ocupacionales.' });
+  }
+
+  try {
+    const existeExposiciones = await query(
+      `SELECT 1 FROM puesto_exposiciones WHERE puesto_trabajo_id = $1 AND organizacion_id = $2 LIMIT 1`,
+      [req.params.id, req.usuario.organizacionId]
+    );
+    if (existeExposiciones.rows.length > 0) {
+      return res.status(409).json({ error: 'Este puesto ya tiene exposiciones registradas en puesto_exposiciones; no corresponde confirmarlo como "sin exposiciones". Elimine las exposiciones registradas primero si esta seguro de que ya no aplican.' });
+    }
+
+    const resultado = await query(
+      `UPDATE puestos_trabajo
+       SET matriz_exposicion_confirmada_sin_riesgo = true,
+           matriz_exposicion_confirmada_por = $1,
+           matriz_exposicion_confirmada_en = now(),
+           matriz_exposicion_confirmada_motivo = $2
+       WHERE id = $3 AND organizacion_id = $4
+       RETURNING id, nombre_puesto, matriz_exposicion_confirmada_sin_riesgo, matriz_exposicion_confirmada_en`,
+      [req.usuario.id, motivo.trim(), req.params.id, req.usuario.organizacionId]
+    );
+    if (resultado.rows.length === 0) {
+      return res.status(404).json({ error: 'Puesto de trabajo no encontrado.' });
+    }
+
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: 'confirmar_puesto_sin_exposiciones',
+      entidad: 'puesto_trabajo',
+      entidadId: req.params.id,
+      detalle: { motivo: motivo.trim() },
+      req,
+    });
+
+    return res.json({ puesto: resultado.rows[0] });
+  } catch (err) {
+    console.error('Error en confirmarSinExposiciones (puestos de trabajo):', err);
+    return res.status(500).json({ error: 'Error interno al confirmar el puesto sin exposiciones.' });
+  }
+}
+
+module.exports = { obtenerCatalogos, crear, listar, obtener, actualizar, desactivar, confirmarSinExposiciones };

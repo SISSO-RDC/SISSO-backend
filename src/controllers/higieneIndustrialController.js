@@ -23,41 +23,83 @@ async function crear(req, res) {
   const orgId = req.usuario.organizacionId;
   const {
     tipoMedicion, puestoTrabajoId, area, parametro, valorMedido, unidad, limitePermisible,
-    criterio, equipoUtilizado, metodoReferencia, fechaMedicion, observaciones,
+    criterio, equipoUtilizado, metodoReferencia, fechaMedicion, observaciones, catalogoLimiteId,
   } = req.body;
 
   if (!TIPOS_VALIDOS.includes(tipoMedicion)) {
     return res.status(400).json({ error: 'tipoMedicion invalido.' });
   }
-  if (!area || !parametro || !unidad || !fechaMedicion) {
-    return res.status(400).json({ error: 'area, parametro, unidad y fechaMedicion son obligatorios.' });
+  if (!area || !parametro || !fechaMedicion) {
+    return res.status(400).json({ error: 'area, parametro y fechaMedicion son obligatorios.' });
   }
-  if (valorMedido == null || limitePermisible == null || isNaN(valorMedido) || isNaN(limitePermisible)) {
-    return res.status(400).json({ error: 'valorMedido y limitePermisible deben ser numeros.' });
+  if (valorMedido == null || isNaN(valorMedido)) {
+    return res.status(400).json({ error: 'valorMedido debe ser un numero.' });
+  }
+
+  // CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-10, P1): el
+  // limite_permisible ya NO se acepta libremente del cliente sin
+  // trazabilidad cuando se referencia un catalogoLimiteId -- en ese
+  // caso el limite, unidad, criterio y metadatos normativos se toman
+  // del catalogo versionado (catalogo_limites_higiene) y quedan
+  // "congelados" (snapshot) en la medicion. Se conserva el flujo
+  // anterior (limite libre) SOLO por compatibilidad para agentes que
+  // aun no estan en el catalogo -- queda marcado explicitamente como
+  // no verificable contra catalogo (limite_verificable_en_catalogo=false).
+  let unidadFinal = unidad;
+  let limiteFinal = limitePermisible;
+  let criterioFinal = criterio === 'minimo' ? 'minimo' : 'maximo';
+  let limiteVerificableEnCatalogo = false;
+  let limiteNormaSnapshot = null;
+  let limiteVersionSnapshot = null;
+  let limiteJurisdiccionSnapshot = null;
+
+  if (catalogoLimiteId) {
+    const catRes = await query(
+      `SELECT unidad, limite_valor, criterio, norma, version, jurisdiccion
+       FROM catalogo_limites_higiene
+       WHERE id = $1 AND fecha_vigencia_hasta IS NULL`,
+      [catalogoLimiteId]
+    );
+    if (catRes.rows.length === 0) {
+      return res.status(400).json({ error: 'catalogoLimiteId no corresponde a un limite vigente del catalogo.' });
+    }
+    const cat = catRes.rows[0];
+    unidadFinal = cat.unidad;
+    limiteFinal = Number(cat.limite_valor);
+    criterioFinal = cat.criterio;
+    limiteVerificableEnCatalogo = true;
+    limiteNormaSnapshot = cat.norma;
+    limiteVersionSnapshot = cat.version;
+    limiteJurisdiccionSnapshot = cat.jurisdiccion;
+  } else {
+    if (!unidad || limitePermisible == null || isNaN(limitePermisible)) {
+      return res.status(400).json({ error: 'Sin catalogoLimiteId, debe indicar unidad y limitePermisible manualmente.' });
+    }
   }
 
   // criterio: 'maximo' (valor no debe superar el limite, la mayoria
   // de agentes: ruido, vibracion, quimicos) o 'minimo' (valor no
   // debe estar por debajo del limite, ej: iluminacion insuficiente).
-  const criterioFinal = criterio === 'minimo' ? 'minimo' : 'maximo';
-  const cumple = criterioFinal === 'minimo' ? Number(valorMedido) >= Number(limitePermisible) : Number(valorMedido) <= Number(limitePermisible);
+  const cumple = criterioFinal === 'minimo' ? Number(valorMedido) >= Number(limiteFinal) : Number(valorMedido) <= Number(limiteFinal);
 
   try {
     const creadaRes = await query(
       `INSERT INTO mediciones_higiene_industrial
         (organizacion_id, tipo_medicion, puesto_trabajo_id, area, parametro, valor_medido, unidad,
-         limite_permisible, cumple, equipo_utilizado, metodo_referencia, fecha_medicion, responsable_id, observaciones)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-       RETURNING id, tipo_medicion, cumple, fecha_medicion, creado_en`,
+         limite_permisible, cumple, equipo_utilizado, metodo_referencia, fecha_medicion, responsable_id, observaciones,
+         catalogo_limite_id, limite_norma_snapshot, limite_version_snapshot, limite_jurisdiccion_snapshot, limite_verificable_en_catalogo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       RETURNING id, tipo_medicion, cumple, fecha_medicion, creado_en, limite_verificable_en_catalogo`,
       [
-        orgId, tipoMedicion, puestoTrabajoId || null, area.trim(), parametro.trim(), valorMedido, unidad.trim(),
-        limitePermisible, cumple, equipoUtilizado || null, metodoReferencia || null, fechaMedicion, req.usuario.id, observaciones || null,
+        orgId, tipoMedicion, puestoTrabajoId || null, area.trim(), parametro.trim(), valorMedido, unidadFinal.trim(),
+        limiteFinal, cumple, equipoUtilizado || null, metodoReferencia || null, fechaMedicion, req.usuario.id, observaciones || null,
+        catalogoLimiteId || null, limiteNormaSnapshot, limiteVersionSnapshot, limiteJurisdiccionSnapshot, limiteVerificableEnCatalogo,
       ]
     );
 
     await registrarAuditoria({
       organizacionId: orgId, usuarioId: req.usuario.id, accion: 'medicion_higiene_creada',
-      entidad: 'mediciones_higiene_industrial', entidadId: creadaRes.rows[0].id, detalle: { tipoMedicion, cumple }, req,
+      entidad: 'mediciones_higiene_industrial', entidadId: creadaRes.rows[0].id, detalle: { tipoMedicion, cumple, limiteVerificableEnCatalogo }, req,
     });
 
     return res.status(201).json({ medicion: creadaRes.rows[0] });
@@ -187,4 +229,27 @@ async function generarCapaDesdeMedicion(req, res) {
   }
 }
 
-module.exports = { crear, listar, obtener, generarCapaDesdeMedicion };
+module.exports = { crear, listar, obtener, generarCapaDesdeMedicion, listarCatalogoLimites };
+
+// ------------------------------------------------------------
+// GET /api/higiene-industrial/catalogo-limites
+// CREADO en Auditoria N.14 (G14-10, P1): catalogo global (no por
+// organizacion) de limites vigentes, para que el frontend pueda
+// ofrecer "seleccionar limite del catalogo" en vez de un numero
+// libre. Lectura abierta a cualquier usuario autenticado (mismo
+// nivel de acceso que las mediciones).
+// ------------------------------------------------------------
+async function listarCatalogoLimites(req, res) {
+  try {
+    const resultado = await query(
+      `SELECT id, agente, metodo_referencia, norma, jurisdiccion, version, unidad, limite_valor, criterio, fecha_vigencia_desde
+       FROM catalogo_limites_higiene
+       WHERE fecha_vigencia_hasta IS NULL
+       ORDER BY agente`
+    );
+    return res.json({ catalogo: resultado.rows });
+  } catch (err) {
+    console.error('Error en listarCatalogoLimites (higiene industrial):', err);
+    return res.status(500).json({ error: 'Error interno al listar el catalogo de limites.' });
+  }
+}

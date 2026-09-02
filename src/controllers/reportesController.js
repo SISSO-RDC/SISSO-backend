@@ -37,6 +37,7 @@
 const { query } = require('../db/pool');
 const { etiquetaTipo: etiquetaTipoAusencia } = require('../ausentismo/ausentismo');
 const { generarPdfReporteBI } = require('../reportes/pdfReporteBI');
+const { UMBRAL_K_ANONIMATO } = require('../utils/kAnonimato');
 
 function pct(numerador, denominador) {
   if (!denominador || denominador === 0) return 0;
@@ -375,14 +376,24 @@ function proyectarResumenSegunRol(resumen, rol) {
 // trabajadores en el grupo filtrado, se redactan los desgloses mas
 // sensibles y se deja unicamente el conteo total (que ya era visible
 // de todas formas en el selector de areas).
-const UMBRAL_K_ANONIMATO = 5;
+//
+// CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-03, P1): la
+// condicion `!huboFiltroDeArea` hacia que una organizacion pequeña
+// completa (ej. 3 trabajadores en TODA la organizacion, sin filtrar
+// por area) nunca pasara por esta redaccion -- el k-anonimato solo
+// se aplicaba cuando el usuario elegia filtrar por area, no cuando
+// el universo COMPLETO ya era mas chico que el umbral. Se redacta
+// siempre que el grupo (filtrado o no) sea menor al umbral.
+// (Umbral centralizado en src/utils/kAnonimato.js -- import arriba.)
 
 function redactarPorGrupoPequeno(resumen, totalTrabajadoresEnGrupo, huboFiltroDeArea) {
-  if (!huboFiltroDeArea || totalTrabajadoresEnGrupo >= UMBRAL_K_ANONIMATO) {
+  if (totalTrabajadoresEnGrupo >= UMBRAL_K_ANONIMATO) {
     return resumen;
   }
 
-  const nota = `Desglose oculto: el área filtrada tiene ${totalTrabajadoresEnGrupo} trabajador(es), menos del mínimo de ${UMBRAL_K_ANONIMATO} requerido para mostrar este detalle sin riesgo de identificar a una persona en particular.`;
+  const nota = huboFiltroDeArea
+    ? `Desglose oculto: el área filtrada tiene ${totalTrabajadoresEnGrupo} trabajador(es), menos del mínimo de ${UMBRAL_K_ANONIMATO} requerido para mostrar este detalle sin riesgo de identificar a una persona en particular.`
+    : `Desglose oculto: la organización tiene ${totalTrabajadoresEnGrupo} trabajador(es) en total, menos del mínimo de ${UMBRAL_K_ANONIMATO} requerido para mostrar este detalle sin riesgo de identificar a una persona en particular.`;
 
   // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-11, P1): esta
   // funcion solo redactaba aptitudMedica/examenesComplementarios/

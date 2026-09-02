@@ -403,6 +403,24 @@ async function obtenerHistorial(req, res) {
       ));
     }
 
+    // CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-05, P1): este
+    // endpoint devolvia el historial (incluyendo, para 'medico', el
+    // motivo clinico completo de cada emision/modificacion/prorroga)
+    // sin registrar ninguna auditoria de lectura, a diferencia de
+    // listarRestriccionesTrabajador() en este mismo archivo, que si
+    // aplica lecturaSensible:true. El historial es tan sensible como
+    // la restriccion vigente misma -- se cierra la misma brecha aqui.
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: req.usuario.rol === 'medico' ? 'lectura_historial_restriccion_medica_clinica' : 'lectura_historial_restriccion_medica_operativa',
+      entidad: 'restricciones_medicas_historial',
+      entidadId: restriccionId,
+      detalle: { resultados: filas.length },
+      req,
+      lecturaSensible: req.usuario.rol === 'medico',
+    });
+
     return res.json({ historial: filas });
   } catch (err) {
     console.error('Error en obtenerHistorial (restricciones medicas):', err);

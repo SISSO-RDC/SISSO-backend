@@ -105,6 +105,16 @@ async function listarEvaluaciones(req, res) {
       [req.params.trabajadorId, req.usuario.organizacionId]
     );
 
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: req.usuario.rol === 'medico' ? 'lectura_niosh_clinica' : 'lectura_niosh_operativa',
+      entidad: 'evaluaciones_niosh',
+      detalle: { trabajadorId: req.params.trabajadorId, resultados: res2.rows.length },
+      req,
+      lecturaSensible: req.usuario.rol === 'medico',
+    });
+
     return res.json({ evaluaciones: res2.rows });
   } catch (err) {
     console.error('Error en listarEvaluaciones (niosh):', err);
@@ -128,6 +138,17 @@ async function obtenerEvaluacion(req, res) {
     if (res2.rows.length === 0) {
       return res.status(404).json({ error: 'Evaluacion no encontrada.' });
     }
+
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: req.usuario.rol === 'medico' ? 'lectura_niosh_clinica' : 'lectura_niosh_operativa',
+      entidad: 'evaluaciones_niosh',
+      entidadId: req.params.evaluacionId,
+      req,
+      lecturaSensible: req.usuario.rol === 'medico',
+    });
+
     return res.json({ evaluacion: res2.rows[0] });
   } catch (err) {
     console.error('Error en obtenerEvaluacion (niosh):', err);
