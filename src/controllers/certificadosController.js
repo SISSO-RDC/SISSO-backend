@@ -21,6 +21,8 @@ const { query } = require('../db/pool');
 const { generarPdfCertificadoCapacitacion } = require('../capacitaciones/pdfCertificadoCapacitacion');
 const { generarPdfCertificadoAptitud } = require('../certificados/pdfCertificadoAptitud');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { obtenerLogoBuffer } = require('../utils/logoPdf');
+const { obtenerFirmaParaPdf } = require('../utils/firmaPdf');
 
 // ------------------------------------------------------------
 // GET /api/certificados/capacitacion/:capacitacionId/trabajador/:trabajadorId
@@ -49,11 +51,21 @@ async function certificadoCapacitacion(req, res) {
       return res.status(404).json({ error: 'Este trabajador no está registrado como asistente de esta capacitación.' });
     }
 
-    const orgRes = await query(`SELECT nombre FROM organizaciones WHERE id = $1`, [orgId]);
+    const orgRes = await query(`SELECT nombre, logo_url FROM organizaciones WHERE id = $1`, [orgId]);
+    // CREADO a pedido de la persona usuaria (02/09/2026): logo de la
+    // organizacion como marca de agua de fondo (ver src/utils/logoPdf.js).
+    const logoBuffer = await obtenerLogoBuffer(orgRes.rows[0]?.logo_url);
+    // Firma digital de quien dicto/registro la capacitacion: prioriza
+    // el instructor interno (instructor_usuario_id) si esta vinculado
+    // a un usuario del sistema; si no, usa quien la registro (creado_por).
+    const capacitacion = capacitacionRes.rows[0];
+    const firma = await obtenerFirmaParaPdf(capacitacion.instructor_usuario_id || capacitacion.creado_por, orgId);
 
     const doc = generarPdfCertificadoCapacitacion(
       { capacitacion: capacitacionRes.rows[0], trabajador: asistenciaRes.rows[0] },
-      orgRes.rows[0]?.nombre
+      orgRes.rows[0]?.nombre,
+      logoBuffer,
+      firma
     );
 
     await registrarAuditoria({
@@ -87,8 +99,18 @@ async function certificadoAptitud(req, res) {
       return res.status(404).json({ error: 'Trabajador no encontrado.' });
     }
 
-    const orgRes = await query(`SELECT nombre FROM organizaciones WHERE id = $1`, [orgId]);
-    const doc = generarPdfCertificadoAptitud(trabajadorRes.rows[0], orgRes.rows[0]?.nombre);
+    const orgRes = await query(`SELECT nombre, logo_url FROM organizaciones WHERE id = $1`, [orgId]);
+    const logoBuffer = await obtenerLogoBuffer(orgRes.rows[0]?.logo_url);
+    // Firma digital del medico que respalda la ultima evaluacion de
+    // aptitud registrada para este trabajador.
+    const ultimaEvaluacionRes = await query(
+      `SELECT medico_id FROM historial_aptitud_medica
+       WHERE trabajador_id = $1 AND organizacion_id = $2
+       ORDER BY creado_en DESC LIMIT 1`,
+      [req.params.trabajadorId, orgId]
+    );
+    const firma = await obtenerFirmaParaPdf(ultimaEvaluacionRes.rows[0]?.medico_id, orgId);
+    const doc = generarPdfCertificadoAptitud(trabajadorRes.rows[0], orgRes.rows[0]?.nombre, logoBuffer, firma);
 
     // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-05, P1): el
     // certificado de aptitud es un documento clinico.

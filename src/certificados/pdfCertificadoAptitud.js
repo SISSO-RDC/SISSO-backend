@@ -13,6 +13,7 @@
 // explicito en el pie de pagina.
 // ============================================================
 const PDFDocument = require('pdfkit');
+const { dibujarMarcaDeAgua } = require('../utils/logoPdf');
 
 const MARGEN = 50;
 const ANCHO_UTIL = 595.28 - MARGEN * 2;
@@ -35,9 +36,16 @@ function formatearFecha(fecha) {
 /**
  * @param {object} trabajador - { nombre_completo, documento, area, puesto, aptitud, fecha_vencimiento }
  * @param {string} nombreOrganizacion
+ * @param {Buffer|null} logoBuffer - logo de la organizacion ya descargado (ver obtenerLogoBuffer en logoPdf.js), o null.
+ * @param {{buffer: Buffer, nombreResponsable: string}|null} firma - firma digital del medico que respalda el estado de aptitud, o null.
  */
-function generarPdfCertificadoAptitud(trabajador, nombreOrganizacion) {
+function generarPdfCertificadoAptitud(trabajador, nombreOrganizacion, logoBuffer = null, firma = null) {
   const doc = new PDFDocument({ size: 'A4', margin: MARGEN });
+
+  // CREADO a pedido de la persona usuaria (02/09/2026): mismo logo
+  // de fondo/marca de agua que el certificado de capacitacion, para
+  // consistencia visual entre todos los documentos emitidos.
+  dibujarMarcaDeAgua(doc, logoBuffer);
 
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
@@ -114,9 +122,21 @@ function generarPdfCertificadoAptitud(trabajador, nombreOrganizacion) {
   );
 
   doc.moveDown(3);
+  // CREADO a pedido de la persona usuaria (02/09/2026): firma
+  // digital del medico, si la tiene cargada.
+  if (firma && firma.buffer) {
+    try {
+      const anchoFirma = 140;
+      doc.image(firma.buffer, MARGEN + ANCHO_UTIL / 2 - anchoFirma / 2, doc.y - 8, { width: anchoFirma, height: 45, fit: [anchoFirma, 45] });
+      doc.moveDown(2.6);
+    } catch (err) {
+      console.error('No se pudo dibujar la firma digital en el certificado de aptitud:', err.message);
+    }
+  }
   doc.moveTo(MARGEN + 100, doc.y).lineTo(MARGEN + ANCHO_UTIL - 100, doc.y).strokeColor('#94a3b8').stroke();
   doc.moveDown(0.3);
-  doc.fontSize(9).font('Helvetica').fillColor('#64748b').text('Responsable de Seguridad y Salud Ocupacional', { align: 'center' });
+  doc.fontSize(9).font('Helvetica').fillColor('#64748b')
+    .text(firma?.nombreResponsable || 'Responsable de Seguridad y Salud Ocupacional', { align: 'center' });
 
   doc.moveDown(2);
   doc.fontSize(7.5).font('Helvetica').fillColor('#cbd5e1')

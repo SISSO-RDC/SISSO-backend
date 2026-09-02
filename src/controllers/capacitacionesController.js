@@ -14,7 +14,7 @@ async function listar(req, res) {
   const orgId = req.usuario.organizacionId;
   try {
     const resultado = await query(
-      `SELECT c.id, c.nombre, c.tema, c.instructor, c.fecha, c.horas_duracion, c.creado_en,
+      `SELECT c.id, c.nombre, c.tema, c.instructor, c.instructor_usuario_id, c.fecha, c.horas_duracion, c.creado_en,
               COUNT(a.id) AS total_asistentes
        FROM capacitaciones c
        LEFT JOIN capacitaciones_asistentes a ON a.capacitacion_id = c.id
@@ -66,23 +66,46 @@ async function obtener(req, res) {
 // transaccion (o se crea todo o no se crea nada, para no dejar
 // una capacitacion "a medias" sin asistentes si algo falla a
 // mitad de camino).
+//
+// CORREGIDO a pedido de la persona usuaria (02/09/2026): "el acceso
+// a las capacitaciones debera tambien darse por la persona que hace
+// la capacitacion". Antes solo admin/sso/th podian crear (ver
+// capacitacionesRoutes.js, ahora abierto a cualquier autenticado).
+// Un usuario que NO es admin/sso/th (ej. medico, o cualquier otro
+// rol futuro) SOLO puede crear una capacitacion si se asigna a si
+// mismo como instructor interno (instructorUsuarioId === su propio
+// id) -- es decir, unicamente puede registrar capacitaciones que EL
+// MISMO dicto, nunca en nombre de otra persona ni sin vincularse
+// como instructor.
 // ------------------------------------------------------------
 async function crear(req, res) {
   const orgId = req.usuario.organizacionId;
   const b = req.body;
+  const ROLES_GESTION = ['admin', 'sso', 'th'];
 
   if (!b.nombre || !b.fecha || !b.horasDuracion) {
     return res.status(400).json({ error: 'nombre, fecha y horasDuracion son obligatorios.' });
   }
+
+  let instructorUsuarioId = b.instructorUsuarioId || null;
+  if (!ROLES_GESTION.includes(req.usuario.rol)) {
+    if (instructorUsuarioId && instructorUsuarioId !== req.usuario.id) {
+      return res.status(403).json({ error: 'Solo puedes registrar capacitaciones que tú mismo dictaste (instructorUsuarioId debe ser tu propio usuario).' });
+    }
+    // Un usuario fuera de admin/sso/th SIEMPRE se auto-asigna como
+    // instructor: es la unica forma en que tiene acceso a este endpoint.
+    instructorUsuarioId = req.usuario.id;
+  }
+
   const asistentesIds = Array.isArray(b.asistentes) ? [...new Set(b.asistentes)] : [];
 
   try {
     const capacitacionCreada = await withTransaction(async (cliente) => {
       const capacitacion = await cliente.query(
-        `INSERT INTO capacitaciones (organizacion_id, nombre, tema, instructor, fecha, horas_duracion, creado_por)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `INSERT INTO capacitaciones (organizacion_id, nombre, tema, instructor, instructor_usuario_id, fecha, horas_duracion, creado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
          RETURNING id, nombre, fecha, horas_duracion`,
-        [orgId, b.nombre, b.tema || null, b.instructor || null, b.fecha, b.horasDuracion, req.usuario.id]
+        [orgId, b.nombre, b.tema || null, b.instructor || null, instructorUsuarioId, b.fecha, b.horasDuracion, req.usuario.id]
       );
       const capacitacionId = capacitacion.rows[0].id;
 
