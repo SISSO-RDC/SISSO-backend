@@ -38,10 +38,33 @@ if (!sslRejectUnauthorized) {
   );
 }
 
+// CORREGIDO (02/09/2026): el PostgreSQL EFIMERO que usa el CI
+// (.github/workflows/ci.yml, servicio "postgres:16" de Docker) no
+// soporta SSL en absoluto -- ni siquiera sin verificar certificado,
+// como si intentaba `ssl: { rejectUnauthorized: false }`. Antes de
+// esta correccion, `ssl` SIEMPRE era un objeto (nunca `false`), asi
+// que node-postgres intentaba negociar TLS igual contra ese
+// contenedor y fallaba con "The server does not support SSL
+// connections", tumbando el job de migraciones del CI recien creado
+// en la Auditoria N.14 (C14-03).
+//
+// DB_SSL_DISABLED=true desactiva SSL por completo (no solo la
+// verificacion del certificado) -- SOLO debe usarse contra un
+// Postgres efimero/local que ni siquiera ofrece TLS (el servicio de
+// CI, o un Postgres local sin configurar). Nunca debe definirse en
+// Render/produccion contra Neon, que exige SSL.
+const sslDisabled = process.env.DB_SSL_DISABLED === 'true';
+if (sslDisabled) {
+  console.warn(
+    'ADVERTENCIA: DB_SSL_DISABLED=true -- la conexion a PostgreSQL no usa SSL/TLS en absoluto. '
+    + 'Solo valido para un Postgres efimero de pruebas (CI/local) que no ofrece TLS. NUNCA en produccion.'
+  );
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   // Neon y la mayoria de proveedores cloud de Postgres requieren SSL.
-  ssl: { rejectUnauthorized: sslRejectUnauthorized },
+  ssl: sslDisabled ? false : { rejectUnauthorized: sslRejectUnauthorized },
   max: 10, // maximo de conexiones simultaneas, suficiente para empezar
   idleTimeoutMillis: 30000,
 });
