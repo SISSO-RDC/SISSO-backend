@@ -16,5 +16,9 @@ router.get('/:id', autenticar, puestosTrabajoController.obtener);
 router.post('/', autenticar, autorizar('admin', 'sso', 'th'), validarCrearPuestoTrabajo, puestosTrabajoController.crear);
 router.put('/:id', autenticar, autorizar('admin', 'sso', 'th'), validarCrearPuestoTrabajo, puestosTrabajoController.actualizar);
 router.delete('/:id', autenticar, autorizar('admin', 'sso', 'th'), puestosTrabajoController.desactivar);
+// CREADO en Auditoria N.14 (C14-02): confirmacion explicita de
+// "puesto sin exposiciones", nunca el 'th' (no es competencia de
+// talento humano decidir sobre exposicion ocupacional).
+router.patch('/:id/confirmar-sin-exposiciones', autenticar, autorizar('admin', 'sso', 'medico'), puestosTrabajoController.confirmarSinExposiciones);
 
 module.exports = router;

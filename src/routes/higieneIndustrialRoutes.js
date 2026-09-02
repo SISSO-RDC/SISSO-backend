@@ -13,5 +13,7 @@ router.post('/mediciones', autenticar, autorizar('admin', 'sso'), controller.cre
 router.get('/mediciones', autenticar, controller.listar);
 router.get('/mediciones/:id', autenticar, controller.obtener);
 router.post('/mediciones/:id/generar-capa', autenticar, autorizar('admin', 'sso'), controller.generarCapaDesdeMedicion);
+// CREADO en Auditoria N.14 (G14-10):
+router.get('/catalogo-limites', autenticar, controller.listarCatalogoLimites);
 
 module.exports = router;

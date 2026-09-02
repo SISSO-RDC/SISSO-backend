@@ -25,7 +25,12 @@ const { validarCrearRegla, validarRegistrarAptitud } = require('../middleware/va
 router.get('/reglas', autenticar, autorizar('admin', 'medico'), aptitudController.listarReglas);
 router.post('/reglas', autenticar, autorizar('admin', 'medico'), validarCrearRegla, aptitudController.crearRegla);
 // CREADO en Auditoria N.13 (C-04, P0): aprobar es exclusivo de
-// 'medico' (autoridad clinica); retirar puede hacerlo tambien admin
+// 'medico' (autoridad clinica); retirar tambien acepta 'admin' a
+// nivel de ruta, pero CORREGIDO en Auditoria N.14 (C14-05, P0): el
+// propio controlador (retirarRegla) rechaza con 403 cualquier
+// intento de admin de retirar una regla GLOBAL -- admin solo puede
+// retirar reglas propias de su organizacion. Ver comentario del
+// controlador para el detalle.
 // (accion de gestion, no de aprobacion).
 router.patch('/reglas/:id/aprobar', autenticar, autorizar('medico'), aptitudController.aprobarRegla);
 router.patch('/reglas/:id/retirar', autenticar, autorizar('admin', 'medico'), aptitudController.retirarRegla);

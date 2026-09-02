@@ -105,6 +105,41 @@ const REVERSIBILIDAD_PCT_PREDICHO_MINIMO = 10;
 const CALIDAD_MIN_MANIOBRAS = 3;
 const CALIDAD_MAX_REPETIBILIDAD_ML = 150; // diferencia entre las 2 mejores FVC y las 2 mejores FEV1
 
+// CREADO en Auditoria N.14 (hallazgo GRAVE G14-07, P1): escala
+// completa de grados de calidad ATS/ERS 2019 (Culver et al. 2017,
+// "Recommendations for a Standardized Pulmonary Function Report",
+// Am J Respir Crit Care Med / la misma tabla que resume Graham et
+// al. 2019 ERS/ATS technical standard), basada en NUMERO DE
+// MANIOBRAS ACEPTABLES (no solo "numero de maniobras realizadas" --
+// distincion que la version N12/N13 no hacia) y repetibilidad entre
+// las 2 mejores FVC/FEV1 aceptables:
+//   A: >=3 aceptables, repetibilidad <=150 mL
+//   B: 2 aceptables,   repetibilidad <=150 mL
+//   C: 2 aceptables,   repetibilidad <=200 mL
+//   D: 2 aceptables,   repetibilidad <=250 mL
+//   E: 2 aceptables,   repetibilidad >250 mL  (o solo 1 aceptable)
+//   F: 0 maniobras aceptables
+//   U: no fue posible evaluar (no se registraron datos de calidad)
+// Esta tabla SOLO puede aplicarse si el frontend/tecnico registra,
+// por cada maniobra, si fue ACEPTABLE segun los criterios ATS/ERS
+// (inicio adecuado, sin tos en el primer segundo, sin cierre
+// glotico, sin fuga, sin obstruccion de la boquilla, BEV <5% o
+// 150 mL, EOFE con meseta >=1s o tiempo espiratorio >=6s) -- ver
+// evaluarCalidadManiobra(). Si esos datos de aceptabilidad no se
+// proporcionan (compatibilidad con capturas anteriores a esta
+// correccion), el modulo NO asciende de grado por si mismo: usa el
+// pre-filtro simplificado anterior (numero de maniobras informadas,
+// sin verificar aceptabilidad real) y lo marca explicitamente como
+// `evaluacionSimplificada: true`, para que un reporte no lo
+// presente como una calificacion ATS/ERS 2019 completa cuando en
+// realidad no se verificaron los criterios de aceptabilidad de cada
+// curva.
+const UMBRALES_REPETIBILIDAD_MM = [
+  { maximoMl: 150, grado: 'A_o_B' },
+  { maximoMl: 200, grado: 'C' },
+  { maximoMl: 250, grado: 'D' },
+];
+
 /**
  * Redondea a 2 decimales.
  */
@@ -230,22 +265,84 @@ function clasificarSeveridadObstruccion(fev1PctPredicho) {
  * 2022: cambio >10% del PREDICHO de FEV1 o FVC (ya NO se usa el
  * criterio 2005 de >=12% Y >=200 mL respecto del valor pre-BD).
  *
+ * CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-08, P1): el
+ * calculo del porcentaje de cambio no verificaba absolutamente
+ * nada del PROTOCOLO de la prueba (que farmaco se administro, en
+ * que dosis, cuanto tiempo paso entre la dosis y la maniobra
+ * post-BD). La fuente ERS/ATS 2022 que fundamenta el criterio de
+ * >10% del predicho asume implicitamente un protocolo valido
+ * (broncodilatador de accion corta, dosis estandar, espera minima
+ * antes de repetir la maniobra) -- sin esos datos, el numero puede
+ * calcularse perfectamente bien mientras el resultado clinico sea
+ * de todas formas no interpretable (ej. si pasaron 2 minutos en vez
+ * de los ~10-15 minutos minimos esperados para salbutamol).
+ *
+ * Ahora la funcion exige un objeto `protocolo` con farmaco, dosis,
+ * horaPre y horaPost; si falta cualquiera de esos datos, o si los
+ * minutos transcurridos son menores al minimo esperado para el
+ * farmaco declarado, el resultado se marca `protocoloValido:false`
+ * y `esPositiva` nunca es true (BDR pasa a "no evaluable" en vez de
+ * presentar un numero que podria interpretarse sin ese contexto).
+ *
  * @param {number|null} valorPre - en litros
  * @param {number|null} valorPost - en litros
  * @param {number|null} predicho - valor predicho del mismo parametro, en litros
- * @returns {{ cambioMl: number|null, cambioPctPredicho: number|null, esPositiva: boolean }}
+ * @param {object|null} protocolo - { farmaco, dosisMcg, horaPreIso, horaPostIso }
+ * @returns {{ cambioMl: number|null, cambioPctPredicho: number|null, esPositiva: boolean,
+ *   protocoloValido: boolean, minutosTranscurridos: number|null, motivoNoEvaluable: string|null }}
  */
-function calcularReversibilidad(valorPre, valorPost, predicho) {
+// Tiempo minimo de espera documentado para que la respuesta a un
+// broncodilatador de accion corta (salbutamol/albuterol, el mas
+// usado en espirometria ocupacional) sea valorable: guias clinicas
+// habituales piden al menos 10-15 minutos post-inhalacion antes de
+// repetir la maniobra. Se usa el limite mas conservador (10) como
+// minimo aceptable; por debajo de eso el protocolo se marca invalido.
+const MINUTOS_MINIMOS_POST_BD = 10;
+const FARMACOS_BRONCODILATADORES_RECONOCIDOS = ['salbutamol', 'albuterol', 'ipratropio', 'otro'];
+
+function calcularReversibilidad(valorPre, valorPost, predicho, protocolo) {
   if (valorPre === null || valorPre === undefined ||
       valorPost === null || valorPost === undefined ||
       !predicho || predicho <= 0) {
-    return { cambioMl: null, cambioPctPredicho: null, esPositiva: false };
+    return {
+      cambioMl: null, cambioPctPredicho: null, esPositiva: false,
+      protocoloValido: false, minutosTranscurridos: null,
+      motivoNoEvaluable: 'No se registraron valores pre/post-broncodilatador.',
+    };
   }
+
   const cambioL = valorPost - valorPre;
   const cambioMl = Math.round(cambioL * 1000);
   const cambioPctPredicho = r2((cambioL / predicho) * 100);
-  const esPositiva = cambioPctPredicho > REVERSIBILIDAD_PCT_PREDICHO_MINIMO;
-  return { cambioMl, cambioPctPredicho, esPositiva };
+
+  let protocoloValido = false;
+  let minutosTranscurridos = null;
+  let motivoNoEvaluable = null;
+
+  if (!protocolo || typeof protocolo !== 'object') {
+    motivoNoEvaluable = 'No se registro el protocolo de broncodilatador (farmaco, dosis, hora pre/post); la respuesta no puede declararse evaluable sin verificar el contexto de la prueba.';
+  } else {
+    const { farmaco, dosisMcg, horaPreIso, horaPostIso } = protocolo;
+    if (!farmaco || !FARMACOS_BRONCODILATADORES_RECONOCIDOS.includes(farmaco)) {
+      motivoNoEvaluable = 'Farmaco de broncodilatador no registrado o no reconocido.';
+    } else if (!dosisMcg || dosisMcg <= 0) {
+      motivoNoEvaluable = 'Dosis de broncodilatador no registrada.';
+    } else if (!horaPreIso || !horaPostIso) {
+      motivoNoEvaluable = 'Hora de administracion o de la maniobra post-broncodilatador no registrada.';
+    } else {
+      const minutos = (new Date(horaPostIso).getTime() - new Date(horaPreIso).getTime()) / 60000;
+      minutosTranscurridos = Number.isFinite(minutos) ? Math.round(minutos) : null;
+      if (minutosTranscurridos === null || minutosTranscurridos < MINUTOS_MINIMOS_POST_BD) {
+        motivoNoEvaluable = `Tiempo transcurrido (${minutosTranscurridos ?? 'no calculable'} min) menor al minimo esperado de ${MINUTOS_MINIMOS_POST_BD} min para valorar la respuesta.`;
+      } else {
+        protocoloValido = true;
+      }
+    }
+  }
+
+  const esPositiva = protocoloValido && cambioPctPredicho > REVERSIBILIDAD_PCT_PREDICHO_MINIMO;
+
+  return { cambioMl, cambioPctPredicho, esPositiva, protocoloValido, minutosTranscurridos, motivoNoEvaluable };
 }
 
 /**
@@ -262,16 +359,39 @@ function calcularReversibilidad(valorPre, valorPost, predicho) {
  * asumir automaticamente que una prueba sin datos de calidad es
  * buena.
  *
- * @param {object} datosCalidad - { numeroManiobras, mejorFvcL, segundaMejorFvcL, mejorFev1L, segundaMejorFev1L }
- * @returns {{ numeroManiobras: number|null, repetibilidadFvcMl: number|null,
- *   repetibilidadFev1Ml: number|null, grado: string, interpretable: boolean }}
+ * CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-07, P1): la
+ * version N12/N13 solo contaba CUANTAS maniobras se informaron, sin
+ * verificar si cada una era realmente ACEPTABLE (inicio adecuado,
+ * sin tos, sin cierre glotico, sin fuga, BEV/EOFE dentro de rango).
+ * "3 maniobras informadas" no es lo mismo que "3 maniobras
+ * aceptables" -- la tabla oficial ATS/ERS 2019 (A-F, U) se basa en
+ * esto ultimo. Ahora se acepta un arreglo opcional `aceptabilidad`
+ * (una entrada por maniobra: { aceptable, bev, eofe, tos, cierreGlotico,
+ * inicioAdecuado, finalizacionAdecuada, fuga, tiempoEspiratorioS }) y
+ * metadatos de equipo/operador (`equipo`: { marca, modelo, numeroSerie,
+ * fechaCalibracion, resultadoVerificacion, operadorId }), que se
+ * conservan como trazabilidad (no se usan para inferir aceptabilidad
+ * automaticamente -- verificar la valides de una calibracion de
+ * equipo especifico excede lo que este modulo puede juzgar). Si NO
+ * se envia `aceptabilidad`, se mantiene el pre-filtro simplificado
+ * anterior (cuenta maniobras informadas, no verifica aceptabilidad
+ * real) marcado con `evaluacionSimplificada: true`.
+ *
+ * @param {object} datosCalidad - { numeroManiobras, mejorFvcL, segundaMejorFvcL, mejorFev1L, segundaMejorFev1L, aceptabilidad, equipo }
+ * @returns {object}
  */
 function evaluarCalidadManiobra(datosCalidad) {
+  const vacio = {
+    numeroManiobras: null, numeroManiobrasAceptables: null,
+    repetibilidadFvcMl: null, repetibilidadFev1Ml: null,
+    grado: 'U', interpretable: false, evaluacionSimplificada: true,
+    equipo: null,
+  };
   if (!datosCalidad || typeof datosCalidad !== 'object') {
-    return { numeroManiobras: null, repetibilidadFvcMl: null, repetibilidadFev1Ml: null, grado: 'U', interpretable: false };
+    return vacio;
   }
 
-  const { numeroManiobras, mejorFvcL, segundaMejorFvcL, mejorFev1L, segundaMejorFev1L } = datosCalidad;
+  const { numeroManiobras, mejorFvcL, segundaMejorFvcL, mejorFev1L, segundaMejorFev1L, aceptabilidad, equipo } = datosCalidad;
 
   const repetibilidadFvcMl = (mejorFvcL != null && segundaMejorFvcL != null)
     ? Math.round(Math.abs(mejorFvcL - segundaMejorFvcL) * 1000)
@@ -279,7 +399,53 @@ function evaluarCalidadManiobra(datosCalidad) {
   const repetibilidadFev1Ml = (mejorFev1L != null && segundaMejorFev1L != null)
     ? Math.round(Math.abs(mejorFev1L - segundaMejorFev1L) * 1000)
     : null;
+  const repetibilidadMaxMl = (repetibilidadFvcMl !== null && repetibilidadFev1Ml !== null)
+    ? Math.max(repetibilidadFvcMl, repetibilidadFev1Ml)
+    : null;
 
+  const equipoTrazado = (equipo && typeof equipo === 'object') ? {
+    marca: equipo.marca ?? null,
+    modelo: equipo.modelo ?? null,
+    numeroSerie: equipo.numeroSerie ?? null,
+    fechaCalibracion: equipo.fechaCalibracion ?? null,
+    resultadoVerificacion: equipo.resultadoVerificacion ?? null,
+    operadorId: equipo.operadorId ?? null,
+  } : null;
+
+  // Camino completo: se registro aceptabilidad por maniobra.
+  if (Array.isArray(aceptabilidad) && aceptabilidad.length > 0) {
+    const numeroManiobrasAceptables = aceptabilidad.filter((m) => m && m.aceptable === true).length;
+
+    let grado;
+    if (numeroManiobrasAceptables === 0) {
+      grado = 'F';
+    } else if (numeroManiobrasAceptables === 1) {
+      grado = 'E';
+    } else if (repetibilidadMaxMl === null) {
+      grado = 'U'; // aceptables >=2 pero sin par comparable de FVC/FEV1 para repetibilidad
+    } else if (repetibilidadMaxMl <= 150) {
+      grado = numeroManiobrasAceptables >= 3 ? 'A' : 'B';
+    } else if (repetibilidadMaxMl <= 200) {
+      grado = 'C';
+    } else if (repetibilidadMaxMl <= 250) {
+      grado = 'D';
+    } else {
+      grado = 'E';
+    }
+
+    return {
+      numeroManiobras: aceptabilidad.length,
+      numeroManiobrasAceptables,
+      repetibilidadFvcMl, repetibilidadFev1Ml,
+      grado, interpretable: grado === 'A' || grado === 'B' || grado === 'C',
+      evaluacionSimplificada: false,
+      equipo: equipoTrazado,
+    };
+  }
+
+  // Pre-filtro simplificado (compatibilidad hacia atras): NO
+  // verifica aceptabilidad real de cada maniobra, solo cuenta
+  // cuantas se informaron. Se marca explicitamente como tal.
   const tieneManiobrasMinimas = typeof numeroManiobras === 'number' && numeroManiobras >= CALIDAD_MIN_MANIOBRAS;
   const repetibilidadOk = repetibilidadFvcMl !== null && repetibilidadFev1Ml !== null
     && repetibilidadFvcMl <= CALIDAD_MAX_REPETIBILIDAD_ML && repetibilidadFev1Ml <= CALIDAD_MAX_REPETIBILIDAD_ML;
@@ -299,7 +465,10 @@ function evaluarCalidadManiobra(datosCalidad) {
 
   return {
     numeroManiobras: typeof numeroManiobras === 'number' ? numeroManiobras : null,
+    numeroManiobrasAceptables: null,
     repetibilidadFvcMl, repetibilidadFev1Ml, grado, interpretable,
+    evaluacionSimplificada: true,
+    equipo: equipoTrazado,
   };
 }
 
@@ -361,17 +530,22 @@ function calcularEspirometria(medidos, sexo, edadAnios, tallaCm) {
   // Reversibilidad post-broncodilatador (solo si hay datos post-BD).
   // CORREGIDO en Auditoria N.12 (C12-02): usa >10% del predicho, no
   // >=12%+200mL del valor pre-BD.
+  // CORREGIDO en Auditoria N.14 (G14-08): ahora exige `medidos.protocoloBd`
+  // (farmaco, dosis, hora pre/post) -- ver calcularReversibilidad().
   const tieneValoresPost = medidos.fev1Post !== undefined && medidos.fev1Post !== null;
-  let reversibilidad = { cambioMl: null, cambioPctPredicho: null, esPositiva: false };
+  let reversibilidad = { cambioMl: null, cambioPctPredicho: null, esPositiva: false, protocoloValido: false, minutosTranscurridos: null, motivoNoEvaluable: 'Sin valores post-broncodilatador.' };
   if (tieneValoresPost) {
-    const revFev1 = calcularReversibilidad(medidos.fev1Pre, medidos.fev1Post, predichos.fev1Predicho);
-    const revFvc = calcularReversibilidad(medidos.fvcPre, medidos.fvcPost, predichos.fvcPredicho);
+    const revFev1 = calcularReversibilidad(medidos.fev1Pre, medidos.fev1Post, predichos.fev1Predicho, medidos.protocoloBd);
+    const revFvc = calcularReversibilidad(medidos.fvcPre, medidos.fvcPost, predichos.fvcPredicho, medidos.protocoloBd);
     reversibilidad = {
       cambioMl: revFev1.cambioMl,
       cambioPctPredicho: revFev1.cambioPctPredicho,
       cambioMlFvc: revFvc.cambioMl,
       cambioPctPredichoFvc: revFvc.cambioPctPredicho,
       esPositiva: revFev1.esPositiva || revFvc.esPositiva,
+      protocoloValido: revFev1.protocoloValido,
+      minutosTranscurridos: revFev1.minutosTranscurridos,
+      motivoNoEvaluable: revFev1.motivoNoEvaluable,
     };
   }
 

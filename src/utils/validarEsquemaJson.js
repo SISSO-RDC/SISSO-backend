@@ -42,14 +42,66 @@
  * @param {string} ruta - para mensajes de error legibles (uso interno, recursivo)
  * @returns {string[]} lista de errores (vacia si es valido)
  */
-function validarContraEsquema(valor, esquema, ruta = '') {
+// ============================================================
+// CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-06, P1): el
+// validador no imponia ningun limite de tamano ni profundidad, y
+// los bloques mas complejos de Historia Clinica Ocupacional
+// (revision_organos_sistemas / examen_fisico_regional, Bloques I y
+// K) no tenian esquema alguno -- llegaban al INSERT sin validar ni
+// siquiera sus claves de primer nivel.
+//
+// Se agregan dos mecanismos genericos, reutilizables por CUALQUIER
+// bloque JSONB clinico (no solo I/K):
+//   1. limiteTamanoBytes(valor, maximo) -- rechaza payloads
+//      desproporcionados (proteccion basica de disponibilidad/abuso,
+//      independiente de si el contenido en si es valido).
+//   2. Un nuevo tipo de esquema 'nodoClinicoAcotado': permite
+//      anidamiento libre de objetos/strings/booleans/null (para
+//      representar hallazgos clinicos de forma flexible dentro de
+//      una region ya autorizada por nombre), pero con un limite
+//      DURO de profundidad (maxProfundidad) para que un payload
+//      malformado o malicioso no pueda anidarse indefinidamente.
+//
+// Esto cierra la parte de G14-06 que es responsabilidad de
+// ingenieria (limites de tamano/profundidad, rechazo de claves de
+// primer nivel inesperadas) sin fabricar un esquema medico profundo
+// para cada una de las 13 regiones de examen fisico -- eso sigue
+// pendiente de revision formal con un medico ocupacional, tal como
+// ya advertia el comentario original de este archivo.
+// ============================================================
+function limiteTamanoBytes(valor, maximoBytes, ruta) {
+  const bytes = Buffer.byteLength(JSON.stringify(valor ?? null), 'utf8');
+  if (bytes > maximoBytes) {
+    return [`${ruta || '(raiz)'}: el contenido (${bytes} bytes) excede el limite de ${maximoBytes} bytes permitido para este bloque.`];
+  }
+  return [];
+}
+
+function validarContraEsquema(valor, esquema, ruta = '', profundidadRestante = 12) {
   const errores = [];
   const etiqueta = ruta || '(raiz)';
 
-  // CREADO en Auditoria N.13 (C-05): varios bloques clinicos
-  // permiten que un sub-campo quede en null hasta que se complete
-  // (ej. "resultado" de un examen que aun no se ha realizado).
-  // esquema.nullable:true permite null explicitamente ademas del tipo.
+  if (profundidadRestante < 0) {
+    return [`${etiqueta}: el contenido supera la profundidad de anidamiento maxima permitida.`];
+  }
+
+  // CREADO en Auditoria N.14 (G14-06): tipo generico para permitir
+  // anidamiento clinico flexible con un limite duro de profundidad,
+  // sin exigir un esquema exacto por region que todavia no ha sido
+  // validado con un medico.
+  if (esquema.type === 'nodoClinicoAcotado') {
+    if (valor === null || valor === undefined) return errores;
+    if (typeof valor === 'string' || typeof valor === 'boolean' || typeof valor === 'number') return errores;
+    if (typeof valor !== 'object' || Array.isArray(valor)) {
+      errores.push(`${etiqueta}: se esperaba un valor clinico simple (texto/booleano) o un objeto anidado, no una lista.`);
+      return errores;
+    }
+    Object.entries(valor).forEach(([clave, sub]) => {
+      errores.push(...validarContraEsquema(sub, esquema, `${etiqueta}.${clave}`, profundidadRestante - 1));
+    });
+    return errores;
+  }
+
   if (valor === null && esquema.nullable) {
     return errores;
   }
@@ -67,7 +119,7 @@ function validarContraEsquema(valor, esquema, ruta = '') {
     });
     Object.keys(valor).forEach((clave) => {
       if (propiedades[clave]) {
-        errores.push(...validarContraEsquema(valor[clave], propiedades[clave], `${etiqueta}.${clave}`));
+        errores.push(...validarContraEsquema(valor[clave], propiedades[clave], `${etiqueta}.${clave}`, profundidadRestante - 1));
       } else if (esquema.additionalProperties === false) {
         errores.push(`${etiqueta}.${clave}: propiedad no reconocida.`);
       }
@@ -124,7 +176,7 @@ function validarContraEsquema(valor, esquema, ruta = '') {
     }
     if (esquema.items) {
       valor.forEach((elemento, i) => {
-        errores.push(...validarContraEsquema(elemento, esquema.items, `${etiqueta}[${i}]`));
+        errores.push(...validarContraEsquema(elemento, esquema.items, `${etiqueta}[${i}]`, profundidadRestante - 1));
       });
     }
     return errores;
@@ -136,4 +188,4 @@ function validarContraEsquema(valor, esquema, ruta = '') {
   return errores;
 }
 
-module.exports = { validarContraEsquema };
+module.exports = { validarContraEsquema, limiteTamanoBytes };

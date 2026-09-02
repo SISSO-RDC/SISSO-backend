@@ -7,7 +7,7 @@ const {
   RIESGOS_FISICOS, RIESGOS_MECANICOS, RIESGOS_QUIMICOS,
   RIESGOS_BIOLOGICOS, RIESGOS_ERGONOMICOS, RIESGOS_PSICOSOCIALES,
 } = require('./catalogosRiesgo');
-const { validarContraEsquema } = require('../utils/validarEsquemaJson');
+const { validarContraEsquema, limiteTamanoBytes } = require('../utils/validarEsquemaJson');
 
 const CATALOGOS_RIESGO_POR_CATEGORIA = {
   riesgosFisicos: RIESGOS_FISICOS,
@@ -107,6 +107,69 @@ const ESQUEMA_ANTECEDENTES_FAMILIARES = {
   },
 };
 
+// ------------------------------------------------------------
+// CORREGIDO en Auditoria N.14 (hallazgo GRAVE G14-06, P1): Bloques
+// I (revision_organos_sistemas) y K (examen_fisico_regional)
+// quedaban sin ningun esquema (ver comentario historico arriba).
+// Ahora se valida al menos su CONTRATO DE PRIMER NIVEL -- las
+// claves permitidas son exactamente las documentadas en
+// migration_014 -- y se limita tamano/profundidad de lo que cuelga
+// de cada una via 'nodoClinicoAcotado' (ver validarEsquemaJson.js).
+// El esquema profundo exacto de cada region (que sub-claves debe
+// tener 'organosSentidos', por ejemplo) sigue pendiente de revision
+// formal con un medico ocupacional -- fijarlo sin esa revision
+// arriesga rechazar hallazgos clinicos legitimos en un formato no
+// previsto, que es precisamente el riesgo que la Auditoria N.13
+// senalo para justificar dejarlo fuera. Esta correccion es
+// deliberadamente conservadora: bloquea forma anomala (claves de
+// primer nivel inventadas, arreglos donde se esperaba un objeto,
+// anidamiento/tamano desproporcionado), sin fabricar un esquema
+// medico que nadie ha validado.
+// ------------------------------------------------------------
+const NODO_CLINICO_ACOTADO = { type: 'nodoClinicoAcotado' };
+
+const ESQUEMA_REVISION_ORGANOS_SISTEMAS = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    pielAnexos: NODO_CLINICO_ACOTADO,
+    organosSentidos: NODO_CLINICO_ACOTADO,
+    respiratorio: NODO_CLINICO_ACOTADO,
+    cardiovascular: NODO_CLINICO_ACOTADO,
+    digestivo: NODO_CLINICO_ACOTADO,
+    genitoUrinario: NODO_CLINICO_ACOTADO,
+    musculoEsqueletico: NODO_CLINICO_ACOTADO,
+    endocrino: NODO_CLINICO_ACOTADO,
+    hemoLinfatico: NODO_CLINICO_ACOTADO,
+    nervioso: NODO_CLINICO_ACOTADO,
+  },
+};
+
+const ESQUEMA_EXAMEN_FISICO_REGIONAL = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    piel: NODO_CLINICO_ACOTADO,
+    ojos: NODO_CLINICO_ACOTADO,
+    oido: NODO_CLINICO_ACOTADO,
+    oroFaringe: NODO_CLINICO_ACOTADO,
+    nariz: NODO_CLINICO_ACOTADO,
+    cuello: NODO_CLINICO_ACOTADO,
+    torax: NODO_CLINICO_ACOTADO,
+    abdomen: NODO_CLINICO_ACOTADO,
+    columna: NODO_CLINICO_ACOTADO,
+    pelvis: NODO_CLINICO_ACOTADO,
+    extremidades: NODO_CLINICO_ACOTADO,
+    neurologico: NODO_CLINICO_ACOTADO,
+  },
+};
+
+// Limite generico de tamano por bloque (proteccion de
+// disponibilidad/abuso, no de contenido clinico): 30 KB es
+// generosamente mayor que cualquier hallazgo textual legitimo para
+// una sola region de examen fisico.
+const MAX_BYTES_BLOQUE_CLINICO = 30 * 1024;
+
 /**
  * Valida los bloques JSONB de Historia Clinica Ocupacional que
  * tienen esquema definido (ver comentario arriba sobre alcance).
@@ -118,6 +181,18 @@ const ESQUEMA_ANTECEDENTES_FAMILIARES = {
  */
 function validarBloquesJsonbHistoriaClinica(b) {
   const errores = [];
+
+  // CREADO en Auditoria N.14 (G14-06): limite de tamano generico
+  // aplicado a TODOS los bloques JSONB clinicos de este formulario,
+  // no solo a los dos nuevos -- ninguno tenia limite de tamano antes.
+  ['diagnosticos', 'resultadosExamenes', 'antecedentesLaboralesPrevios', 'accidentesTrabajoPrevios',
+    'enfermedadesProfesionalesPrevias', 'antecedentesFamiliares', 'revisionOrganosSistemas', 'examenFisicoRegional']
+    .forEach((campo) => {
+      if (b[campo] !== undefined && b[campo] !== null) {
+        errores.push(...limiteTamanoBytes(b[campo], MAX_BYTES_BLOQUE_CLINICO, campo));
+      }
+    });
+
   if (b.diagnosticos !== undefined && b.diagnosticos !== null) {
     errores.push(...validarContraEsquema(b.diagnosticos, ESQUEMA_DIAGNOSTICOS, 'diagnosticos'));
   }
@@ -135,6 +210,12 @@ function validarBloquesJsonbHistoriaClinica(b) {
   }
   if (b.antecedentesFamiliares !== undefined && b.antecedentesFamiliares !== null) {
     errores.push(...validarContraEsquema(b.antecedentesFamiliares, ESQUEMA_ANTECEDENTES_FAMILIARES, 'antecedentesFamiliares'));
+  }
+  if (b.revisionOrganosSistemas !== undefined && b.revisionOrganosSistemas !== null) {
+    errores.push(...validarContraEsquema(b.revisionOrganosSistemas, ESQUEMA_REVISION_ORGANOS_SISTEMAS, 'revisionOrganosSistemas'));
+  }
+  if (b.examenFisicoRegional !== undefined && b.examenFisicoRegional !== null) {
+    errores.push(...validarContraEsquema(b.examenFisicoRegional, ESQUEMA_EXAMEN_FISICO_REGIONAL, 'examenFisicoRegional'));
   }
   return errores;
 }
