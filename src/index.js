@@ -158,7 +158,7 @@ app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-08-29-auditoria-n12',
+    version: '2026-09-02-auditoria-n14',
   });
 });
 
