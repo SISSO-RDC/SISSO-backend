@@ -21,6 +21,8 @@ async function obtenerPerfil(req, res) {
               direccion, telefono, email_contacto,
               actividad_economica_ciiu, actividad_economica_desc,
               representante_legal, responsable_sst_nombre, responsable_sst_cargo,
+              responsable_medico_nombre, responsable_medico_cargo,
+              responsable_th_nombre, responsable_th_cargo,
               logo_url, creado_en
        FROM organizaciones WHERE id = $1`,
       [req.usuario.organizacionId]
@@ -60,15 +62,21 @@ async function actualizarPerfil(req, res) {
       `UPDATE organizaciones
        SET direccion = $1, telefono = $2, email_contacto = $3,
            actividad_economica_ciiu = $4, actividad_economica_desc = $5,
-           representante_legal = $6, responsable_sst_nombre = $7, responsable_sst_cargo = $8
-       WHERE id = $9
+           representante_legal = $6, responsable_sst_nombre = $7, responsable_sst_cargo = $8,
+           responsable_medico_nombre = $9, responsable_medico_cargo = $10,
+           responsable_th_nombre = $11, responsable_th_cargo = $12
+       WHERE id = $13
        RETURNING id, nombre, direccion, telefono, email_contacto,
                  actividad_economica_ciiu, actividad_economica_desc,
-                 representante_legal, responsable_sst_nombre, responsable_sst_cargo`,
+                 representante_legal, responsable_sst_nombre, responsable_sst_cargo,
+                 responsable_medico_nombre, responsable_medico_cargo,
+                 responsable_th_nombre, responsable_th_cargo`,
       [
         b.direccion || null, b.telefono || null, b.emailContacto || null,
         b.actividadEconomicaCiiu || null, b.actividadEconomicaDesc || null,
         b.representanteLegal || null, b.responsableSstNombre || null, b.responsableSstCargo || null,
+        b.responsableMedicoNombre || null, b.responsableMedicoCargo || null,
+        b.responsableThNombre || null, b.responsableThCargo || null,
         req.usuario.organizacionId,
       ]
     );
