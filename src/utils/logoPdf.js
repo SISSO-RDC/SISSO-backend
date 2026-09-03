@@ -37,23 +37,52 @@ async function obtenerLogoBuffer(logoUrl) {
  * @param {PDFKit.PDFDocument} doc
  * @param {Buffer|null} logoBuffer
  */
-function dibujarMarcaDeAgua(doc, logoBuffer) {
+function dibujarMarcaDeAgua(doc, logoBuffer, opcionesPersonalizadas = {}) {
   if (!logoBuffer) return;
   try {
-    const anchoMarca = doc.page.width * 0.55;
-    const xCentro = (doc.page.width - anchoMarca) / 2;
-    const yCentro = (doc.page.height - anchoMarca) / 2;
+    // CORREGIDO a pedido de la persona usuaria (02/09/2026): la
+    // version anterior calculaba el centrado vertical asumiendo que
+    // el logo era CUADRADO (usaba el mismo valor "anchoMarca" para
+    // ancho y alto al centrar), lo que dejaba el logo visualmente
+    // descentrado/"cortado" cuando la imagen real tenia una relacion
+    // de aspecto distinta (rectangular). Ahora se dibuja dentro de
+    // un cuadro delimitador cuadrado centrado en la pagina, usando
+    // `fit` + align/valign 'center' de pdfkit, que preserva la
+    // relacion de aspecto real de la imagen y la centra en ambos
+    // ejes sin necesidad de conocer sus dimensiones naturales.
+    const opacidad = opcionesPersonalizadas.opacidad ?? 0.08;
+    const fraccionAncho = opcionesPersonalizadas.fraccionAncho ?? 0.5;
+    const ladoCuadro = Math.min(doc.page.width, doc.page.height) * fraccionAncho;
+    const x = (doc.page.width - ladoCuadro) / 2;
+    const y = (doc.page.height - ladoCuadro) / 2;
     doc.save();
-    doc.opacity(0.06);
-    doc.image(logoBuffer, xCentro, yCentro, { width: anchoMarca });
+    doc.opacity(opacidad);
+    doc.image(logoBuffer, x, y, { fit: [ladoCuadro, ladoCuadro], align: 'center', valign: 'center' });
     doc.restore();
-    // pdfkit no siempre restaura opacity()==1 con doc.restore() en
-    // versiones antiguas; se fuerza explicitamente para no dejar
-    // el resto del documento semi-transparente por error.
     doc.opacity(1);
   } catch (err) {
     console.error('No se pudo dibujar la marca de agua del logo en el PDF:', err.message);
   }
 }
 
-module.exports = { obtenerLogoBuffer, dibujarMarcaDeAgua };
+/**
+ * Dibuja el logo como membrete visible (opacidad completa), NO como
+ * marca de agua -- pensado para la cabecera del documento, para dar
+ * respaldo institucional visible.
+ *
+ * @param {PDFKit.PDFDocument} doc
+ * @param {Buffer|null} logoBuffer
+ * @param {number} x
+ * @param {number} y
+ * @param {number} lado - tamano del cuadro delimitador (cuadrado)
+ */
+function dibujarLogoMembrete(doc, logoBuffer, x, y, lado = 46) {
+  if (!logoBuffer) return;
+  try {
+    doc.image(logoBuffer, x, y, { fit: [lado, lado], align: 'center', valign: 'center' });
+  } catch (err) {
+    console.error('No se pudo dibujar el logo de membrete en el PDF:', err.message);
+  }
+}
+
+module.exports = { obtenerLogoBuffer, dibujarMarcaDeAgua, dibujarLogoMembrete };
