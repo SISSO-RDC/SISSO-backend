@@ -21,12 +21,14 @@
 const PDFDocument = require('pdfkit');
 const { dibujarMarcaDeAgua, dibujarLogoMembrete } = require('../utils/logoPdf');
 
-// Formato mas compacto que A4 horizontal completo (841.89 x 595.28):
-// se reduce la altura para que el contenido no quede flotando en un
-// oceano de espacio vacio en la mitad inferior de la hoja.
+// Formato mas compacto que A4 horizontal completo (841.89 x 595.28),
+// pero con suficiente altura para que TODO el contenido (con la
+// tipografia mas grande pedida) quepa en UNA sola pagina -- 480pt
+// resultaba demasiado bajo y pdfkit creaba una segunda pagina en
+// blanco automaticamente al desbordar el margen inferior.
 const ANCHO_PAGINA = 780;
-const ALTO_PAGINA = 480;
-const MARGEN = 44;
+const ALTO_PAGINA = 560;
+const MARGEN = 40;
 // Margen interior del marco decorativo, un poco adentro del margen
 // de contenido para que el marco no quede pegado al borde fisico.
 const MARGEN_MARCO = 22;
@@ -61,7 +63,19 @@ function dibujarMarco(doc) {
  */
 function generarPdfCertificadoCapacitacion(datos, nombreOrganizacion, logoBuffer = null, firma = null) {
   const { capacitacion, trabajador } = datos;
-  const doc = new PDFDocument({ size: [ANCHO_PAGINA, ALTO_PAGINA], margin: MARGEN });
+  // CORREGIDO a pedido de la persona usuaria (02/09/2026): el
+  // certificado se estaba generando en 2 paginas (la segunda casi
+  // en blanco). Causa real: el margen que se le pasa a PDFDocument
+  // no es solo estetico -- pdfkit usa ese valor para decidir cuando
+  // el contenido "se sale de la pagina" y agregar una pagina nueva
+  // automaticamente, INCLUSO si el texto se dibuja con coordenadas
+  // x/y explicitas. El pie de pagina se dibujaba a una altura que
+  // quedaba dentro de esa zona de margen inferior vigilada por
+  // pdfkit, disparando la paginacion automatica. Se usa un margen
+  // de PDFDocument deliberadamente chico (solo para que pdfkit no
+  // agregue paginas de mas), y MARGEN (mas grande) se mantiene como
+  // constante propia para el diseño visual del contenido.
+  const doc = new PDFDocument({ size: [ANCHO_PAGINA, ALTO_PAGINA], margin: 12 });
 
   dibujarMarcaDeAgua(doc, logoBuffer, { opacidad: 0.08, fraccionAncho: 0.55 });
   dibujarMarco(doc);
