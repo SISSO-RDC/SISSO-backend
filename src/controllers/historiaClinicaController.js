@@ -89,12 +89,19 @@ async function registrarPreocupacional(req, res) {
     }
 
     let insertRes;
-    try {
-    // CREADO en Auditoria N.13 (hallazgo GRAVE G-05, P1): motor de
-    // banderas rojas sobre signos vitales -- se computa antes de
-    // insertar y se agrega a la respuesta para que quede visible al
-    // medico de inmediato ("requiere revision medica", nunca un
-    // diagnostico automatico).
+    // CORREGIDO en Auditoria N.15 (bug real de produccion, reportado
+    // por el usuario: "Error interno al registrar la evaluacion
+    // preocupacional" impedia guardar SIEMPRE, en los 4 tipos de
+    // evaluacion). Causa raiz: `banderasRojas` se declaraba con
+    // `const` DENTRO del bloque try{} que envuelve la transaccion,
+    // pero se usaba mas abajo, DESPUES de que ese bloque try/catch ya
+    // habia cerrado -- fuera de su alcance de bloque. Cada intento de
+    // guardar lanzaba `ReferenceError: banderasRojas is not defined`
+    // (confirmado reproduciendo la peticion real contra un servidor
+    // real), que el catch generico de mas abajo convertia en el
+    // mensaje "Error interno..." sin mostrar la causa real. Se mueve
+    // la declaracion aqui, al mismo nivel que `insertRes`, para que
+    // siga en alcance donde se usa.
     const banderasRojas = detectarBanderasRojasSignosVitales({
       presionArterialSistolica: b.presionArterialSistolica,
       presionArterialDiastolica: b.presionArterialDiastolica,
@@ -102,7 +109,7 @@ async function registrarPreocupacional(req, res) {
       saturacionOxigeno: b.saturacionOxigeno,
       frecuenciaRespiratoria: b.frecuenciaRespiratoria,
     });
-
+    try {
     insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
@@ -303,12 +310,19 @@ async function registrarRetiro(req, res) {
     }
 
     let insertRes;
-    try {
-    // CREADO en Auditoria N.13 (hallazgo GRAVE G-05, P1): motor de
-    // banderas rojas sobre signos vitales -- se computa antes de
-    // insertar y se agrega a la respuesta para que quede visible al
-    // medico de inmediato ("requiere revision medica", nunca un
-    // diagnostico automatico).
+    // CORREGIDO en Auditoria N.15 (bug real de produccion, reportado
+    // por el usuario: "Error interno al registrar la evaluacion
+    // preocupacional" impedia guardar SIEMPRE, en los 4 tipos de
+    // evaluacion). Causa raiz: `banderasRojas` se declaraba con
+    // `const` DENTRO del bloque try{} que envuelve la transaccion,
+    // pero se usaba mas abajo, DESPUES de que ese bloque try/catch ya
+    // habia cerrado -- fuera de su alcance de bloque. Cada intento de
+    // guardar lanzaba `ReferenceError: banderasRojas is not defined`
+    // (confirmado reproduciendo la peticion real contra un servidor
+    // real), que el catch generico de mas abajo convertia en el
+    // mensaje "Error interno..." sin mostrar la causa real. Se mueve
+    // la declaracion aqui, al mismo nivel que `insertRes`, para que
+    // siga en alcance donde se usa.
     const banderasRojas = detectarBanderasRojasSignosVitales({
       presionArterialSistolica: b.presionArterialSistolica,
       presionArterialDiastolica: b.presionArterialDiastolica,
@@ -316,7 +330,7 @@ async function registrarRetiro(req, res) {
       saturacionOxigeno: b.saturacionOxigeno,
       frecuenciaRespiratoria: b.frecuenciaRespiratoria,
     });
-
+    try {
     insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
@@ -462,12 +476,19 @@ async function registrarPeriodica(req, res) {
     }
 
     let insertRes;
-    try {
-    // CREADO en Auditoria N.13 (hallazgo GRAVE G-05, P1): motor de
-    // banderas rojas sobre signos vitales -- se computa antes de
-    // insertar y se agrega a la respuesta para que quede visible al
-    // medico de inmediato ("requiere revision medica", nunca un
-    // diagnostico automatico).
+    // CORREGIDO en Auditoria N.15 (bug real de produccion, reportado
+    // por el usuario: "Error interno al registrar la evaluacion
+    // preocupacional" impedia guardar SIEMPRE, en los 4 tipos de
+    // evaluacion). Causa raiz: `banderasRojas` se declaraba con
+    // `const` DENTRO del bloque try{} que envuelve la transaccion,
+    // pero se usaba mas abajo, DESPUES de que ese bloque try/catch ya
+    // habia cerrado -- fuera de su alcance de bloque. Cada intento de
+    // guardar lanzaba `ReferenceError: banderasRojas is not defined`
+    // (confirmado reproduciendo la peticion real contra un servidor
+    // real), que el catch generico de mas abajo convertia en el
+    // mensaje "Error interno..." sin mostrar la causa real. Se mueve
+    // la declaracion aqui, al mismo nivel que `insertRes`, para que
+    // siga en alcance donde se usa.
     const banderasRojas = detectarBanderasRojasSignosVitales({
       presionArterialSistolica: b.presionArterialSistolica,
       presionArterialDiastolica: b.presionArterialDiastolica,
@@ -475,7 +496,7 @@ async function registrarPeriodica(req, res) {
       saturacionOxigeno: b.saturacionOxigeno,
       frecuenciaRespiratoria: b.frecuenciaRespiratoria,
     });
-
+    try {
     insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
@@ -638,12 +659,19 @@ async function registrarReintegro(req, res) {
     }
 
     let insertRes;
-    try {
-    // CREADO en Auditoria N.13 (hallazgo GRAVE G-05, P1): motor de
-    // banderas rojas sobre signos vitales -- se computa antes de
-    // insertar y se agrega a la respuesta para que quede visible al
-    // medico de inmediato ("requiere revision medica", nunca un
-    // diagnostico automatico).
+    // CORREGIDO en Auditoria N.15 (bug real de produccion, reportado
+    // por el usuario: "Error interno al registrar la evaluacion
+    // preocupacional" impedia guardar SIEMPRE, en los 4 tipos de
+    // evaluacion). Causa raiz: `banderasRojas` se declaraba con
+    // `const` DENTRO del bloque try{} que envuelve la transaccion,
+    // pero se usaba mas abajo, DESPUES de que ese bloque try/catch ya
+    // habia cerrado -- fuera de su alcance de bloque. Cada intento de
+    // guardar lanzaba `ReferenceError: banderasRojas is not defined`
+    // (confirmado reproduciendo la peticion real contra un servidor
+    // real), que el catch generico de mas abajo convertia en el
+    // mensaje "Error interno..." sin mostrar la causa real. Se mueve
+    // la declaracion aqui, al mismo nivel que `insertRes`, para que
+    // siga en alcance donde se usa.
     const banderasRojas = detectarBanderasRojasSignosVitales({
       presionArterialSistolica: b.presionArterialSistolica,
       presionArterialDiastolica: b.presionArterialDiastolica,
@@ -651,7 +679,7 @@ async function registrarReintegro(req, res) {
       saturacionOxigeno: b.saturacionOxigeno,
       frecuenciaRespiratoria: b.frecuenciaRespiratoria,
     });
-
+    try {
     insertRes = await withTransaction(async (client) => {
     const resultado = await client.query(
       `INSERT INTO evaluaciones_ocupacionales (
