@@ -16,6 +16,7 @@
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { UMBRAL_K_ANONIMATO } = require('../utils/kAnonimato');
 
 const NIVELES_RIESGO = ['bajo', 'medio', 'alto', 'muy_alto'];
 
@@ -322,9 +323,19 @@ async function obtenerResumenAgregado(req, res) {
       totalPorArea.set(fila.area, (totalPorArea.get(fila.area) || 0) + parseInt(fila.cantidad, 10));
     }
 
-    const filasVisibles = resultado.rows.filter((fila) => (totalPorArea.get(fila.area) || 0) >= 5);
+    // CORREGIDO en Auditoria N.15 (hallazgo GRAVE G15-06): este
+    // endpoint tenia el umbral de k-anonimato duplicado como el
+    // literal "5" en dos lugares, en vez de importar
+    // UMBRAL_K_ANONIMATO de src/utils/kAnonimato.js (el mismo modulo
+    // que ya usan dashboardController e indicadoresController). El
+    // valor coincidia por ahora, pero si alguien endurece el umbral
+    // centralizado en el futuro (ej. a 10), este endpoint se habria
+    // quedado silenciosamente con el criterio viejo -- exactamente
+    // el riesgo que describe G15-06 ("cada nueva metrica puede crear
+    // una nueva via de inferencia").
+    const filasVisibles = resultado.rows.filter((fila) => (totalPorArea.get(fila.area) || 0) >= UMBRAL_K_ANONIMATO);
     const areasRedactadas = [...totalPorArea.entries()]
-      .filter(([, total]) => total < 5)
+      .filter(([, total]) => total < UMBRAL_K_ANONIMATO)
       .map(([area, total]) => ({ area, redactado: true, nota: `Desglose oculto: esta área tiene ${total} evaluación(es), menos del mínimo requerido para mostrar el detalle por nivel de riesgo sin riesgo de identificar a una persona en particular.` }));
 
     return res.json({ resumen: [...filasVisibles, ...areasRedactadas] });

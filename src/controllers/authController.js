@@ -273,7 +273,7 @@ async function registrarUsuario(req, res) {
 // Esta ruta requiere autenticacion y rol admin (ver routes).
 // ------------------------------------------------------------
 async function registrarUsuarioInterno(req, res) {
-  const { nombreCompleto, email, password, rol } = req.body;
+  const { nombreCompleto, email, password, rol, confirmarCreacionAdmin } = req.body;
   const rolesValidos = ['admin', 'medico', 'sso', 'th'];
 
   if (!nombreCompleto || !email || !password || !rol) {
@@ -284,6 +284,30 @@ async function registrarUsuarioInterno(req, res) {
   }
   if (password.length < 12) {
     return res.status(400).json({ error: 'La contrasena debe tener al menos 12 caracteres. Se recomienda usar una frase larga facil de recordar en vez de una palabra corta con simbolos.' });
+  }
+  // CORREGIDO en Auditoria N.15 (hallazgo GRAVE G15-04): esta ruta
+  // solo exige rol 'admin' para llamarla, y hasta ahora permitia
+  // crear OTRO usuario 'admin' sin ninguna friccion adicional -- es
+  // decir, cualquier admin de una organizacion podia otorgarle
+  // privilegios administrativos completos a cualquier otra persona
+  // con un solo POST, sin que quedara un rastro distinto de "creo
+  // un usuario mas". SISSO SI permite que un admin cree otro admin
+  // (es una decision de negocio legitima para organizaciones que
+  // reparten la gestion entre varias personas) -- lo que corrige
+  // este cambio es la FRICCION Y LA TRAZABILIDAD: crear un admin
+  // ahora exige que quien llama envie explicitamente
+  // `confirmarCreacionAdmin: true` (para que nunca sea un efecto
+  // colateral de un formulario generico) y la auditoria de este caso
+  // se marca con `accion: 'usuario_creado_interno_admin'` en vez de
+  // la generica `usuario_creado_interno`, para que un reporte de
+  // auditoria pueda filtrar especificamente "cuando se otorgaron
+  // privilegios de admin" sin tener que inspeccionar el detalle JSON
+  // de cada fila.
+  if (rol === 'admin' && confirmarCreacionAdmin !== true) {
+    return res.status(400).json({
+      error: 'Para crear un usuario con rol "admin" se debe confirmar explicitamente enviando confirmarCreacionAdmin: true. Esta confirmacion existe para que otorgar privilegios administrativos nunca sea un efecto colateral accidental.',
+      codigo: 'CONFIRMACION_ADMIN_REQUERIDA',
+    });
   }
 
   try {
@@ -304,7 +328,7 @@ async function registrarUsuarioInterno(req, res) {
       await registrarAuditoria({
         organizacionId: req.usuario.organizacionId,
         usuarioId: req.usuario.id,
-        accion: 'usuario_creado_interno',
+        accion: rol === 'admin' ? 'usuario_creado_interno_admin' : 'usuario_creado_interno',
         entidad: 'usuario',
         entidadId: insertRes.rows[0].id,
         detalle: { rol, creadoPor: req.usuario.id },
