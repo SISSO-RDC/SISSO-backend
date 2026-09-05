@@ -139,12 +139,23 @@ test('ATOMICIDAD: si el INSERT de auditoria falla, NO queda un registro parcial 
 });
 
 test('ATOMICIDAD: sin la restriccion forzada, registrar aptitud SI funciona normalmente (no quedo nada roto)', async () => {
+  // NOTA (Auditoria N.15, C15-03): esta prueba se escribio antes de
+  // la Auditoria N.14 (hallazgo CRITICO C14-02), que introdujo el
+  // bloqueo 409 "evaluacionIncompleta" para cualquier aptitud !=
+  // 'no_apto' cuando el puesto no tiene matriz de exposicion
+  // validada. El trabajador de prueba (sembrado por tests/helpers/seed.js)
+  // no tiene puesto_trabajo_id asignado, asi que sin este flag la
+  // llamada ahora responde 409 en vez de 201 -- no por un fallo de
+  // atomicidad (que es lo que esta prueba en realidad verifica), sino
+  // por el nuevo control de matriz. Se envia confirmarEvaluacionIncompleta
+  // para aislar exactamente lo que esta prueba mide.
   const { status, datos: cuerpo } = await peticion('POST', `/aptitud/trabajadores/${datos.trabajadorAId}/registrar`, tokenMedicoA, {
     aptitud: 'apto',
     puestoEvaluado: 'Operador de prueba',
     diagnosticosCie10: [],
     exposicionesPuesto: [],
     justificacionClinica: 'Justificacion clinica de prueba con longitud suficiente para pasar validacion.',
+    confirmarEvaluacionIncompleta: true,
   });
   assert.equal(status, 201);
   assert.ok(cuerpo.registroAptitud.id);

@@ -111,16 +111,41 @@ test('C12-02: el patron ya NO usa el cociente fijo 0.70 como criterio principal 
 });
 
 test('C12-02: reversibilidad post-broncodilatador usa >10% del predicho, no >=12%+200mL del valor pre-BD', () => {
+  // NOTA (Auditoria N.15): calcularReversibilidad() ahora exige un
+  // protocolo de broncodilatador valido (farmaco reconocido, dosis y
+  // tiempo transcurrido >= MINUTOS_MINIMOS_POST_BD) para poder
+  // declarar `esPositiva`; sin protocolo, `protocoloValido` es false
+  // y la funcion no afirma reversibilidad aunque el cambio porcentual
+  // la cumpla (correcto: no se puede declarar una respuesta post-BD
+  // evaluable sin saber que se administro y cuando). Esta prueba
+  // aisla especificamente el criterio de porcentaje, asi que se
+  // provee un protocolo valido para no confundir ambos controles.
+  const protocoloValido = {
+    farmaco: 'salbutamol',
+    dosisMcg: 400,
+    horaPreIso: '2026-01-01T08:00:00.000Z',
+    horaPostIso: '2026-01-01T08:15:00.000Z',
+  };
   const predichos = espirometria.calcularValoresPredichos('M', 40, 175);
   // Cambio de 350 mL sobre un predicho de FEV1 ~3.87L es ~9% del
   // predicho -> NO positivo con el criterio nuevo (>10%), aunque
   // cumpliria el viejo criterio 2005 (200 mL y podria superar 12%
   // del valor PRE si el valor pre era bajo).
-  const rev = espirometria.calcularReversibilidad(2.0, 2.35, predichos.fev1Predicho);
+  const rev = espirometria.calcularReversibilidad(2.0, 2.35, predichos.fev1Predicho, protocoloValido);
+  assert.equal(rev.protocoloValido, true);
   assert.equal(rev.esPositiva, false);
 
-  const rev2 = espirometria.calcularReversibilidad(2.0, 2.40, predichos.fev1Predicho);
+  const rev2 = espirometria.calcularReversibilidad(2.0, 2.40, predichos.fev1Predicho, protocoloValido);
+  assert.equal(rev2.protocoloValido, true);
   assert.equal(rev2.esPositiva, true);
+
+  // Cobertura adicional (Auditoria N.15): el mismo cambio positivo NO
+  // debe declararse esPositiva si el protocolo de broncodilatador no
+  // es evaluable (por ejemplo, sin protocolo registrado), aun cuando
+  // el porcentaje por si solo superaria el umbral.
+  const rev3 = espirometria.calcularReversibilidad(2.0, 2.40, predichos.fev1Predicho);
+  assert.equal(rev3.protocoloValido, false);
+  assert.equal(rev3.esPositiva, false);
 });
 
 test('C12-02: una espirometria sin datos de calidad de maniobra queda marcada interpretable=false (no se asume buena calidad por defecto)', () => {

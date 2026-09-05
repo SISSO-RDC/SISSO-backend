@@ -130,10 +130,22 @@ sisso-backend/
 
 ## Paso 4: Crear las tablas en la base de datos
 
-Necesitas correr las migraciones (46 y contando) una sola vez por
-entorno nuevo. Todas son repetibles: si por error se ejecutan dos veces,
-no fallan (usan `IF NOT EXISTS`/`DROP POLICY IF EXISTS`/
-`ON CONFLICT DO NOTHING`).
+> **Nota (Auditoria N.15, hallazgo GRAVE G15-08):** esta seccion decia
+> "46 y contando" mientras el repositorio ya tenia migraciones hasta la
+> 074 -- la misma clase de desactualizacion documental que motivo la
+> nota de arriba (G-N08-04), esta vez sobre el numero de migraciones en
+> vez del estado de RLS/MFA. En vez de corregir el numero a mano otra
+> vez (lo que garantiza que se desactualice de nuevo en la proxima
+> migracion), se reemplaza por un comando que siempre da la cifra real:
+
+Corre las migraciones una sola vez por entorno nuevo. Para saber
+cuantas hay en este momento, sin depender de que este texto este
+actualizado:
+```bash
+ls src/db/migration_*.sql | wc -l
+```
+Todas son repetibles: si por error se ejecutan dos veces, no fallan
+(usan `IF NOT EXISTS`/`DROP POLICY IF EXISTS`/`ON CONFLICT DO NOTHING`).
 
 **Opcion A: desde tu computadora, apuntando a la base de Neon:**
 ```bash
@@ -210,6 +222,33 @@ curl -X POST https://TU-BACKEND.onrender.com/api/auth/registrar-usuario \
     "rol": "medico"
   }'
 ```
+
+---
+
+## Integracion continua (CI) y herramientas anti-desactualizacion
+
+Cada push/PR a `main` corre `.github/workflows/ci.yml`, que levanta un
+PostgreSQL real efimero, aplica **todas** las migraciones desde cero y
+ejecuta la suite completa (`npm test`) contra esa base -- no hay mocks
+de base de datos en este proyecto. Ver el comentario de cabecera de
+`ci.yml` para el detalle completo, incluyendo por que el pipeline
+retira el privilegio de superusuario del rol de base de datos antes de
+migrar (necesario para que las pruebas de RLS validen algo real).
+
+Ademas del pipeline, tres scripts existen especificamente para que la
+documentacion de este repositorio no pueda desactualizarse en silencio
+(la clase de problema detras de varios hallazgos de auditorias
+anteriores, incluida esta):
+
+| Script | Que verifica | Se ejecuta en CI |
+|---|---|---|
+| `scripts/ci_verificar_env.js` | Que `.env.example` documente toda variable de entorno que el codigo realmente usa. | Si |
+| `scripts/generar_matriz_rbac.js --verificar` | Que `docs/MATRIZ_RBAC.md` (rol x endpoint x dato x accion) refleje las rutas reales de Express, generandolo por introspeccion en vez de mantenerlo a mano. | Si |
+| `scripts/ci_verificar_migraciones.js` | Que `schema_migrations` en la base de CI tenga registradas todas las migraciones presentes en el repositorio. | Si |
+
+Si alguno de estos tres falla en CI, el mensaje de error indica
+exactamente que corregir (agregar una variable, regenerar la matriz,
+etc.) -- no hace falta interpretar el codigo del script para arreglarlo.
 
 ---
 
