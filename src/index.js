@@ -88,6 +88,7 @@ const finalidadesTratamientoRoutes = require('./routes/finalidadesTratamientoRou
 const solicitudesTitularRoutes = require('./routes/solicitudesTitularRoutes');
 const incidentesSeguridadRoutes = require('./routes/incidentesSeguridadRoutes');
 const puestoExposicionesRoutes = require('./routes/puestoExposicionesRoutes');
+const { VERSION_SERVIDOR } = require('./utils/versionServidor');
 
 const app = express();
 
@@ -148,17 +149,19 @@ app.use(cookieParser());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // --- Ruta de salud, para verificar que el servidor esta vivo (Render la usa) ---
-// CORREGIDO: se agrega "version" para poder confirmar en segundos,
-// desde el navegador (GET https://sissso-backend.onrender.com/api/salud),
-// si Render ya esta sirviendo el ultimo codigo desplegado o si se
-// quedo en una version anterior -- sin esto, la unica forma de
-// saberlo era revisar manualmente los logs/eventos de deploy en el
-// dashboard de Render.
+// CORREGIDO en Auditoria N.15 (hallazgo CRITICO C15-04, P0): "version"
+// ya NO es un string escrito a mano que hay que recordar actualizar
+// en cada entrega (eso ya fallo una vez: Render sirvio codigo
+// pre-N.12 mientras este campo declaraba una version mas nueva). Se
+// deriva automaticamente del commit real desplegado -- ver
+// src/utils/versionServidor.js para el detalle completo y el orden
+// de fuentes (RENDER_GIT_COMMIT / git local / explicitamente
+// desconocido, nunca un valor inventado).
 app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
     timestamp: new Date().toISOString(),
-    version: '2026-09-02-auditoria-n14',
+    ...VERSION_SERVIDOR,
   });
 });
 

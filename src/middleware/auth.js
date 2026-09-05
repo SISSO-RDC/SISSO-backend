@@ -201,8 +201,20 @@ async function autenticar(req, res, next) {
  *
  * Uso: router.get('/admin/algo', autenticar, autorizar('admin'), handler)
  */
+// ------------------------------------------------------------
+// CORREGIDO en Auditoria N.15 (cierra hallazgo CRITICO C15-02, P0):
+// la funcion en si no cambia de comportamiento, pero ahora la
+// funcion middleware que devuelve queda "etiquetada" con
+// `.rolesPermitidos` (los mismos argumentos con los que se llamo).
+// Esto es lo que permite que scripts/generar_matriz_rbac.js
+// introspeccione TODAS las rutas de la aplicacion en tiempo real
+// (recorriendo router.stack de Express) y arme una matriz
+// rol x endpoint x accion que sea imposible que se desactualice en
+// silencio: se genera del codigo real, no de un documento aparte
+// que alguien tiene que acordarse de mantener a mano.
+// ------------------------------------------------------------
 function autorizar(...rolesPermitidos) {
-  return (req, res, next) => {
+  const middleware = (req, res, next) => {
     if (!req.usuario) {
       return res.status(401).json({ error: 'No autenticado.' });
     }
@@ -211,6 +223,8 @@ function autorizar(...rolesPermitidos) {
     }
     next();
   };
+  middleware.rolesPermitidos = rolesPermitidos;
+  return middleware;
 }
 
 // ------------------------------------------------------------
