@@ -32,17 +32,63 @@ async function obtenerMiFirma(req, res) {
       `SELECT id, imagen_public_id, actualizado_en FROM firmas_digitales_usuario WHERE usuario_id = $1`,
       [req.usuario.id]
     );
+    // CREADO en Auditoria N.15 (pedido de la persona usuaria): el
+    // registro SENESCYT de la especialidad se devuelve junto a la
+    // firma en esta misma consulta porque viven en la misma pestaña
+    // de Configuracion ("mis credenciales para documentos"), aunque
+    // el campo en si vive en `usuarios`, no en `firmas_digitales_usuario`.
+    const usuarioRes = await query(
+      `SELECT registro_senescyt_especialidad FROM usuarios WHERE id = $1`,
+      [req.usuario.id]
+    );
+    const registroSenescyt = usuarioRes.rows[0]?.registro_senescyt_especialidad || null;
+
     if (resultado.rows.length === 0) {
-      return res.json({ tieneFirma: false });
+      return res.json({ tieneFirma: false, registroSenescytEspecialidad: registroSenescyt });
     }
     return res.json({
       tieneFirma: true,
       actualizadoEn: resultado.rows[0].actualizado_en,
       url: generarUrlFirmada(resultado.rows[0].imagen_public_id, 'imagen'),
+      registroSenescytEspecialidad: registroSenescyt,
     });
   } catch (err) {
     console.error('Error en obtenerMiFirma:', err);
     return res.status(500).json({ error: 'Error interno al obtener la firma digital.' });
+  }
+}
+
+// ------------------------------------------------------------
+// PUT /api/mi-firma-digital/registro-senescyt
+// body: { registroSenescytEspecialidad }
+//
+// CREADO en Auditoria N.15 (pedido de la persona usuaria): permite
+// que cada usuario registre, una sola vez, su numero de registro
+// SENESCYT de la especialidad (Salud Ocupacional / Medicina del
+// Trabajo) -- se imprime automaticamente despues en cada documento
+// que ese usuario firme (ver historiaClinicaController.js). Se envia
+// texto vacio o null para borrarlo.
+// ------------------------------------------------------------
+async function actualizarMiRegistroSenescyt(req, res) {
+  const { registroSenescytEspecialidad } = req.body;
+  const valor = (typeof registroSenescytEspecialidad === 'string' ? registroSenescytEspecialidad.trim() : '') || null;
+
+  if (valor !== null && valor.length > 50) {
+    return res.status(400).json({ error: 'El registro SENESCYT no puede superar los 50 caracteres.' });
+  }
+
+  try {
+    await query(`UPDATE usuarios SET registro_senescyt_especialidad = $1 WHERE id = $2`, [valor, req.usuario.id]);
+
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId, usuarioId: req.usuario.id,
+      accion: 'actualizar_registro_senescyt', entidad: 'usuario', entidadId: req.usuario.id, req,
+    });
+
+    return res.json({ registroSenescytEspecialidad: valor });
+  } catch (err) {
+    console.error('Error en actualizarMiRegistroSenescyt:', err);
+    return res.status(500).json({ error: 'Error interno al actualizar el registro SENESCYT.' });
   }
 }
 
@@ -159,4 +205,4 @@ async function obtenerFirmaDeUsuario(req, res) {
   }
 }
 
-module.exports = { obtenerMiFirma, subirMiFirma, borrarMiFirma, obtenerFirmaDeUsuario };
+module.exports = { obtenerMiFirma, subirMiFirma, borrarMiFirma, obtenerFirmaDeUsuario, actualizarMiRegistroSenescyt };

@@ -24,6 +24,7 @@
 // uno por uno.
 // ============================================================
 const PDFDocument = require('pdfkit');
+const { dibujarMarcaDeAgua, dibujarLogoMembrete } = require('../utils/logoPdf');
 
 const MARGEN = 50;
 const ANCHO_UTIL = 595.28 - MARGEN * 2;
@@ -61,6 +62,79 @@ const ETIQUETAS_APTITUD = {
   apto_con_limitaciones: 'Apto con limitaciones', no_apto: 'No apto',
 };
 
+/**
+ * CREADO en Auditoria N.15 (pedido de la persona usuaria): logo de
+ * la organizacion como fondo/marca de agua EN CADA PAGINA (no solo
+ * la primera) y como membrete visible en la esquina superior
+ * izquierda de la primera pagina. pdfkit no re-dibuja
+ * automaticamente nada al crear una pagina nueva, asi que la marca
+ * de agua se registra con doc.on('pageAdded', ...) para que se
+ * repita en cada pagina que se agregue DESPUES de la primera, y se
+ * dibuja una vez de forma explicita para la primera pagina (que no
+ * dispara 'pageAdded', ya que la crea el propio constructor de
+ * PDFDocument).
+ */
+function configurarLogoEnCadaPagina(doc, logoBuffer) {
+  dibujarMarcaDeAgua(doc, logoBuffer);
+  doc.on('pageAdded', () => dibujarMarcaDeAgua(doc, logoBuffer));
+}
+
+/**
+ * CREADO en Auditoria N.15 (pedido de la persona usuaria): imprime
+ * el nombre completo del profesional, su registro SENESCYT de la
+ * especialidad (si lo registro en "Mi Firma Digital"), y deja un
+ * espacio reservado para la firma -- la firma digital REGISTRADA del
+ * medico si existe (misma imagen que usan certificados de aptitud y
+ * capacitacion), o una zona en blanco con una linea para firmar a
+ * mano si el medico todavia no registro una.
+ *
+ * Es una funcion separada de "Bloque P: Datos del profesional" (que
+ * ya existia y solo mostraba el codigo_profesional_salud de ESTA
+ * evaluacion, un campo de texto libre historico) porque esta seccion
+ * es especificamente la CREDENCIAL + FIRMA que hace valido el
+ * documento, y aplica igual a los 4 tipos de evaluacion y al
+ * certificado -- se ubica siempre justo antes de la numeracion de
+ * paginas, al final del documento.
+ */
+function seccionFirmaProfesional(doc, e, firmaMedico) {
+  if (doc.y > doc.page.height - MARGEN - 130) doc.addPage();
+  doc.moveDown(0.8);
+  doc.moveTo(MARGEN, doc.y).lineTo(MARGEN + ANCHO_UTIL, doc.y).strokeColor('#e2e8f0').stroke();
+  doc.moveDown(0.8);
+  doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#0f172a').text('Firma y credencial del profesional que suscribe:');
+  doc.moveDown(0.3);
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(e.medico_nombre || 'No registrado');
+  doc.fontSize(9).font('Helvetica').fillColor('#334155');
+  if (e.medico_registro_senescyt) {
+    doc.text(`Registro SENESCYT (especialidad Salud Ocupacional / Medicina del Trabajo): ${e.medico_registro_senescyt}`);
+  } else {
+    doc.font('Helvetica-Oblique').fillColor('#94a3b8')
+      .text('Este profesional aún no registró su número de registro SENESCYT de la especialidad (pestaña "Mi Firma Digital" en Configuración).');
+  }
+  doc.moveDown(0.6);
+
+  const ALTO_ZONA_FIRMA = 90;
+  if (firmaMedico && firmaMedico.buffer) {
+    try {
+      doc.image(firmaMedico.buffer, MARGEN, doc.y, { fit: [200, ALTO_ZONA_FIRMA - 15] });
+    } catch (err) {
+      console.error('No se pudo incrustar la firma digital del medico en el PDF:', err.message);
+    }
+    doc.moveDown(0.2);
+    doc.y = doc.y + ALTO_ZONA_FIRMA - 15;
+    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8').text('Firma digital registrada.');
+  } else {
+    // CREADO a pedido de la persona usuaria: espacio en blanco con
+    // una linea, para que quien imprima el documento pueda firmar a
+    // mano si todavia no registro una firma digital.
+    const yLinea = doc.y + ALTO_ZONA_FIRMA - 20;
+    doc.moveTo(MARGEN, yLinea).lineTo(MARGEN + 220, yLinea).strokeColor('#94a3b8').stroke();
+    doc.y = yLinea + 3;
+    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8').text('Firma');
+    doc.y = yLinea + 3;
+  }
+}
+
 function tituloBloque(doc, letra, texto) {
   if (doc.y > doc.page.height - MARGEN - 60) doc.addPage();
   doc.moveDown(0.6);
@@ -94,17 +168,19 @@ function sinDatos(doc) {
  * @param {string} nombreOrganizacion
  * @returns {PDFDocument}
  */
-function generarPdfPreocupacional(e, nombreOrganizacion) {
+function generarPdfPreocupacional(e, nombreOrganizacion, logoBuffer, firmaMedico) {
   const doc = new PDFDocument({ size: 'A4', margin: MARGEN, bufferPages: true });
+  configurarLogoEnCadaPagina(doc, logoBuffer);
 
   // ---- Encabezado ----
+  dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
   doc.moveDown(0.5);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación Preocupacional (Inicio)');
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 077, uso interno de SISSO)`);
+    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 077, uso interno de ${nombreOrganizacion || 'SISSO'})`);
   doc.moveDown(0.5);
   notaNormativaPie(doc, e);
   doc.moveDown(0.5);
@@ -303,11 +379,33 @@ function generarPdfPreocupacional(e, nombreOrganizacion) {
   }
 
   // ---- Numeracion de paginas ----
+  // CORREGIDO en Auditoria N.15 (bug real reportado por el usuario:
+  // "al final de la ficha ocupacional se observan hojas enteras en
+  // blanco"). Causa raiz confirmada empiricamente (bug conocido de
+  // pdfkit): escribir el pie de pagina en Y = doc.page.height - 35
+  // cae POR DEBAJO del margen inferior real de la pagina (MARGEN=50,
+  // es decir el area util termina en page.height - 50). pdfkit
+  // detecta que ese texto "no cabe" dentro del area de contenido y
+  // dispara su paginacion automatica AL ESCRIBIR CADA NUMERO DE
+  // PAGINA -- literalmente duplicaba la cantidad de paginas del PDF
+  // (una evaluacion de 3 paginas reales terminaba con 6, las ultimas
+  // 3 en blanco, porque nunca reciben su propio numero de pagina al
+  // haberse creado DESPUES de calcular `rangoPaginas.count`).
+  // Reproducido y confirmado antes de corregir: `lineBreak:false`
+  // por si solo NO alcanza para evitarlo en esta version de pdfkit;
+  // la solucion que si funciona es anular temporalmente el margen
+  // inferior de la pagina mientras se escribe el pie, y restaurarlo
+  // de inmediato.
+  seccionFirmaProfesional(doc, e, firmaMedico);
+
   const rangoPaginas = doc.bufferedPageRange();
   for (let i = 0; i < rangoPaginas.count; i++) {
     doc.switchToPage(i);
+    const margenInferiorOriginal = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     doc.fontSize(8).fillColor('#94a3b8')
-      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL });
+      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL, lineBreak: false });
+    doc.page.margins.bottom = margenInferiorOriginal;
   }
 
   return doc;
@@ -386,16 +484,18 @@ function formatearFecha(fecha) {
  * @param {string} nombreOrganizacion
  * @returns {PDFDocument}
  */
-function generarPdfRetiro(e, nombreOrganizacion) {
+function generarPdfRetiro(e, nombreOrganizacion, logoBuffer, firmaMedico) {
   const doc = new PDFDocument({ size: 'A4', margin: MARGEN, bufferPages: true });
+  configurarLogoEnCadaPagina(doc, logoBuffer);
 
+  dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
   doc.moveDown(0.5);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación de Retiro');
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 080, uso interno de SISSO)`);
+    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 080, uso interno de ${nombreOrganizacion || 'SISSO'})`);
   doc.moveDown(0.5);
   notaNormativaPie(doc, e);
   doc.moveDown(0.5);
@@ -480,11 +580,33 @@ function generarPdfRetiro(e, nombreOrganizacion) {
     }
   }
 
+  // CORREGIDO en Auditoria N.15 (bug real reportado por el usuario:
+  // "al final de la ficha ocupacional se observan hojas enteras en
+  // blanco"). Causa raiz confirmada empiricamente (bug conocido de
+  // pdfkit): escribir el pie de pagina en Y = doc.page.height - 35
+  // cae POR DEBAJO del margen inferior real de la pagina (MARGEN=50,
+  // es decir el area util termina en page.height - 50). pdfkit
+  // detecta que ese texto "no cabe" dentro del area de contenido y
+  // dispara su paginacion automatica AL ESCRIBIR CADA NUMERO DE
+  // PAGINA -- literalmente duplicaba la cantidad de paginas del PDF
+  // (una evaluacion de 3 paginas reales terminaba con 6, las ultimas
+  // 3 en blanco, porque nunca reciben su propio numero de pagina al
+  // haberse creado DESPUES de calcular `rangoPaginas.count`).
+  // Reproducido y confirmado antes de corregir: `lineBreak:false`
+  // por si solo NO alcanza para evitarlo en esta version de pdfkit;
+  // la solucion que si funciona es anular temporalmente el margen
+  // inferior de la pagina mientras se escribe el pie, y restaurarlo
+  // de inmediato.
+  seccionFirmaProfesional(doc, e, firmaMedico);
+
   const rangoPaginas = doc.bufferedPageRange();
   for (let i = 0; i < rangoPaginas.count; i++) {
     doc.switchToPage(i);
+    const margenInferiorOriginal = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     doc.fontSize(8).fillColor('#94a3b8')
-      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL });
+      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL, lineBreak: false });
+    doc.page.margins.bottom = margenInferiorOriginal;
   }
 
   return doc;
@@ -500,16 +622,18 @@ function generarPdfRetiro(e, nombreOrganizacion) {
  * @param {string} nombreOrganizacion
  * @returns {PDFDocument}
  */
-function generarPdfPeriodica(e, nombreOrganizacion) {
+function generarPdfPeriodica(e, nombreOrganizacion, logoBuffer, firmaMedico) {
   const doc = new PDFDocument({ size: 'A4', margin: MARGEN, bufferPages: true });
+  configurarLogoEnCadaPagina(doc, logoBuffer);
 
+  dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
   doc.moveDown(0.5);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación Periódica');
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 078, uso interno de SISSO)`);
+    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 078, uso interno de ${nombreOrganizacion || 'SISSO'})`);
   doc.moveDown(0.5);
   notaNormativaPie(doc, e);
   doc.moveDown(0.5);
@@ -635,11 +759,33 @@ function generarPdfPeriodica(e, nombreOrganizacion) {
     }
   }
 
+  // CORREGIDO en Auditoria N.15 (bug real reportado por el usuario:
+  // "al final de la ficha ocupacional se observan hojas enteras en
+  // blanco"). Causa raiz confirmada empiricamente (bug conocido de
+  // pdfkit): escribir el pie de pagina en Y = doc.page.height - 35
+  // cae POR DEBAJO del margen inferior real de la pagina (MARGEN=50,
+  // es decir el area util termina en page.height - 50). pdfkit
+  // detecta que ese texto "no cabe" dentro del area de contenido y
+  // dispara su paginacion automatica AL ESCRIBIR CADA NUMERO DE
+  // PAGINA -- literalmente duplicaba la cantidad de paginas del PDF
+  // (una evaluacion de 3 paginas reales terminaba con 6, las ultimas
+  // 3 en blanco, porque nunca reciben su propio numero de pagina al
+  // haberse creado DESPUES de calcular `rangoPaginas.count`).
+  // Reproducido y confirmado antes de corregir: `lineBreak:false`
+  // por si solo NO alcanza para evitarlo en esta version de pdfkit;
+  // la solucion que si funciona es anular temporalmente el margen
+  // inferior de la pagina mientras se escribe el pie, y restaurarlo
+  // de inmediato.
+  seccionFirmaProfesional(doc, e, firmaMedico);
+
   const rangoPaginas = doc.bufferedPageRange();
   for (let i = 0; i < rangoPaginas.count; i++) {
     doc.switchToPage(i);
+    const margenInferiorOriginal = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     doc.fontSize(8).fillColor('#94a3b8')
-      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL });
+      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL, lineBreak: false });
+    doc.page.margins.bottom = margenInferiorOriginal;
   }
 
   return doc;
@@ -654,16 +800,18 @@ function generarPdfPeriodica(e, nombreOrganizacion) {
  * @param {string} nombreOrganizacion
  * @returns {PDFDocument}
  */
-function generarPdfReintegro(e, nombreOrganizacion) {
+function generarPdfReintegro(e, nombreOrganizacion, logoBuffer, firmaMedico) {
   const doc = new PDFDocument({ size: 'A4', margin: MARGEN, bufferPages: true });
+  configurarLogoEnCadaPagina(doc, logoBuffer);
 
+  dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
   doc.moveDown(0.5);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación de Reintegro');
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 079, uso interno de SISSO)`);
+    .text(`Historia Clinica Ocupacional (evaluacion tipo: HCU 079, uso interno de ${nombreOrganizacion || 'SISSO'})`);
   doc.moveDown(0.5);
   notaNormativaPie(doc, e);
   doc.moveDown(0.5);
@@ -745,11 +893,33 @@ function generarPdfReintegro(e, nombreOrganizacion) {
     }
   }
 
+  // CORREGIDO en Auditoria N.15 (bug real reportado por el usuario:
+  // "al final de la ficha ocupacional se observan hojas enteras en
+  // blanco"). Causa raiz confirmada empiricamente (bug conocido de
+  // pdfkit): escribir el pie de pagina en Y = doc.page.height - 35
+  // cae POR DEBAJO del margen inferior real de la pagina (MARGEN=50,
+  // es decir el area util termina en page.height - 50). pdfkit
+  // detecta que ese texto "no cabe" dentro del area de contenido y
+  // dispara su paginacion automatica AL ESCRIBIR CADA NUMERO DE
+  // PAGINA -- literalmente duplicaba la cantidad de paginas del PDF
+  // (una evaluacion de 3 paginas reales terminaba con 6, las ultimas
+  // 3 en blanco, porque nunca reciben su propio numero de pagina al
+  // haberse creado DESPUES de calcular `rangoPaginas.count`).
+  // Reproducido y confirmado antes de corregir: `lineBreak:false`
+  // por si solo NO alcanza para evitarlo en esta version de pdfkit;
+  // la solucion que si funciona es anular temporalmente el margen
+  // inferior de la pagina mientras se escribe el pie, y restaurarlo
+  // de inmediato.
+  seccionFirmaProfesional(doc, e, firmaMedico);
+
   const rangoPaginas = doc.bufferedPageRange();
   for (let i = 0; i < rangoPaginas.count; i++) {
     doc.switchToPage(i);
+    const margenInferiorOriginal = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     doc.fontSize(8).fillColor('#94a3b8')
-      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL });
+      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL, lineBreak: false });
+    doc.page.margins.bottom = margenInferiorOriginal;
   }
 
   return doc;

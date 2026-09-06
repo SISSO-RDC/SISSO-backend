@@ -12,6 +12,22 @@
 // sin firma digital sigue siendo un documento valido (queda solo la
 // linea con el nombre del responsable, como antes de esta
 // correccion); no debe bloquear la emision del certificado.
+//
+// CORREGIDO en Auditoria N.15: la consulta seleccionaba "u.nombre",
+// una columna que NUNCA existio en la tabla usuarios (la columna
+// real es "nombre_completo", ver schema.sql) -- confirmado
+// ejecutando la consulta literal contra una base real:
+// "ERROR: column u.nombre does not exist". Como esta funcion
+// atrapa cualquier error y devuelve null (ver el comentario de
+// arriba, es el comportamiento CORRECTO ante una firma faltante o
+// una descarga fallida), este bug de tipeo quedaba
+// permanentemente enmascarado: la firma digital del profesional
+// JAMAS se incrusto en NINGUN certificado que use esta funcion
+// (aptitud, capacitacion, y ahora historia clinica), para NINGUN
+// usuario que si tenia una firma valida registrada -- sin ningun
+// error visible para nadie. Se corrige la columna y se agrega
+// tests/firma_pdf.test.js para que un typo asi nunca vuelva a
+// esconderse detras del manejo silencioso de errores.
 // ============================================================
 const { query } = require('../db/pool');
 const { generarUrlFirmada } = require('../servicios/cloudinaryService');
@@ -25,7 +41,7 @@ async function obtenerFirmaParaPdf(usuarioId, organizacionId) {
   if (!usuarioId) return null;
   try {
     const resultado = await query(
-      `SELECT f.imagen_public_id, u.nombre, u.rol
+      `SELECT f.imagen_public_id, u.nombre_completo AS nombre, u.rol
        FROM firmas_digitales_usuario f
        JOIN usuarios u ON u.id = f.usuario_id
        WHERE f.usuario_id = $1 AND f.organizacion_id = $2`,

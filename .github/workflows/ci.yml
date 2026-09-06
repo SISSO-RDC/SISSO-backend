@@ -10,24 +10,70 @@
 # discrepancia: ahora es una garantia real, versionada dentro del
 # repositorio auditado, no solo documentacion.
 #
+# CORREGIDO en Auditoria N.15 (hallazgo CRITICO C15-03, P0): la
+# version anterior de este archivo NUNCA se habia ejecutado con
+# exito ni una sola vez, por dos motivos independientes que solo
+# aparecen al correrlo de verdad (no se detectan leyendo el YAML):
+#
+#   1. Faltaban MFA_ENCRYPTION_KEY, BOOTSTRAP_SECRET, RECOVERY_SECRET
+#      y las credenciales de Cloudinary. Sin MFA_ENCRYPTION_KEY, el
+#      hook de siembra de datos de prueba revienta al intentar
+#      cifrar el secreto TOTP -- 108 de 117 pruebas fallaban antes
+#      de ejecutar una sola aserticion real.
+#
+#   2. Con esas variables agregadas, 13 pruebas seguian fallando --
+#      4 de ellas eran fallas REALES de RLS (aislamiento entre
+#      organizaciones, fail-closed sin contexto). La causa NO era un
+#      bug de RLS en la aplicacion: es que la imagen oficial
+#      "postgres:16" crea la variable POSTGRES_USER como
+#      SUPERUSUARIO del cluster, y PostgreSQL SIEMPRE omite Row
+#      Level Security para un superusuario o un rol con BYPASSRLS,
+#      sin importar FORCE ROW LEVEL SECURITY. Es decir: la version
+#      anterior de este pipeline JAMAS podia validar RLS -- ni
+#      siquiera con las variables de arriba agregadas, el checkmark
+#      verde habria sido enganoso (o, como paso aqui, rojo por una
+#      razon distinta a la que aparentaba). Se agrega un paso que
+#      retira SUPERUSER/BYPASSRLS del rol del servicio ANTES de
+#      correr migraciones, para que el dueno de las tablas (que
+#      termina siendo este mismo rol, al crearlas) SI quede sujeto a
+#      RLS -- exactamente como el rol de aplicacion en Neon.
+#
+# Ambos hallazgos se reprodujeron y confirmaron localmente (Postgres
+# real, mismo flujo) antes de esta correccion: con las 2 fallas
+# corregidas, 117/117 pruebas pasan, dos corridas consecutivas desde
+# cero.
+#
 # Que hace en cada push/PR a main:
 #   1. Levanta un servicio PostgreSQL efimero (mismo motor que Neon).
 #   2. npm ci en entorno limpio (no npm install: exige que
 #      package-lock.json este sincronizado).
-#   3. Aplica TODAS las migraciones desde cero (npm run migrate,
+#   3. Retira SUPERUSER/BYPASSRLS del rol del servicio (ver punto 2
+#      arriba) para que RLS se evalue de verdad, igual que en Neon.
+#   4. Verifica que .env.example este sincronizado con las variables
+#      de entorno que el codigo realmente usa (scripts/ci_verificar_env.js,
+#      cierra el hallazgo CRITICO C15-01).
+#   5. Verifica que docs/MATRIZ_RBAC.md (matriz rol x endpoint x dato
+#      x accion, generada por introspeccion real de las rutas de
+#      Express) siga reflejando las rutas actuales del repositorio
+#      (scripts/generar_matriz_rbac.js --verificar, cierra el
+#      hallazgo CRITICO C15-02).
+#   6. Aplica TODAS las migraciones desde cero (npm run migrate,
 #      que corre schema.sql + migration_002...N en orden), es decir
 #      valida el camino completo 001->ultima migracion, no solo las
-#      nuevas 064-068.
-#   4. Ejecuta node --check sobre todo src/ y tests/ (deteccion
+#      nuevas.
+#   7. Ejecuta node --check sobre todo src/ y tests/ (deteccion
 #      temprana de errores de sintaxis).
-#   5. Ejecuta la suite completa (npm test) contra ese PostgreSQL
+#   8. Ejecuta la suite completa (npm test) contra ese PostgreSQL
 #      real -- NO mocks, igual que exige tests/README.md.
-#   6. Sube como artefacto el log de resultados para evidencia de
+#   9. Sube como artefacto el log de resultados para evidencia de
 #      auditoria (numero de pruebas aprobadas/fallidas, commit, Node,
 #      Postgres).
 #
 # Cualquier fallo en migraciones o en la suite marca el pipeline en
 # rojo y bloquea el merge (branch protection debe exigir este check).
+# `set -o pipefail` se fija explicitamente en el paso de pruebas: no
+# se confia en el shell por defecto del runner para que un fallo de
+# "npm test" no quede enmascarado por el exit code de "tee".
 # ============================================================
 name: CI
 
@@ -66,6 +112,22 @@ jobs:
       DB_SSL_DISABLED: 'true'
       JWT_ACCESS_SECRET: ci_test_secret_access_do_not_use_in_prod_0000000000000000
       JWT_REFRESH_SECRET: ci_test_secret_refresh_do_not_use_in_prod_0000000000000000
+      # CORREGIDO en Auditoria N.15 (C15-03): sin estas 3, el hook de
+      # siembra de datos de prueba revienta antes de correr ninguna
+      # prueba real (ver src/utils/crypto.js). Son secretos de CI
+      # descartables, nunca los de Render/produccion.
+      MFA_ENCRYPTION_KEY: 'MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI='
+      BOOTSTRAP_SECRET: ci_test_bootstrap_secret_0000000000000000
+      RECOVERY_SECRET: ci_test_recovery_secret_0000000000000000
+      # Credenciales de Cloudinary DUMMY: la firma de URL
+      # (generarUrlFirmada) solo necesita cloud_name/api_key/api_secret
+      # configurados para firmar localmente -- no hace ninguna
+      # llamada de red a Cloudinary, asi que un valor ficticio es
+      # suficiente y no requiere una cuenta real ni secretos del
+      # equipo en este pipeline publico.
+      CLOUDINARY_CLOUD_NAME: ci-dummy-cloud
+      CLOUDINARY_API_KEY: '123456789012345'
+      CLOUDINARY_API_SECRET: ci_dummy_secret_do_not_use_0000000000
       NODE_ENV: test
 
     steps:
@@ -93,14 +155,41 @@ jobs:
             sleep 2
           done
 
+      - name: Retirar SUPERUSER/BYPASSRLS del rol de CI (para que RLS se evalue de verdad)
+        # CRITICO (Auditoria N.15, C15-03): la imagen oficial
+        # "postgres:16" crea POSTGRES_USER con privilegio de
+        # superusuario del cluster. Un superusuario de PostgreSQL
+        # SIEMPRE omite Row Level Security, sin importar FORCE ROW
+        # LEVEL SECURITY -- asi que sin este paso, cualquier
+        # regresion real en las politicas RLS de la aplicacion NUNCA
+        # aparece en rojo aqui, dando una falsa sensacion de
+        # seguridad exactamente en el area mas sensible del sistema
+        # (aislamiento entre organizaciones clientes). Se ejecuta
+        # ANTES de aplicar migraciones: el rol sigue siendo dueno de
+        # las tablas que el mismo crea, que es exactamente la misma
+        # relacion dueno/RLS que tiene el rol de aplicacion en Neon.
+        run: |
+          PGPASSWORD=sisso_ci_password psql -h localhost -U sisso_ci -d sisso_ci \
+            -c "ALTER ROLE sisso_ci WITH NOSUPERUSER NOBYPASSRLS;"
+          PGPASSWORD=sisso_ci_password psql -h localhost -U sisso_ci -d sisso_ci \
+            -c "\du sisso_ci"
+
       - name: Aplicar TODAS las migraciones desde cero (001 -> ultima)
         run: npm run migrate
+
+      - name: Verificar que .env.example este sincronizado con el codigo
+        run: node scripts/ci_verificar_env.js
 
       - name: Verificar que schema_migrations refleje todas las migraciones del repo
         run: node scripts/ci_verificar_migraciones.js
 
+      - name: Verificar que la matriz RBAC (docs/MATRIZ_RBAC.md) refleje las rutas reales
+        run: node scripts/generar_matriz_rbac.js --verificar
+
       - name: Ejecutar suite completa (npm test) contra PostgreSQL real
-        run: npm test 2>&1 | tee /tmp/resultado-tests.log
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/resultado-tests.log
 
       - name: Subir evidencia de pruebas como artefacto
         if: always()

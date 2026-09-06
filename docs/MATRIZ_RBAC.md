@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-04.
+> Ultima generacion: 2026-09-05.
 
 ## `/api/auth`
 
@@ -391,6 +391,7 @@
 | GET | `/api/usuarios/mi-firma-digital` | cualquier rol autenticado (sin restriccion de rol) |
 | PUT | `/api/usuarios/mi-firma-digital` | cualquier rol autenticado (sin restriccion de rol) |
 | DELETE | `/api/usuarios/mi-firma-digital` | cualquier rol autenticado (sin restriccion de rol) |
+| PUT | `/api/usuarios/mi-firma-digital/registro-senescyt` | cualquier rol autenticado (sin restriccion de rol) |
 | GET | `/api/usuarios/:usuarioId/firma-digital` | admin, sso, th, medico |
 
 ## `/api/capa`
@@ -514,4 +515,4 @@
 
 ---
 
-**Resumen:** 215 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 50 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 216 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 51 requieren sesion valida pero no restringen por rol especifico.

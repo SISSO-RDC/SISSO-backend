@@ -12,6 +12,8 @@ const { calcularImc, validarFactoresRiesgo, validarBloquesJsonbHistoriaClinica }
 const { detectarBanderasRojasSignosVitales } = require('../aptitud/banderasRojas');
 const { generarPdfPreocupacional, generarPdfRetiro, generarPdfPeriodica, generarPdfReintegro } = require('../historiaClinica/pdfPreocupacional');
 const { generarPdfCertificado } = require('../historiaClinica/pdfCertificado');
+const { obtenerLogoBuffer } = require('../utils/logoPdf');
+const { obtenerFirmaParaPdf } = require('../utils/firmaPdf');
 const catalogos = require('../historiaClinica/catalogosRiesgo');
 
 const CARPETA_FIRMAS = 'sisso/firmas-historia-clinica';
@@ -895,9 +897,9 @@ async function obtenerEvaluacion(req, res) {
 async function descargarPdf(req, res) {
   try {
     const resultado = await query(
-      `SELECT e.*, u.nombre_completo AS medico_nombre,
+      `SELECT e.*, u.nombre_completo AS medico_nombre, u.registro_senescyt_especialidad AS medico_registro_senescyt,
               t.nombre_completo AS trabajador_nombre, t.documento AS trabajador_documento,
-              o.nombre AS organizacion_nombre
+              o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM evaluaciones_ocupacionales e
        JOIN usuarios u ON u.id = e.medico_id
        JOIN trabajadores t ON t.id = e.trabajador_id
@@ -944,13 +946,24 @@ async function descargarPdf(req, res) {
       }
     }
 
+    // CREADO en Auditoria N.15 (pedido de la persona usuaria): logo
+    // de la organizacion (fondo/marca de agua + membrete) y firma
+    // digital REGISTRADA del propio medico (distinta de la firma del
+    // TRABAJADOR de arriba) -- ver src/utils/logoPdf.js y
+    // src/utils/firmaPdf.js, ya usados por otros certificados
+    // (aptitud, capacitacion). Ninguna de las dos es obligatoria: si
+    // la organizacion no tiene logo o el medico no registro su
+    // firma, el documento se genera igual, sin esos elementos.
+    const logoBuffer = await obtenerLogoBuffer(e.organizacion_logo_url);
+    const firmaMedico = await obtenerFirmaParaPdf(e.medico_id, req.usuario.organizacionId);
+
     const doc = e.tipo_evaluacion === 'retiro'
-      ? generarPdfRetiro(e, e.organizacion_nombre)
+      ? generarPdfRetiro(e, e.organizacion_nombre, logoBuffer, firmaMedico)
       : e.tipo_evaluacion === 'periodica'
-      ? generarPdfPeriodica(e, e.organizacion_nombre)
+      ? generarPdfPeriodica(e, e.organizacion_nombre, logoBuffer, firmaMedico)
       : e.tipo_evaluacion === 'reintegro'
-      ? generarPdfReintegro(e, e.organizacion_nombre)
-      : generarPdfPreocupacional(e, e.organizacion_nombre);
+      ? generarPdfReintegro(e, e.organizacion_nombre, logoBuffer, firmaMedico)
+      : generarPdfPreocupacional(e, e.organizacion_nombre, logoBuffer, firmaMedico);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="historia-clinica-${e.tipo_evaluacion}-${e.trabajador_documento}.pdf"`);
@@ -972,9 +985,9 @@ async function descargarPdf(req, res) {
 async function descargarCertificado(req, res) {
   try {
     const resultado = await query(
-      `SELECT e.*, u.nombre_completo AS medico_nombre,
+      `SELECT e.*, u.nombre_completo AS medico_nombre, u.registro_senescyt_especialidad AS medico_registro_senescyt,
               t.nombre_completo AS trabajador_nombre, t.documento AS trabajador_documento,
-              o.nombre AS organizacion_nombre
+              o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM evaluaciones_ocupacionales e
        JOIN usuarios u ON u.id = e.medico_id
        JOIN trabajadores t ON t.id = e.trabajador_id
@@ -1012,7 +1025,11 @@ async function descargarCertificado(req, res) {
       }
     }
 
-    const doc = generarPdfCertificado(e, e.organizacion_nombre);
+    // CREADO en Auditoria N.15: ver comentario equivalente en descargarPdf().
+    const logoBuffer = await obtenerLogoBuffer(e.organizacion_logo_url);
+    const firmaMedico = await obtenerFirmaParaPdf(e.medico_id, req.usuario.organizacionId);
+
+    const doc = generarPdfCertificado(e, e.organizacion_nombre, logoBuffer, firmaMedico);
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="certificado-salud-trabajo-${e.trabajador_documento}.pdf"`);

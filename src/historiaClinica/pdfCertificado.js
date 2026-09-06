@@ -18,6 +18,7 @@
 // de emision = hoy.
 // ============================================================
 const PDFDocument = require('pdfkit');
+const { dibujarMarcaDeAgua, dibujarLogoMembrete } = require('../utils/logoPdf');
 
 const MARGEN = 50;
 const ANCHO_UTIL = 595.28 - MARGEN * 2;
@@ -46,22 +47,36 @@ function campo(doc, etiqueta, valor) {
 }
 
 /**
+ * CREADO en Auditoria N.15 (pedido de la persona usuaria): misma
+ * logica que en pdfPreocupacional.js -- ver el comentario alli
+ * (esta funcion se duplica aqui, no se importa, siguiendo la misma
+ * convencion que ya usa este archivo para otras constantes
+ * compartidas como ETIQUETAS_APTITUD).
+ */
+function configurarLogoEnCadaPagina(doc, logoBuffer) {
+  dibujarMarcaDeAgua(doc, logoBuffer);
+  doc.on('pageAdded', () => dibujarMarcaDeAgua(doc, logoBuffer));
+}
+
+/**
  * Genera el PDF del certificado de salud en el trabajo, a partir
  * de una evaluacion ya registrada (cualquiera de los 4 tipos).
  * @param {object} e - fila completa de evaluaciones_ocupacionales
  * @param {string} nombreOrganizacion
  * @returns {PDFDocument}
  */
-function generarPdfCertificado(e, nombreOrganizacion) {
-  const doc = new PDFDocument({ size: 'A4', margin: MARGEN });
+function generarPdfCertificado(e, nombreOrganizacion, logoBuffer, firmaMedico) {
+  const doc = new PDFDocument({ size: 'A4', margin: MARGEN, bufferPages: true });
+  configurarLogoEnCadaPagina(doc, logoBuffer);
 
+  dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
   doc.moveDown(0.5);
   doc.fontSize(17).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Certificado de Salud en el Trabajo', { align: 'center' });
   doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-    .text('Certificado de Salud en el Trabajo (HCU 081, uso interno de SISSO)', { align: 'center' });
+    .text(`Certificado de Salud en el Trabajo (HCU 081, uso interno de ${nombreOrganizacion || 'SISSO'})`, { align: 'center' });
   doc.moveDown(0.3);
   doc.fontSize(7).font('Helvetica').fillColor('#94a3b8').text(
     `Documento de vigilancia de la salud ocupacional. Base juridica: ${e && e.base_juridica ? e.base_juridica : 'medicina ocupacional (Decreto Ejecutivo 255); ' +
@@ -144,6 +159,54 @@ function generarPdfCertificado(e, nombreOrganizacion) {
     } catch (err) {
       doc.font('Helvetica-Oblique').fillColor('#94a3b8').text('(No se pudo incrustar la imagen de la firma.)');
     }
+  }
+
+  // ---- Firma y credencial del profesional (Auditoria N.15, pedido de la persona usuaria) ----
+  if (doc.y > doc.page.height - MARGEN - 130) doc.addPage();
+  doc.moveDown(0.8);
+  doc.moveTo(MARGEN, doc.y).lineTo(MARGEN + ANCHO_UTIL, doc.y).strokeColor('#e2e8f0').stroke();
+  doc.moveDown(0.8);
+  doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#0f172a').text('Firma y credencial del profesional que suscribe:');
+  doc.moveDown(0.3);
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(e.medico_nombre || 'No registrado');
+  doc.fontSize(9).font('Helvetica').fillColor('#334155');
+  if (e.medico_registro_senescyt) {
+    doc.text(`Registro SENESCYT (especialidad Salud Ocupacional / Medicina del Trabajo): ${e.medico_registro_senescyt}`);
+  } else {
+    doc.font('Helvetica-Oblique').fillColor('#94a3b8')
+      .text('Este profesional aún no registró su número de registro SENESCYT de la especialidad (pestaña "Mi Firma Digital" en Configuración).');
+  }
+  doc.moveDown(0.6);
+
+  const ALTO_ZONA_FIRMA = 90;
+  if (firmaMedico && firmaMedico.buffer) {
+    try {
+      doc.image(firmaMedico.buffer, MARGEN, doc.y, { fit: [200, ALTO_ZONA_FIRMA - 15] });
+    } catch (err) {
+      console.error('No se pudo incrustar la firma digital del medico en el certificado:', err.message);
+    }
+    doc.y = doc.y + ALTO_ZONA_FIRMA - 15;
+    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8').text('Firma digital registrada.');
+  } else {
+    const yLinea = doc.y + ALTO_ZONA_FIRMA - 20;
+    doc.moveTo(MARGEN, yLinea).lineTo(MARGEN + 220, yLinea).strokeColor('#94a3b8').stroke();
+    doc.y = yLinea + 3;
+    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8').text('Firma');
+    doc.y = yLinea + 3;
+  }
+
+  // ---- Numeracion de paginas ----
+  // CORREGIDO en Auditoria N.15: ver el comentario extenso equivalente
+  // en pdfPreocupacional.js -- mismo bug de pdfkit (paginas en blanco
+  // al numerar cerca del borde inferior real), misma correccion.
+  const rangoPaginas = doc.bufferedPageRange();
+  for (let i = 0; i < rangoPaginas.count; i++) {
+    doc.switchToPage(i);
+    const margenInferiorOriginal = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    doc.fontSize(8).fillColor('#94a3b8')
+      .text(`Página ${i + 1} de ${rangoPaginas.count}`, MARGEN, doc.page.height - 35, { align: 'center', width: ANCHO_UTIL, lineBreak: false });
+    doc.page.margins.bottom = margenInferiorOriginal;
   }
 
   return doc;

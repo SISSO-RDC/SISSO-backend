@@ -20,6 +20,10 @@ router.get('/', autenticar, autorizar('admin', 'sso'), controller.listar);
 router.get('/mi-firma-digital', autenticar, firmaDigitalController.obtenerMiFirma);
 router.put('/mi-firma-digital', autenticar, firmaDigitalController.subirMiFirma);
 router.delete('/mi-firma-digital', autenticar, firmaDigitalController.borrarMiFirma);
+// CREADO en Auditoria N.15 (pedido de la persona usuaria): registro
+// SENESCYT de la especialidad, en la misma pestana de "Mi Firma
+// Digital" -- se imprime en cada documento firmado por este usuario.
+router.put('/mi-firma-digital/registro-senescyt', autenticar, firmaDigitalController.actualizarMiRegistroSenescyt);
 // Panel administrativo de firmas: cualquier rol de gestion/clinico
 // puede CONSULTAR (nunca subir/borrar) la firma de otro usuario de
 // su misma organizacion.
