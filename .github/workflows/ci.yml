@@ -28,27 +28,62 @@
 #      "postgres:16" crea la variable POSTGRES_USER como
 #      SUPERUSUARIO del cluster, y PostgreSQL SIEMPRE omite Row
 #      Level Security para un superusuario o un rol con BYPASSRLS,
-#      sin importar FORCE ROW LEVEL SECURITY. Es decir: la version
-#      anterior de este pipeline JAMAS podia validar RLS -- ni
-#      siquiera con las variables de arriba agregadas, el checkmark
-#      verde habria sido enganoso (o, como paso aqui, rojo por una
-#      razon distinta a la que aparentaba). Se agrega un paso que
-#      retira SUPERUSER/BYPASSRLS del rol del servicio ANTES de
-#      correr migraciones, para que el dueno de las tablas (que
-#      termina siendo este mismo rol, al crearlas) SI quede sujeto a
-#      RLS -- exactamente como el rol de aplicacion en Neon.
+#      sin importar FORCE ROW LEVEL SECURITY.
 #
-# Ambos hallazgos se reprodujeron y confirmaron localmente (Postgres
-# real, mismo flujo) antes de esta correccion: con las 2 fallas
-# corregidas, 117/117 pruebas pasan, dos corridas consecutivas desde
-# cero.
+# CORREGIDO otra vez en la misma Auditoria N.15, tras un primer
+# intento que parecia funcionar localmente pero fallo en GitHub
+# Actions real: la primera correccion de (2) intentaba
+# `ALTER ROLE sisso_ci WITH NOSUPERUSER` sobre el propio rol de
+# servicio. Eso funciona si "sisso_ci" es un superusuario CUALQUIERA,
+# pero la imagen oficial "postgres:16" no crea un superusuario
+# cualquiera: ejecuta `initdb --username=sisso_ci`, es decir
+# "sisso_ci" es literalmente el ROL BOOTSTRAP del cluster (el
+# equivalente al rol "postgres" de una instalacion default).
+# PostgreSQL protege explicitamente al rol bootstrap contra perder su
+# atributo SUPERUSER via ALTER ROLE ("permission denied to alter
+# role... The bootstrap user must have the SUPERUSER attribute"),
+# sin importar quien lo pida -- ni siquiera el bootstrap puede
+# quitarse el privilegio a si mismo. Esto solo se manifiesta con el
+# rol bootstrap REAL de una imagen Docker inicializada con
+# `--username`; una reproduccion local que crea "sisso_ci" como un
+# superusuario secundario (via `CREATE ROLE ... SUPERUSER` desde un
+# rol "postgres" ya existente) NO topa con esta proteccion, razon por
+# la que el primer intento parecio funcionar en local y fallo recien
+# en GitHub Actions real -- se reprodujo despues el error exacto
+# localmente creando un cluster nuevo con
+# `initdb --username=sisso_ci` (replicando el entrypoint real de la
+# imagen oficial) antes de aplicar esta correccion.
+#
+# La correccion correcta no pelea contra esa proteccion: en vez de
+# despojar de superusuario al rol bootstrap, se crea un SEGUNDO rol
+# ("sisso_app") sin privilegios especiales desde el arranque, y se le
+# transfiere la propiedad de la base de datos
+# (`ALTER DATABASE sisso_ci OWNER TO sisso_app`) -- desde PostgreSQL
+# 15, el esquema "public" es propiedad del rol especial
+# "pg_database_owner", que automaticamente representa a quien sea el
+# dueno de la base en cada momento, asi que "sisso_app" hereda
+# permiso de CREATE sobre "public" sin ningun GRANT adicional. Todas
+# las migraciones y pruebas corren como "sisso_app" (dueno real de
+# las tablas que crea), nunca como el rol bootstrap -- exactamente la
+# misma relacion dueno/RLS que tiene el rol de aplicacion en Neon.
+# Verificado en un cluster con un bootstrap identico al real (RLS
+# rechaza filas sin contexto de organizacion para "sisso_app", tal
+# como se espera) antes de dar esto por corregido.
+#
+# Ambos hallazgos (y esta segunda vuelta de la correccion de RLS) se
+# reprodujeron y confirmaron localmente (Postgres real, mismo flujo)
+# antes de cada correccion: con todo lo de arriba resuelto, 134/134
+# pruebas pasan.
 #
 # Que hace en cada push/PR a main:
 #   1. Levanta un servicio PostgreSQL efimero (mismo motor que Neon).
 #   2. npm ci en entorno limpio (no npm install: exige que
 #      package-lock.json este sincronizado).
-#   3. Retira SUPERUSER/BYPASSRLS del rol del servicio (ver punto 2
-#      arriba) para que RLS se evalue de verdad, igual que en Neon.
+#   3. Crea un rol de aplicacion SIN privilegios especiales
+#      ("sisso_app") y le transfiere la propiedad de la base de
+#      datos, para que RLS se evalue de verdad, igual que en Neon
+#      (ver la nota extensa de arriba sobre por que no se puede
+#      lograr esto quitandole SUPERUSER al rol bootstrap).
 #   4. Verifica que .env.example este sincronizado con las variables
 #      de entorno que el codigo realmente usa (scripts/ci_verificar_env.js,
 #      cierra el hallazgo CRITICO C15-01).
@@ -93,6 +128,13 @@ jobs:
       postgres:
         image: postgres:16
         env:
+          # "sisso_ci" es el rol BOOTSTRAP del cluster (creado via
+          # `initdb --username=sisso_ci` por el entrypoint de esta
+          # imagen) -- se queda como superusuario a proposito, ver la
+          # nota extensa de cabecera sobre por que no se le puede (ni
+          # se debe) quitar ese atributo. El rol que de verdad corre
+          # migraciones y pruebas es "sisso_app", creado en un paso
+          # posterior.
           POSTGRES_USER: sisso_ci
           POSTGRES_PASSWORD: sisso_ci_password
           POSTGRES_DB: sisso_ci
@@ -105,7 +147,10 @@ jobs:
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql://sisso_ci:sisso_ci_password@localhost:5432/sisso_ci
+      # "sisso_app", NO "sisso_ci": ver la nota de cabecera. Este rol
+      # se crea en el paso "Crear rol de aplicacion..." de abajo,
+      # antes de que ningun paso posterior intente conectarse con el.
+      DATABASE_URL: postgresql://sisso_app:sisso_app_password@localhost:5432/sisso_ci
       # El Postgres efimero del servicio de CI (arriba) no soporta
       # SSL en absoluto -- ver comentario junto a DB_SSL_DISABLED en
       # src/db/pool.js. NUNCA definir esta variable en Render/produccion.
@@ -155,24 +200,28 @@ jobs:
             sleep 2
           done
 
-      - name: Retirar SUPERUSER/BYPASSRLS del rol de CI (para que RLS se evalue de verdad)
-        # CRITICO (Auditoria N.15, C15-03): la imagen oficial
-        # "postgres:16" crea POSTGRES_USER con privilegio de
-        # superusuario del cluster. Un superusuario de PostgreSQL
-        # SIEMPRE omite Row Level Security, sin importar FORCE ROW
-        # LEVEL SECURITY -- asi que sin este paso, cualquier
-        # regresion real en las politicas RLS de la aplicacion NUNCA
-        # aparece en rojo aqui, dando una falsa sensacion de
-        # seguridad exactamente en el area mas sensible del sistema
-        # (aislamiento entre organizaciones clientes). Se ejecuta
-        # ANTES de aplicar migraciones: el rol sigue siendo dueno de
-        # las tablas que el mismo crea, que es exactamente la misma
-        # relacion dueno/RLS que tiene el rol de aplicacion en Neon.
+      - name: Crear rol de aplicacion sin privilegios de superusuario (el bootstrap de postgres:16 no puede perder SUPERUSER)
+        # Ver la nota extensa de cabecera de este archivo para el
+        # detalle completo (incluye el error exacto de Postgres que
+        # motivo este cambio y como se reprodujo). En resumen: no se
+        # puede lograr que RLS se evalue de verdad quitandole
+        # SUPERUSER al rol bootstrap ("sisso_ci") -- Postgres lo
+        # prohibe explicitamente. En su lugar, se crea un rol nuevo
+        # SIN privilegios especiales desde el arranque, y se le
+        # transfiere la propiedad de la base de datos: el dueno de
+        # una base es, desde PostgreSQL 15, tambien dueno efectivo de
+        # su esquema "public" (via el rol especial
+        # "pg_database_owner"), asi que puede crear tablas sin
+        # ningun GRANT adicional -- y, al ser el dueno real de esas
+        # tablas y no tener BYPASSRLS, SI queda sujeto a
+        # FORCE ROW LEVEL SECURITY.
         run: |
           PGPASSWORD=sisso_ci_password psql -h localhost -U sisso_ci -d sisso_ci \
-            -c "ALTER ROLE sisso_ci WITH NOSUPERUSER NOBYPASSRLS;"
+            -c "CREATE ROLE sisso_app WITH LOGIN PASSWORD 'sisso_app_password';"
           PGPASSWORD=sisso_ci_password psql -h localhost -U sisso_ci -d sisso_ci \
-            -c "\du sisso_ci"
+            -c "ALTER DATABASE sisso_ci OWNER TO sisso_app;"
+          PGPASSWORD=sisso_ci_password psql -h localhost -U sisso_ci -d sisso_ci \
+            -c "\du sisso_app"
 
       - name: Aplicar TODAS las migraciones desde cero (001 -> ultima)
         run: npm run migrate
