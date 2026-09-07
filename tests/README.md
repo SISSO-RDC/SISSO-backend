@@ -19,6 +19,27 @@ Se necesita una base de datos PostgreSQL real (no en memoria) porque las
 pruebas de aislamiento multi-tenant dependen del comportamiento real de
 las consultas SQL con `organizacion_id`.
 
+**Importante: los archivos de prueba corren en SERIE, nunca en
+paralelo** (`npm test` usa `--test-concurrency=1`). Esto es
+deliberado, no una limitacion temporal: cada archivo llama a
+`tests/helpers/seed.js` (`sembrar()`/`limpiar()`), que usa codigos de
+organizacion FIJOS y compartidos (`TEST-ORG-A`/`TEST-ORG-B`) — si dos
+archivos corrieran a la vez, el `limpiar()` de uno podria borrar las
+filas que el otro acaba de sembrar a mitad de su propia prueba,
+produciendo fallas de foreign key completamente espurias
+(`usuarios_organizacion_id_fkey`) que no reflejan ningun bug real de
+la aplicacion. Esto se confirmo de forma real: en un entorno con mas
+de un nucleo de CPU disponible (como los runners de GitHub Actions,
+a diferencia de un entorno de un solo nucleo donde Node nunca llega a
+paralelizar los archivos de todas formas), el runner de pruebas de
+Node SI ejecuta archivos de prueba distintos en paralelo por
+defecto, y eso disparaba esta condicion de carrera en el primer
+`push` real a GitHub Actions. Si se remueve `--test-concurrency=1`
+del script `test` de `package.json`, esta clase de falla puede
+reaparecer de forma intermitente y dificil de diagnosticar
+("funciona en mi maquina" -- literalmente, si esa maquina tiene un
+solo nucleo).
+
 ## Como correrlas
 
 1. Tener PostgreSQL corriendo (local, o cualquier instancia de prueba —

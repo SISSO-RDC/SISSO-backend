@@ -35,13 +35,24 @@ const { generarUrlFirmada } = require('../servicios/cloudinaryService');
 /**
  * @param {string|null|undefined} usuarioId
  * @param {string} organizacionId
- * @returns {Promise<{buffer: Buffer, nombreResponsable: string}|null>}
+ * @returns {Promise<{buffer: Buffer, nombreResponsable: string, nombreCompleto: string, registroSenescytEspecialidad: string|null}|null>}
  */
 async function obtenerFirmaParaPdf(usuarioId, organizacionId) {
   if (!usuarioId) return null;
   try {
     const resultado = await query(
-      `SELECT f.imagen_public_id, u.nombre_completo AS nombre, u.rol
+      // CORREGIDO en Auditoria N.15 (pedido de la persona usuaria:
+      // "en el certificado... irá el nombre del médico completo y
+      // debajo el registro del senescyt"): se agrega
+      // registro_senescyt_especialidad a esta consulta, que es la
+      // fuente COMPARTIDA de credenciales para todo certificado que
+      // incruste una firma (aptitud, capacitacion, y ahora tambien
+      // los de historiaClinicaController.js) -- antes solo se
+      // consultaba aqui el nombre y el rol, asi que ningun
+      // certificado que dependiera de esta funcion podia mostrar el
+      // registro SENESCYT sin importar que el usuario ya lo hubiera
+      // registrado en "Mi Perfil".
+      `SELECT f.imagen_public_id, u.nombre_completo AS nombre, u.rol, u.registro_senescyt_especialidad
        FROM firmas_digitales_usuario f
        JOIN usuarios u ON u.id = f.usuario_id
        WHERE f.usuario_id = $1 AND f.organizacion_id = $2`,
@@ -60,6 +71,8 @@ async function obtenerFirmaParaPdf(usuarioId, organizacionId) {
     return {
       buffer: Buffer.from(arrayBuffer),
       nombreResponsable: `${resultado.rows[0].nombre} — ${ETIQUETAS_ROL[resultado.rows[0].rol] || resultado.rows[0].rol}`,
+      nombreCompleto: resultado.rows[0].nombre,
+      registroSenescytEspecialidad: resultado.rows[0].registro_senescyt_especialidad || null,
     };
   } catch (err) {
     console.error('No se pudo obtener la firma digital para el PDF:', err.message);

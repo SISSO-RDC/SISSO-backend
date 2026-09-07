@@ -39,7 +39,7 @@ test('firmaPdf: la consulta de obtenerFirmaParaPdf() corre sin error contra el e
   // que actualizar esta prueba a la vez para que siga siendo la misma
   // consulta, no una copia que puede divergir.
   const resultado = await queryComoSuperadmin(
-    `SELECT f.imagen_public_id, u.nombre_completo AS nombre, u.rol
+    `SELECT f.imagen_public_id, u.nombre_completo AS nombre, u.rol, u.registro_senescyt_especialidad
      FROM firmas_digitales_usuario f
      JOIN usuarios u ON u.id = f.usuario_id
      WHERE f.usuario_id = $1 AND f.organizacion_id = $2`,

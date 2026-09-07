@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-05.
+> Ultima generacion: 2026-09-07.
 
 ## `/api/auth`
 
@@ -31,6 +31,7 @@
 | GET | `/api/auth/perfil` | cualquier rol autenticado (sin restriccion de rol) |
 | GET | `/api/auth/usuarios` | admin |
 | PUT | `/api/auth/usuarios/:id/resetear-password` | admin |
+| PATCH | `/api/auth/usuarios/:id/nombre` | admin |
 | PUT | `/api/auth/cambiar-password` | cualquier rol autenticado (sin restriccion de rol) |
 | POST | `/api/auth/mfa/iniciar-configuracion` | cualquier rol autenticado (sin restriccion de rol) |
 | POST | `/api/auth/mfa/confirmar` | cualquier rol autenticado (sin restriccion de rol) |
@@ -311,7 +312,7 @@
 
 | Metodo | Ruta | Rol(es) permitido(s) |
 |---|---|---|
-| GET | `/api/certificados/capacitacion/:capacitacionId/trabajador/:trabajadorId` | admin, sso, th |
+| GET | `/api/certificados/capacitacion/:capacitacionId/trabajador/:trabajadorId` | admin, sso, th, medico |
 | GET | `/api/certificados/aptitud/:trabajadorId` | medico |
 
 ## `/api/enfermedad-profesional`
@@ -339,6 +340,7 @@
 | PUT | `/api/restricciones-medicas/:restriccionId/levantar` | medico |
 | GET | `/api/restricciones-medicas/trabajadores/:trabajadorId` | medico, sso, th |
 | GET | `/api/restricciones-medicas/:restriccionId/historial` | medico, sso, th |
+| GET | `/api/restricciones-medicas/:restriccionId/certificado` | medico, sso, th |
 
 ## `/api/matriz-medico-puesto`
 
@@ -515,4 +517,4 @@
 
 ---
 
-**Resumen:** 216 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 51 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 218 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 51 requieren sesion valida pero no restringen por rol especifico.

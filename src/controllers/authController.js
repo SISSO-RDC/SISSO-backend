@@ -1344,6 +1344,64 @@ async function resetearPassword(req, res) {
 }
 
 // ------------------------------------------------------------
+// PATCH /api/auth/usuarios/:id/nombre
+// body: { nombreCompleto }
+//
+// CREADO en Auditoria N.15 (pedido de la persona usuaria): un admin
+// no tenia forma de corregir el nombre de un usuario si lo habia
+// escrito mal al crearlo -- la unica opcion era vivir con el error o
+// pedir soporte. Deliberadamente ACOTADO a solo el nombre (no email
+// ni rol): cambiar el email tiene implicaciones de identidad/login
+// que ameritan su propio flujo con mas cuidado, y cambiar el rol ya
+// tiene consideraciones de seguridad cubiertas en otro lugar
+// (ver G15-04, confirmarCreacionAdmin) -- mezclar ambos en el mismo
+// endpoint diluiria esas protecciones especificas.
+// ------------------------------------------------------------
+async function corregirNombreUsuario(req, res) {
+  const { id } = req.params;
+  const { nombreCompleto } = req.body;
+
+  if (!nombreCompleto || typeof nombreCompleto !== 'string' || nombreCompleto.trim().length < 2) {
+    return res.status(400).json({ error: 'El nombre completo debe tener al menos 2 caracteres.' });
+  }
+
+  try {
+    const resultado = await withTransaction(async (client) => {
+      const res2 = await client.query(
+        `UPDATE usuarios SET nombre_completo = $1
+         WHERE id = $2 AND organizacion_id = $3
+         RETURNING id, email, nombre_completo, rol`,
+        [nombreCompleto.trim(), id, req.usuario.organizacionId]
+      );
+
+      if (res2.rows.length === 0) return res2;
+
+      await registrarAuditoria({
+        organizacionId: req.usuario.organizacionId,
+        usuarioId: req.usuario.id,
+        accion: 'corregir_nombre_usuario',
+        entidad: 'usuario',
+        entidadId: id,
+        detalle: { usuarioAfectado: res2.rows[0].email, nombreNuevo: res2.rows[0].nombre_completo },
+        req,
+        client,
+      });
+
+      return res2;
+    });
+
+    if (resultado.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado.' });
+    }
+
+    return res.json({ mensaje: 'Nombre actualizado.', usuario: resultado.rows[0] });
+  } catch (err) {
+    console.error('Error en corregirNombreUsuario:', err);
+    return res.status(500).json({ error: 'Error interno al corregir el nombre.' });
+  }
+}
+
+// ------------------------------------------------------------
 // PUT /api/auth/cambiar-password
 //
 // Auto-servicio: cualquier usuario autenticado cambia su propia
@@ -1529,7 +1587,7 @@ async function revocarOtrasSesiones(req, res) {
 module.exports = {
   registrarOrganizacion, registrarUsuario, registrarUsuarioInterno, listarUsuarios,
   bootstrapSuperadmin, recuperarSuperadmin, login, refrescar, logout, perfil,
-  resetearPassword, cambiarPassword,
+  resetearPassword, cambiarPassword, corregirNombreUsuario,
   iniciarConfiguracionMfa, confirmarMfa, deshabilitarMfa, verificarCodigoMfa,
   listarSesiones, revocarSesion, revocarOtrasSesiones,
 };

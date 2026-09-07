@@ -57,4 +57,14 @@ router.get(
   controller.obtenerHistorial
 );
 
+// --- Certificado para carpeta de TH (Auditoria N.15) ---
+// Mismos roles que pueden leer la proyeccion operativa: medico
+// (quien lo emite), sso y th (quien lo archiva/ejecuta).
+router.get(
+  '/:restriccionId/certificado',
+  autenticar,
+  autorizar('medico', 'sso', 'th'),
+  controller.descargarCertificado
+);
+
 module.exports = router;

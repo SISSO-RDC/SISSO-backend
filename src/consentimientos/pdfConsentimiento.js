@@ -18,6 +18,7 @@
 // gratuito de Render.
 // ============================================================
 const PDFDocument = require('pdfkit');
+const { dibujarMarcaDeAgua, dibujarLogoMembrete } = require('../utils/logoPdf');
 
 const MARGEN = 50;
 const ANCHO_UTIL = 595.28 - MARGEN * 2; // A4 en puntos, menos margenes
@@ -26,9 +27,17 @@ const ANCHO_UTIL = 595.28 - MARGEN * 2; // A4 en puntos, menos margenes
  * Escribe el encabezado comun a ambos tipos de PDF: nombre del
  * tipo de consentimiento, datos del trabajador y fecha.
  */
-function escribirEncabezado(doc, { nombreOrganizacion, nombreTipoConsentimiento, trabajador, fecha }) {
+// CREADO en Auditoria N.15 (pedido de la persona usuaria: "en todos
+// los consentimientos informados deben ir en la esquina superior
+// izquierda el logo de la empresa"). Se fuerza doc.y por debajo del
+// logo antes de escribir el titulo -- ver el comentario extenso
+// equivalente en historiaClinica/pdfPreocupacional.js sobre por que
+// dibujar la imagen no mueve el cursor de texto solo.
+function escribirEncabezado(doc, { nombreOrganizacion, nombreTipoConsentimiento, trabajador, fecha, logoBuffer }) {
+  dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
+  if (doc.y < MARGEN + 32) doc.y = MARGEN + 32;
 
   doc.moveDown(0.6);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
@@ -77,12 +86,14 @@ function escribirTextoLegal(doc, textoLegal) {
  */
 function generarPdfFirmado(datos) {
   const doc = new PDFDocument({ size: 'A4', margin: MARGEN });
+  dibujarMarcaDeAgua(doc, datos.logoBuffer);
 
   escribirEncabezado(doc, {
     nombreOrganizacion: datos.nombreOrganizacion,
     nombreTipoConsentimiento: datos.nombreTipoConsentimiento,
     trabajador: datos.trabajador,
     fecha: datos.fechaFirma,
+    logoBuffer: datos.logoBuffer,
   });
 
   if (datos.revocado) {
@@ -147,12 +158,14 @@ function generarPdfFirmado(datos) {
  */
 function generarPdfEnBlanco(datos) {
   const doc = new PDFDocument({ size: 'A4', margin: MARGEN });
+  dibujarMarcaDeAgua(doc, datos.logoBuffer);
 
   escribirEncabezado(doc, {
     nombreOrganizacion: datos.nombreOrganizacion,
     nombreTipoConsentimiento: datos.nombreTipoConsentimiento,
     trabajador: datos.trabajador,
     fecha: datos.fecha,
+    logoBuffer: datos.logoBuffer,
   });
 
   escribirTextoLegal(doc, datos.textoLegal);

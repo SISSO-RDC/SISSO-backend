@@ -16,6 +16,9 @@
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { obtenerLogoBuffer } = require('../utils/logoPdf');
+const { obtenerFirmaParaPdf } = require('../utils/firmaPdf');
+const { generarPdfCertificadoRestriccion } = require('../restriccionesMedicas/pdfCertificadoRestriccion');
 
 const COLUMNAS_MEDICO = `
   rm.id, rm.trabajador_id, rm.estado, rm.motivo_clinico, rm.diagnostico_cie10_relacionado,
@@ -428,6 +431,69 @@ async function obtenerHistorial(req, res) {
   }
 }
 
+// ------------------------------------------------------------
+// GET /api/restricciones-medicas/:restriccionId/certificado
+//
+// CREADO en Auditoria N.15 (pedido de la persona usuaria): genera el
+// PDF que se entrega/archiva en la carpeta de Talento Humano. Usa
+// DELIBERADAMENTE la misma proyeccion operativa (sin motivo_clinico)
+// que ya usa listarRestriccionesTrabajador() para sso/th -- ver el
+// comentario de cabecera de pdfCertificadoRestriccion.js.
+// ------------------------------------------------------------
+async function descargarCertificado(req, res) {
+  const { restriccionId } = req.params;
+
+  try {
+    const resultado = await query(
+      `SELECT rm.id, rm.estado, rm.medida_laboral, rm.fecha_emision, rm.fecha_vigencia_hasta,
+              rm.medico_emisor_id,
+              t.nombre_completo, t.documento, t.area, t.puesto,
+              o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
+       FROM restricciones_medicas rm
+       JOIN trabajadores t ON t.id = rm.trabajador_id
+       JOIN organizaciones o ON o.id = rm.organizacion_id
+       WHERE rm.id = $1 AND rm.organizacion_id = $2`,
+      [restriccionId, req.usuario.organizacionId]
+    );
+    if (resultado.rows.length === 0) {
+      return res.status(404).json({ error: 'Restricción no encontrada.' });
+    }
+    const r = resultado.rows[0];
+
+    // Documento operativo (no clinico, ver comentario de cabecera),
+    // pero igual se audita su descarga -- sigue siendo informacion
+    // de salud de una persona identificable.
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: 'descarga_certificado_restriccion_medica',
+      entidad: 'restricciones_medicas',
+      entidadId: restriccionId,
+      req,
+      lecturaSensible: true,
+    });
+
+    const logoBuffer = await obtenerLogoBuffer(r.organizacion_logo_url);
+    const firma = await obtenerFirmaParaPdf(r.medico_emisor_id, req.usuario.organizacionId);
+
+    const doc = generarPdfCertificadoRestriccion(
+      { estado: r.estado, medida_laboral: r.medida_laboral, fecha_emision: r.fecha_emision, fecha_vigencia_hasta: r.fecha_vigencia_hasta },
+      { nombre_completo: r.nombre_completo, documento: r.documento, area: r.area, puesto: r.puesto },
+      r.organizacion_nombre,
+      logoBuffer,
+      firma
+    );
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="restriccion-medica-${r.documento}.pdf"`);
+    doc.pipe(res);
+    doc.end();
+  } catch (err) {
+    console.error('Error en descargarCertificado (restricciones medicas):', err);
+    return res.status(500).json({ error: 'Error interno al generar el certificado.' });
+  }
+}
+
 module.exports = {
   emitirRestriccion,
   listarRestriccionesTrabajador,
@@ -435,4 +501,5 @@ module.exports = {
   modificarRestriccion,
   levantarRestriccion,
   obtenerHistorial,
+  descargarCertificado,
 };

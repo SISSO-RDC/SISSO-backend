@@ -103,6 +103,10 @@ router.get('/usuarios', autenticar, autorizar('admin'), authController.listarUsu
 // organizacion (le asigna una temporal). Ver comentario completo
 // en authController.js:resetearPassword.
 router.put('/usuarios/:id/resetear-password', autenticar, autorizar('admin'), validarResetearPassword, authController.resetearPassword);
+// CREADO en Auditoria N.15 (pedido de la persona usuaria): permite
+// que un admin corrija el nombre de un usuario de su organizacion
+// (ver el comentario de corregirNombreUsuario en el controlador).
+router.patch('/usuarios/:id/nombre', autenticar, autorizar('admin'), authController.corregirNombreUsuario);
 
 // Cualquier usuario autenticado cambia su propia contrasena
 // (incluye el flujo forzado tras un reseteo por admin).

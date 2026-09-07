@@ -19,6 +19,7 @@ const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 const { generarPdfFirmado, generarPdfEnBlanco } = require('../consentimientos/pdfConsentimiento');
+const { obtenerLogoBuffer } = require('../utils/logoPdf');
 
 const CARPETA_FIRMAS = 'sisso/firmas-consentimiento';
 
@@ -372,7 +373,7 @@ async function descargarPdf(req, res) {
               t.nombre AS tipo_consentimiento_nombre, t.categoria,
               tr.nombre_completo AS trabajador_nombre, tr.documento AS trabajador_documento,
               u.nombre_completo AS registrado_por_nombre,
-              o.nombre AS organizacion_nombre
+              o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM consentimientos_firmados c
        JOIN tipos_consentimiento t ON t.codigo = c.tipo_consentimiento_codigo
        JOIN trabajadores tr ON tr.id = c.trabajador_id
@@ -428,6 +429,7 @@ async function descargarPdf(req, res) {
 
     const doc = generarPdfFirmado({
       nombreOrganizacion: c.organizacion_nombre,
+      logoBuffer: await obtenerLogoBuffer(c.organizacion_logo_url),
       nombreTipoConsentimiento: c.tipo_consentimiento_nombre,
       textoLegalFirmado: c.texto_legal_firmado,
       trabajador: { nombreCompleto: c.trabajador_nombre, documento: c.trabajador_documento },
@@ -474,7 +476,7 @@ async function descargarPdfEnBlanco(req, res) {
     }
 
     const trabajadorRes = await query(
-      `SELECT tr.nombre_completo, tr.documento, o.nombre AS organizacion_nombre
+      `SELECT tr.nombre_completo, tr.documento, o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM trabajadores tr
        JOIN organizaciones o ON o.id = tr.organizacion_id
        WHERE tr.id = $1 AND tr.organizacion_id = $2`,
@@ -489,6 +491,7 @@ async function descargarPdfEnBlanco(req, res) {
 
     const doc = generarPdfEnBlanco({
       nombreOrganizacion: trabajador.organizacion_nombre,
+      logoBuffer: await obtenerLogoBuffer(trabajador.organizacion_logo_url),
       nombreTipoConsentimiento: tipo.nombre,
       textoLegal: tipo.texto_legal,
       trabajador: { nombreCompleto: trabajador.nombre_completo, documento: trabajador.documento },

@@ -13,7 +13,7 @@
 // explicito en el pie de pagina.
 // ============================================================
 const PDFDocument = require('pdfkit');
-const { dibujarMarcaDeAgua } = require('../utils/logoPdf');
+const { dibujarMarcaDeAgua, dibujarLogoMembrete } = require('../utils/logoPdf');
 
 const MARGEN = 50;
 const ANCHO_UTIL = 595.28 - MARGEN * 2;
@@ -46,9 +46,16 @@ function generarPdfCertificadoAptitud(trabajador, nombreOrganizacion, logoBuffer
   // de fondo/marca de agua que el certificado de capacitacion, para
   // consistencia visual entre todos los documentos emitidos.
   dibujarMarcaDeAgua(doc, logoBuffer);
+  // CREADO en Auditoria N.15 (pedido de la persona usuaria: "el logo
+  // de la empresa en la esquina superior izquierda"). Se fuerza
+  // doc.y por debajo del logo antes de escribir el titulo -- ver el
+  // comentario extenso equivalente en historiaClinica/pdfPreocupacional.js
+  // sobre por que dibujar la imagen no mueve el cursor de texto solo.
+  dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
 
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
+  if (doc.y < MARGEN + 32) doc.y = MARGEN + 32;
   doc.moveDown(1.2);
 
   doc.fontSize(17).font('Helvetica-Bold').fillColor('#0f172a')
@@ -137,6 +144,12 @@ function generarPdfCertificadoAptitud(trabajador, nombreOrganizacion, logoBuffer
   doc.moveDown(0.3);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(firma?.nombreResponsable || 'Responsable de Seguridad y Salud Ocupacional', { align: 'center' });
+  // CREADO en Auditoria N.15 (pedido de la persona usuaria: "irá el
+  // nombre del médico completo y debajo el registro del senescyt").
+  if (firma?.registroSenescytEspecialidad) {
+    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
+      .text(`Registro SENESCYT: ${firma.registroSenescytEspecialidad}`, { align: 'center' });
+  }
 
   doc.moveDown(2);
   doc.fontSize(7.5).font('Helvetica').fillColor('#cbd5e1')

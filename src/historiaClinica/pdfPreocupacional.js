@@ -176,6 +176,16 @@ function generarPdfPreocupacional(e, nombreOrganizacion, logoBuffer, firmaMedico
   dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
+  // CORREGIDO en Auditoria N.15 (bug real reportado por el usuario:
+  // "el logo aparece sobrepuesto encima de la letra de historia
+  // clinica"). dibujarLogoMembrete() dibuja una IMAGEN con
+  // coordenadas explicitas -- eso NUNCA mueve el cursor de texto
+  // doc.y de pdfkit, asi que el titulo de abajo empezaba a escribirse
+  // en su posicion normal (justo despues de una sola linea de texto),
+  // que caia DENTRO del area vertical que ocupa el logo (40pt de alto
+  // arrancando en MARGEN-12). Se fuerza doc.y a quedar por debajo del
+  // logo antes de continuar, en vez de asumir que avanzo solo.
+  if (doc.y < MARGEN + 32) doc.y = MARGEN + 32;
   doc.moveDown(0.5);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación Preocupacional (Inicio)');
@@ -491,6 +501,16 @@ function generarPdfRetiro(e, nombreOrganizacion, logoBuffer, firmaMedico) {
   dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
+  // CORREGIDO en Auditoria N.15 (bug real reportado por el usuario:
+  // "el logo aparece sobrepuesto encima de la letra de historia
+  // clinica"). dibujarLogoMembrete() dibuja una IMAGEN con
+  // coordenadas explicitas -- eso NUNCA mueve el cursor de texto
+  // doc.y de pdfkit, asi que el titulo de abajo empezaba a escribirse
+  // en su posicion normal (justo despues de una sola linea de texto),
+  // que caia DENTRO del area vertical que ocupa el logo (40pt de alto
+  // arrancando en MARGEN-12). Se fuerza doc.y a quedar por debajo del
+  // logo antes de continuar, en vez de asumir que avanzo solo.
+  if (doc.y < MARGEN + 32) doc.y = MARGEN + 32;
   doc.moveDown(0.5);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación de Retiro');
@@ -629,6 +649,16 @@ function generarPdfPeriodica(e, nombreOrganizacion, logoBuffer, firmaMedico) {
   dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
+  // CORREGIDO en Auditoria N.15 (bug real reportado por el usuario:
+  // "el logo aparece sobrepuesto encima de la letra de historia
+  // clinica"). dibujarLogoMembrete() dibuja una IMAGEN con
+  // coordenadas explicitas -- eso NUNCA mueve el cursor de texto
+  // doc.y de pdfkit, asi que el titulo de abajo empezaba a escribirse
+  // en su posicion normal (justo despues de una sola linea de texto),
+  // que caia DENTRO del area vertical que ocupa el logo (40pt de alto
+  // arrancando en MARGEN-12). Se fuerza doc.y a quedar por debajo del
+  // logo antes de continuar, en vez de asumir que avanzo solo.
+  if (doc.y < MARGEN + 32) doc.y = MARGEN + 32;
   doc.moveDown(0.5);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación Periódica');
@@ -807,6 +837,16 @@ function generarPdfReintegro(e, nombreOrganizacion, logoBuffer, firmaMedico) {
   dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
+  // CORREGIDO en Auditoria N.15 (bug real reportado por el usuario:
+  // "el logo aparece sobrepuesto encima de la letra de historia
+  // clinica"). dibujarLogoMembrete() dibuja una IMAGEN con
+  // coordenadas explicitas -- eso NUNCA mueve el cursor de texto
+  // doc.y de pdfkit, asi que el titulo de abajo empezaba a escribirse
+  // en su posicion normal (justo despues de una sola linea de texto),
+  // que caia DENTRO del area vertical que ocupa el logo (40pt de alto
+  // arrancando en MARGEN-12). Se fuerza doc.y a quedar por debajo del
+  // logo antes de continuar, en vez de asumir que avanzo solo.
+  if (doc.y < MARGEN + 32) doc.y = MARGEN + 32;
   doc.moveDown(0.5);
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Historia Clínica Ocupacional — Evaluación de Reintegro');

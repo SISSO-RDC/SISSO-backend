@@ -72,6 +72,10 @@ function generarPdfCertificado(e, nombreOrganizacion, logoBuffer, firmaMedico) {
   dibujarLogoMembrete(doc, logoBuffer, MARGEN, MARGEN - 12, 40);
   doc.fontSize(9).font('Helvetica').fillColor('#64748b')
     .text(nombreOrganizacion || 'SISSO — Sistema Integral de Seguridad y Salud Ocupacional', { align: 'right' });
+  // CORREGIDO en Auditoria N.15: ver el comentario extenso equivalente
+  // en pdfPreocupacional.js -- dibujarLogoMembrete() no mueve doc.y,
+  // asi que el titulo (centrado) quedaba superpuesto sobre el logo.
+  if (doc.y < MARGEN + 32) doc.y = MARGEN + 32;
   doc.moveDown(0.5);
   doc.fontSize(17).font('Helvetica-Bold').fillColor('#0f172a')
     .text('Certificado de Salud en el Trabajo', { align: 'center' });

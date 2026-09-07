@@ -14,6 +14,14 @@
 // dato se obtuviera via este endpoint era una ruta alternativa de
 // acceso clinico. Se restringe ahora al rol medico, unico
 // autorizado a emitir/consultar la aptitud de un trabajador.
+//
+// CORREGIDO en Auditoria N.15 (pedido de la persona usuaria): el
+// certificado de CAPACITACION tambien debe poder generarlo un
+// medico, no solo admin/sso/th -- un medico puede perfectamente ser
+// quien impartio la capacitacion (ej. primeros auxilios, riesgos
+// biologicos). No es un dato clinico individual (es un registro de
+// asistencia/gestion), asi que agregarlo aqui no reabre el
+// razonamiento de C3 de arriba sobre el certificado de aptitud.
 // ============================================================
 const express = require('express');
 const router = express.Router();
@@ -22,7 +30,7 @@ const certificadosController = require('../controllers/certificadosController');
 
 router.get(
   '/capacitacion/:capacitacionId/trabajador/:trabajadorId',
-  autenticar, autorizar('admin', 'sso', 'th'),
+  autenticar, autorizar('admin', 'sso', 'th', 'medico'),
   certificadosController.certificadoCapacitacion
 );
 router.get(
