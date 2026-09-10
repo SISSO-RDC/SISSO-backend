@@ -119,16 +119,27 @@ function generarPdfFirmado(datos) {
   doc.fontSize(8.5).font('Helvetica').fillColor('#64748b').text(metodoTexto);
   doc.moveDown(0.4);
 
-  // Reservamos espacio para la firma; si no entra en la pagina actual, pdfkit salta de pagina solo.
+  // CORREGIDO en Auditoria N.15 (pedido de la persona usuaria: "en la
+  // firma de los consentimientos tiene que existir un espacio arriba
+  // de la línea para que el trabajador firme o coloque su firma
+  // digital"). Antes el espacio SOLO se reservaba si ya existia una
+  // imagen de firma (datos.imagenFirmaBuffer) -- si no habia imagen,
+  // el documento pasaba casi directo del texto a la linea, sin
+  // espacio real para firmar a mano. Ahora se reserva el mismo
+  // espacio SIEMPRE, con o sin imagen (misma logica que
+  // dibujarBloqueFirma() en src/utils/firmaPdf.js para los
+  // certificados medicos).
+  const ALTO_ZONA_FIRMA = 70;
+  const yInicioZonaFirma = doc.y;
   if (datos.imagenFirmaBuffer) {
     try {
-      doc.image(datos.imagenFirmaBuffer, { fit: [220, 90], align: 'left' });
+      doc.image(datos.imagenFirmaBuffer, MARGEN, yInicioZonaFirma, { fit: [220, ALTO_ZONA_FIRMA] });
     } catch (e) {
       doc.fontSize(9).fillColor('#b91c1c').text('(No se pudo incrustar la imagen de la firma en este PDF; ver el archivo original en el sistema.)');
     }
   }
+  doc.y = yInicioZonaFirma + ALTO_ZONA_FIRMA;
 
-  doc.moveDown(0.3);
   doc.moveTo(MARGEN, doc.y).lineTo(MARGEN + 220, doc.y).strokeColor('#94a3b8').stroke();
   doc.moveDown(0.2);
   doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#0f172a')

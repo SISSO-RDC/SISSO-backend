@@ -19,6 +19,7 @@
 // ============================================================
 const PDFDocument = require('pdfkit');
 const { dibujarMarcaDeAgua, dibujarLogoMembrete } = require('../utils/logoPdf');
+const { dibujarBloqueFirma } = require('../utils/firmaPdf');
 
 const MARGEN = 50;
 const ANCHO_UTIL = 595.28 - MARGEN * 2;
@@ -165,39 +166,14 @@ function generarPdfCertificado(e, nombreOrganizacion, logoBuffer, firmaMedico) {
     }
   }
 
-  // ---- Firma y credencial del profesional (Auditoria N.15, pedido de la persona usuaria) ----
-  if (doc.y > doc.page.height - MARGEN - 130) doc.addPage();
-  doc.moveDown(0.8);
-  doc.moveTo(MARGEN, doc.y).lineTo(MARGEN + ANCHO_UTIL, doc.y).strokeColor('#e2e8f0').stroke();
-  doc.moveDown(0.8);
-  doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#0f172a').text('Firma y credencial del profesional que suscribe:');
-  doc.moveDown(0.3);
-  doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(e.medico_nombre || 'No registrado');
-  doc.fontSize(9).font('Helvetica').fillColor('#334155');
-  if (e.medico_registro_senescyt) {
-    doc.text(`Registro SENESCYT (especialidad Salud Ocupacional / Medicina del Trabajo): ${e.medico_registro_senescyt}`);
-  } else {
-    doc.font('Helvetica-Oblique').fillColor('#94a3b8')
-      .text('Este profesional aún no registró su número de registro SENESCYT de la especialidad (pestaña "Mi Firma Digital" en Configuración).');
-  }
-  doc.moveDown(0.6);
-
-  const ALTO_ZONA_FIRMA = 90;
-  if (firmaMedico && firmaMedico.buffer) {
-    try {
-      doc.image(firmaMedico.buffer, MARGEN, doc.y, { fit: [200, ALTO_ZONA_FIRMA - 15] });
-    } catch (err) {
-      console.error('No se pudo incrustar la firma digital del medico en el certificado:', err.message);
-    }
-    doc.y = doc.y + ALTO_ZONA_FIRMA - 15;
-    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8').text('Firma digital registrada.');
-  } else {
-    const yLinea = doc.y + ALTO_ZONA_FIRMA - 20;
-    doc.moveTo(MARGEN, yLinea).lineTo(MARGEN + 220, yLinea).strokeColor('#94a3b8').stroke();
-    doc.y = yLinea + 3;
-    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8').text('Firma');
-    doc.y = yLinea + 3;
-  }
+  // ---- Firma y credencial del profesional (Auditoria N.15) ----
+  // CORREGIDO: ver el comentario extenso en src/utils/firmaPdf.js
+  // (dibujarBloqueFirma) sobre el orden correcto y por que se
+  // centraliza ahi.
+  const firma = firmaMedico
+    ? { ...firmaMedico, nombreCompleto: firmaMedico.nombreCompleto || e.medico_nombre, registroSenescytEspecialidad: firmaMedico.registroSenescytEspecialidad ?? e.medico_registro_senescyt }
+    : (e.medico_nombre ? { nombreCompleto: e.medico_nombre, registroSenescytEspecialidad: e.medico_registro_senescyt } : null);
+  dibujarBloqueFirma(doc, { margen: MARGEN, anchoUtil: ANCHO_UTIL, firma, nombreFallback: e.medico_nombre || 'No registrado' });
 
   // ---- Numeracion de paginas ----
   // CORREGIDO en Auditoria N.15: ver el comentario extenso equivalente

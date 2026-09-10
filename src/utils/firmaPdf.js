@@ -80,4 +80,86 @@ async function obtenerFirmaParaPdf(usuarioId, organizacionId) {
   }
 }
 
-module.exports = { obtenerFirmaParaPdf };
+module.exports = { obtenerFirmaParaPdf, dibujarBloqueFirma };
+
+// ============================================================
+// CREADO en Auditoria N.15 (bug real reportado por el usuario, con
+// captura de pantalla del PDF resultante): el bloque de firma de
+// historia clinica (pdfPreocupacional.js) tenia el ORDEN VISUAL
+// invertido -- imprimia el nombre del profesional y su registro
+// SENESCYT PRIMERO, y el espacio/linea para firmar DESPUES. El orden
+// correcto de cualquier bloque de firma impreso (y el que el usuario
+// pidio explicitamente, "en ese orden", para aplicar en TODOS los
+// documentos con firma) es:
+//
+//   1. Titulo (ej. "Firma y credencial del profesional que suscribe:")
+//   2. ESPACIO EN BLANCO considerable para firmar a mano, o la
+//      imagen de la firma digital si esta registrada
+//   3. Linea horizontal
+//   4. Nombre completo del firmante (debajo de la linea)
+//   5. Credencial (registro SENESCYT), debajo del nombre
+//
+// Esta funcion es la UNICA fuente de este bloque -- pdfPreocupacional.js,
+// pdfCertificado.js, pdfCertificadoAptitud.js y
+// pdfCertificadoRestriccion.js la importan en vez de reimplementarla,
+// para que este orden no pueda volver a divergir entre documentos
+// (que es exactamente como se origino este bug: cada archivo tenia su
+// propia copia).
+//
+// @param {PDFDocument} doc
+// @param {object} opciones
+// @param {number} opciones.margen
+// @param {number} opciones.anchoUtil
+// @param {string} [opciones.titulo]
+// @param {{buffer: Buffer, nombreCompleto?: string, nombreResponsable?: string, registroSenescytEspecialidad?: string|null}|null} opciones.firma
+// @param {string} [opciones.nombreFallback] - texto si no hay firma/nombre registrado
+// @param {boolean} [opciones.mostrarSenescyt] - false para bloques de firma que no son de un profesional de salud (ej. el trabajador en un consentimiento)
+function dibujarBloqueFirma(doc, opciones) {
+  const {
+    margen, anchoUtil,
+    titulo = 'Firma y credencial del profesional que suscribe:',
+    firma,
+    nombreFallback = 'No registrado',
+    mostrarSenescyt = true,
+  } = opciones;
+
+  if (doc.y > doc.page.height - margen - 140) doc.addPage();
+  doc.moveDown(0.8);
+  doc.moveTo(margen, doc.y).lineTo(margen + anchoUtil, doc.y).strokeColor('#e2e8f0').stroke();
+  doc.moveDown(0.8);
+  doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#0f172a').text(titulo);
+  doc.moveDown(0.4);
+
+  // ---- 2. Espacio para firmar (imagen o blanco) ----
+  const ALTO_ZONA_FIRMA = 70;
+  const yInicioZona = doc.y;
+  if (firma && firma.buffer) {
+    try {
+      doc.image(firma.buffer, margen, yInicioZona, { fit: [200, ALTO_ZONA_FIRMA] });
+    } catch (err) {
+      console.error('No se pudo incrustar la imagen de la firma en el PDF:', err.message);
+    }
+  }
+  // El espacio se reserva SIEMPRE (con o sin imagen real), para que
+  // quien imprima el documento pueda firmar a mano si lo necesita.
+  doc.y = yInicioZona + ALTO_ZONA_FIRMA;
+
+  // ---- 3. Linea ----
+  doc.moveTo(margen, doc.y).lineTo(margen + 220, doc.y).strokeColor('#94a3b8').stroke();
+  doc.moveDown(0.3);
+
+  // ---- 4. Nombre (debajo de la linea) ----
+  const nombre = firma?.nombreCompleto || firma?.nombreResponsable || nombreFallback;
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('#1e293b').text(nombre);
+
+  // ---- 5. Credencial (debajo del nombre) ----
+  if (mostrarSenescyt) {
+    doc.fontSize(9).font('Helvetica').fillColor('#334155');
+    if (firma?.registroSenescytEspecialidad) {
+      doc.text(`Registro SENESCYT (especialidad Salud Ocupacional / Medicina del Trabajo): ${firma.registroSenescytEspecialidad}`);
+    } else {
+      doc.font('Helvetica-Oblique').fillColor('#94a3b8')
+        .text('Este profesional aún no registró su número de registro SENESCYT de la especialidad (pestaña "Mi Perfil").');
+    }
+  }
+}

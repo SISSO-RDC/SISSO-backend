@@ -14,6 +14,7 @@
 // ============================================================
 const PDFDocument = require('pdfkit');
 const { dibujarMarcaDeAgua, dibujarLogoMembrete } = require('../utils/logoPdf');
+const { dibujarBloqueFirma } = require('../utils/firmaPdf');
 
 const MARGEN = 50;
 const ANCHO_UTIL = 595.28 - MARGEN * 2;
@@ -128,28 +129,20 @@ function generarPdfCertificadoAptitud(trabajador, nombreOrganizacion, logoBuffer
     { align: 'justify' }
   );
 
-  doc.moveDown(3);
-  // CREADO a pedido de la persona usuaria (02/09/2026): firma
-  // digital del medico, si la tiene cargada.
-  if (firma && firma.buffer) {
-    try {
-      const anchoFirma = 140;
-      doc.image(firma.buffer, MARGEN + ANCHO_UTIL / 2 - anchoFirma / 2, doc.y - 8, { width: anchoFirma, height: 45, fit: [anchoFirma, 45] });
-      doc.moveDown(2.6);
-    } catch (err) {
-      console.error('No se pudo dibujar la firma digital en el certificado de aptitud:', err.message);
-    }
-  }
-  doc.moveTo(MARGEN + 100, doc.y).lineTo(MARGEN + ANCHO_UTIL - 100, doc.y).strokeColor('#94a3b8').stroke();
-  doc.moveDown(0.3);
-  doc.fontSize(9).font('Helvetica').fillColor('#64748b')
-    .text(firma?.nombreResponsable || 'Responsable de Seguridad y Salud Ocupacional', { align: 'center' });
-  // CREADO en Auditoria N.15 (pedido de la persona usuaria: "irá el
-  // nombre del médico completo y debajo el registro del senescyt").
-  if (firma?.registroSenescytEspecialidad) {
-    doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
-      .text(`Registro SENESCYT: ${firma.registroSenescytEspecialidad}`, { align: 'center' });
-  }
+  // CORREGIDO en Auditoria N.15: unificado con dibujarBloqueFirma()
+  // de src/utils/firmaPdf.js -- misma funcion que usan los
+  // certificados de historia clinica, para que el orden (espacio ->
+  // linea -> nombre -> SENESCYT) y los datos mostrados nunca
+  // diverjan entre documentos. Antes este archivo tenia su propia
+  // copia que leia firma?.nombreResponsable (que incluye " — Médico
+  // Ocupacional" agregado) en vez de firma?.nombreCompleto (el
+  // nombre solo, que es lo que se pidio explicitamente).
+  doc.moveDown(1);
+  dibujarBloqueFirma(doc, {
+    margen: MARGEN, anchoUtil: ANCHO_UTIL, firma,
+    titulo: 'Firma y credencial del profesional que respalda este certificado:',
+    nombreFallback: 'Responsable de Seguridad y Salud Ocupacional',
+  });
 
   doc.moveDown(2);
   doc.fontSize(7.5).font('Helvetica').fillColor('#cbd5e1')
