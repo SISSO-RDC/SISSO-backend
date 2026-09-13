@@ -521,6 +521,19 @@ const validarActualizarOrganizacion = [
   manejarErroresValidacion,
 ];
 
+// CREADO para el Lote B del configurador sectorial (Fase 3 del plan
+// "Perfil inteligente de empresa"): valida el paso final de
+// confirmacion ("Aplicar configuracion"), ver
+// organizacionController.aplicarConfiguracionSectorial.
+const validarAplicarConfiguracionSectorial = [
+  body('sectorClave').isString().trim().isLength({ min: 1, max: 50 }).withMessage('sectorClave es obligatorio.'),
+  body('numeroTrabajadoresDeclarado').optional({ values: 'null' }).isInt({ min: 0, max: 1000000 }).withMessage('numeroTrabajadoresDeclarado debe ser un entero valido.'),
+  body('riesgosPresentes').optional().isArray().withMessage('riesgosPresentes debe ser un arreglo.'),
+  body('actividadEconomicaCiiu').optional({ values: 'falsy' }).trim().isLength({ max: 20 }),
+  body('actividadEconomicaDesc').optional({ values: 'falsy' }).trim().isLength({ max: 200 }),
+  manejarErroresValidacion,
+];
+
 const validarActualizarLogoOrganizacion = [
   body('logoBase64').isString().custom((value) => value.startsWith('data:image')).withMessage('logoBase64 debe ser una imagen en formato data URI.'),
   manejarErroresValidacion,
@@ -600,6 +613,7 @@ module.exports = {
   validarRegistrarNiosh,
   validarCrearPuestoTrabajo,
   validarActualizarOrganizacion,
+  validarAplicarConfiguracionSectorial,
   validarActualizarLogoOrganizacion,
   validarCrearItemMatrizRiesgos,
   validarCrearAusencia,

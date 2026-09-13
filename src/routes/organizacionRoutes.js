@@ -7,10 +7,11 @@ const router = express.Router();
 const { autenticar, autorizar } = require('../middleware/auth');
 const organizacionController = require('../controllers/organizacionController');
 const pagosController = require('../controllers/pagosController');
-const { validarActualizarOrganizacion, validarActualizarLogoOrganizacion } = require('../middleware/validacion');
+const { validarActualizarOrganizacion, validarAplicarConfiguracionSectorial, validarActualizarLogoOrganizacion } = require('../middleware/validacion');
 
 router.get('/', autenticar, autorizar('admin'), organizacionController.obtenerPerfil);
 router.put('/', autenticar, autorizar('admin'), validarActualizarOrganizacion, organizacionController.actualizarPerfil);
+router.put('/perfil-sectorial', autenticar, autorizar('admin'), validarAplicarConfiguracionSectorial, organizacionController.aplicarConfiguracionSectorial);
 router.put('/logo', autenticar, autorizar('admin'), validarActualizarLogoOrganizacion, organizacionController.actualizarLogo);
 router.get('/suscripcion', autenticar, autorizar('admin'), pagosController.obtenerEstadoSuscripcion);
 

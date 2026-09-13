@@ -17,14 +17,20 @@ const CARPETA_LOGOS = 'sisso/logos-empresa';
 async function obtenerPerfil(req, res) {
   try {
     const orgRes = await query(
-      `SELECT id, nombre, codigo, ruc_nit, plan, activa,
-              direccion, telefono, email_contacto,
-              actividad_economica_ciiu, actividad_economica_desc,
-              representante_legal, responsable_sst_nombre, responsable_sst_cargo,
-              responsable_medico_nombre, responsable_medico_cargo,
-              responsable_th_nombre, responsable_th_cargo,
-              logo_url, creado_en
-       FROM organizaciones WHERE id = $1`,
+      `SELECT o.id, o.nombre, o.codigo, o.ruc_nit, o.plan, o.activa,
+              o.direccion, o.telefono, o.email_contacto,
+              o.actividad_economica_ciiu, o.actividad_economica_desc,
+              o.representante_legal, o.responsable_sst_nombre, o.responsable_sst_cargo,
+              o.responsable_medico_nombre, o.responsable_medico_cargo,
+              o.responsable_th_nombre, o.responsable_th_cargo,
+              o.logo_url, o.creado_en,
+              o.sector_empresarial_clave, o.numero_trabajadores_declarado,
+              o.riesgos_presentes, o.configuracion_sectorial_aplicada_en,
+              s.etiqueta AS sector_etiqueta, s.icono AS sector_icono,
+              s.color_acento AS sector_color_acento
+       FROM organizaciones o
+       LEFT JOIN catalogo_sectores s ON s.clave = o.sector_empresarial_clave
+       WHERE o.id = $1`,
       [req.usuario.organizacionId]
     );
     if (orgRes.rows.length === 0) {
@@ -149,4 +155,72 @@ async function actualizarLogo(req, res) {
   }
 }
 
-module.exports = { obtenerPerfil, actualizarPerfil, actualizarLogo };
+// ------------------------------------------------------------
+// PUT /api/organizacion/perfil-sectorial
+// Paso final (Fase 3, "Confirmacion de configuracion") del
+// configurador inteligente de "Mi Empresa". Guarda el sector
+// elegido, el numero de trabajadores declarado en el asistente y
+// los riesgos sugeridos por el sector que el usuario confirmo como
+// presentes -- solo se ejecuta cuando el usuario aprieta
+// "Aplicar configuracion" en el paso 6, nunca automaticamente.
+//
+// No sobrescribe actividad_economica_ciiu/desc si el asistente no
+// los trae (COALESCE): esos campos ya existen desde antes (perfil
+// basico, migration_023) y este endpoint solo los toca si el
+// usuario los edito en el paso 2 del asistente.
+// ------------------------------------------------------------
+async function aplicarConfiguracionSectorial(req, res) {
+  const b = req.body;
+
+  try {
+    const sectorRes = await query(
+      `SELECT clave, etiqueta FROM catalogo_sectores WHERE clave = $1 AND activo = true`,
+      [b.sectorClave]
+    );
+    if (sectorRes.rows.length === 0) {
+      return res.status(400).json({ error: 'El sector seleccionado no existe o no esta disponible.' });
+    }
+
+    const resultado = await query(
+      `UPDATE organizaciones
+       SET sector_empresarial_clave = $1,
+           numero_trabajadores_declarado = $2,
+           riesgos_presentes = $3::jsonb,
+           actividad_economica_ciiu = COALESCE($4, actividad_economica_ciiu),
+           actividad_economica_desc = COALESCE($5, actividad_economica_desc),
+           configuracion_sectorial_aplicada_en = now()
+       WHERE id = $6
+       RETURNING id, sector_empresarial_clave, numero_trabajadores_declarado,
+                 riesgos_presentes, configuracion_sectorial_aplicada_en`,
+      [
+        b.sectorClave,
+        b.numeroTrabajadoresDeclarado ?? null,
+        JSON.stringify(Array.isArray(b.riesgosPresentes) ? b.riesgosPresentes : []),
+        b.actividadEconomicaCiiu || null,
+        b.actividadEconomicaDesc || null,
+        req.usuario.organizacionId,
+      ]
+    );
+
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: 'aplicar_configuracion_sectorial',
+      entidad: 'organizacion',
+      entidadId: req.usuario.organizacionId,
+      detalle: {
+        sectorClave: b.sectorClave,
+        numeroTrabajadoresDeclarado: b.numeroTrabajadoresDeclarado ?? null,
+        riesgosPresentes: Array.isArray(b.riesgosPresentes) ? b.riesgosPresentes : [],
+      },
+      req,
+    });
+
+    return res.json({ organizacion: resultado.rows[0] });
+  } catch (err) {
+    console.error('Error en aplicarConfiguracionSectorial (mi empresa):', err);
+    return res.status(500).json({ error: 'Error interno al aplicar la configuracion sectorial.' });
+  }
+}
+
+module.exports = { obtenerPerfil, actualizarPerfil, actualizarLogo, aplicarConfiguracionSectorial };
