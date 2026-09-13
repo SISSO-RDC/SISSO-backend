@@ -96,6 +96,7 @@ const CLASIFICACION_RECURSOS = {
   'incidentes-seguridad': 'operativo_individual',
   'puesto-exposiciones': 'catalogo',
   'ejemplo': 'N/A (ruta de ejemplo/diagnostico, no expone datos de negocio)',
+  'plataforma': 'N/A (informacion publica de la app y canal de sugerencias, sin datos de negocio)',
 };
 
 function extraerMontajes() {

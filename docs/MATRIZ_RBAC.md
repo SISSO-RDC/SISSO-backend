@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-07.
+> Ultima generacion: 2026-09-13.
 
 ## `/api/auth`
 
@@ -514,7 +514,16 @@
 | GET | `/api/puesto-exposiciones/:puestoTrabajoId` | sso, medico |
 | PUT | `/api/puesto-exposiciones/:puestoTrabajoId` | sso, medico |
 
+## `/api/plataforma`
+
+**Clasificacion del dato:** N/A (informacion publica de la app y canal de sugerencias, sin datos de negocio)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/plataforma/acerca-de` | cualquier rol autenticado (sin restriccion de rol) |
+| POST | `/api/plataforma/sugerencias` | cualquier rol autenticado (sin restriccion de rol) |
+
 
 ---
 
-**Resumen:** 218 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 51 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 220 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 53 requieren sesion valida pero no restringen por rol especifico.
