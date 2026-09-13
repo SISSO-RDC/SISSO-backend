@@ -48,6 +48,13 @@ function generarPasswordTemporal() {
 // ------------------------------------------------------------
 async function listarEmpresas(req, res) {
   try {
+    // NOTA: el JOIN se amplio de "solo admin" a TODOS los roles de la
+    // organizacion (admin/medico/sso/th) para poder construir el nuevo
+    // arreglo "usuarios" (todos los usuarios de la empresa, con su rol,
+    // ordenados admin -> medico -> sso -> th). El arreglo
+    // "administradores" se conserva IDENTICO a como estaba (mismo
+    // filtro, mismos campos) para no romper las acciones existentes
+    // del panel (resetear contrasena, revocar acceso del admin, etc.).
     const resultado = await query(
       `SELECT
         o.id, o.nombre, o.codigo, o.ruc_nit, o.plan, o.activa, o.creado_en,
@@ -59,10 +66,17 @@ async function listarEmpresas(req, res) {
             json_build_object('id', u.id, 'nombre_completo', u.nombre_completo, 'email', u.email, 'activo', u.activo, 'ultimo_login', u.ultimo_login)
           ) FILTER (WHERE u.id IS NOT NULL AND u.rol = 'admin'),
           '[]'
-        ) AS administradores
+        ) AS administradores,
+        COALESCE(
+          json_agg(
+            json_build_object('id', u.id, 'nombre_completo', u.nombre_completo, 'email', u.email, 'rol', u.rol, 'activo', u.activo, 'ultimo_login', u.ultimo_login)
+            ORDER BY CASE u.rol WHEN 'admin' THEN 0 WHEN 'medico' THEN 1 WHEN 'sso' THEN 2 WHEN 'th' THEN 3 ELSE 4 END, u.nombre_completo
+          ) FILTER (WHERE u.id IS NOT NULL AND u.rol <> 'superadmin'),
+          '[]'
+        ) AS usuarios
        FROM organizaciones o
        LEFT JOIN planes p ON p.id = o.plan_id
-       LEFT JOIN usuarios u ON u.organizacion_id = o.id AND u.rol = 'admin'
+       LEFT JOIN usuarios u ON u.organizacion_id = o.id
        GROUP BY o.id, p.codigo, p.nombre, p.precio_mensual_usd
        ORDER BY o.creado_en DESC`
     );

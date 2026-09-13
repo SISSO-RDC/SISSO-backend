@@ -88,6 +88,7 @@ const finalidadesTratamientoRoutes = require('./routes/finalidadesTratamientoRou
 const solicitudesTitularRoutes = require('./routes/solicitudesTitularRoutes');
 const incidentesSeguridadRoutes = require('./routes/incidentesSeguridadRoutes');
 const puestoExposicionesRoutes = require('./routes/puestoExposicionesRoutes');
+const plataformaRoutes = require('./routes/plataformaRoutes');
 const { VERSION_SERVIDOR } = require('./utils/versionServidor');
 
 const app = express();
@@ -238,6 +239,7 @@ app.use('/api/solicitudes-titular', solicitudesTitularRoutes);
 app.use('/api/incidentes-seguridad', incidentesSeguridadRoutes);
 // CREADO en Auditoria N.13 (C-03).
 app.use('/api/puesto-exposiciones', puestoExposicionesRoutes);
+app.use('/api/plataforma', plataformaRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {

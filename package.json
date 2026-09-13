@@ -28,7 +28,8 @@
     "cloudinary": "^2.5.1",
     "pdfkit": "^0.15.0",
     "otplib": "^12.0.1",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "nodemailer": "^6.9.14"
   },
   "engines": {
     "node": ">=18.0.0"
