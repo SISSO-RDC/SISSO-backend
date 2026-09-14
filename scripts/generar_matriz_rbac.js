@@ -95,6 +95,7 @@ const CLASIFICACION_RECURSOS = {
   'solicitudes-titular': 'operativo_individual (derechos ARCO/habeas data)',
   'incidentes-seguridad': 'operativo_individual',
   'puesto-exposiciones': 'catalogo',
+  'catalogo-sectores': 'catalogo (perfil inteligente de empresa, Fase 2 del plan de fusion con SISSO Demo)',
   'ejemplo': 'N/A (ruta de ejemplo/diagnostico, no expone datos de negocio)',
   'plataforma': 'N/A (informacion publica de la app y canal de sugerencias, sin datos de negocio)',
 };

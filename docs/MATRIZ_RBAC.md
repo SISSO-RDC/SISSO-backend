@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-13.
+> Ultima generacion: 2026-09-14.
 
 ## `/api/auth`
 
@@ -236,8 +236,20 @@
 |---|---|---|
 | GET | `/api/organizacion/` | admin |
 | PUT | `/api/organizacion/` | admin |
+| PUT | `/api/organizacion/perfil-sectorial` | admin |
 | PUT | `/api/organizacion/logo` | admin |
 | GET | `/api/organizacion/suscripcion` | admin |
+
+## `/api/catalogo-sectores`
+
+**Clasificacion del dato:** catalogo (perfil inteligente de empresa, Fase 2 del plan de fusion con SISSO Demo)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/catalogo-sectores/` | cualquier rol autenticado (sin restriccion de rol) |
+| GET | `/api/catalogo-sectores/:clave` | cualquier rol autenticado (sin restriccion de rol) |
+| PUT | `/api/catalogo-sectores/:clave` | superadmin |
+| PATCH | `/api/catalogo-sectores/:clave/estado` | superadmin |
 
 ## `/api/alertas`
 
@@ -526,4 +538,4 @@
 
 ---
 
-**Resumen:** 220 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 53 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 225 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 55 requieren sesion valida pero no restringen por rol especifico.
