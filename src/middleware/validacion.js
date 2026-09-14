@@ -529,6 +529,7 @@ const validarAplicarConfiguracionSectorial = [
   body('sectorClave').isString().trim().isLength({ min: 1, max: 50 }).withMessage('sectorClave es obligatorio.'),
   body('numeroTrabajadoresDeclarado').optional({ values: 'null' }).isInt({ min: 0, max: 1000000 }).withMessage('numeroTrabajadoresDeclarado debe ser un entero valido.'),
   body('riesgosPresentes').optional().isArray().withMessage('riesgosPresentes debe ser un arreglo.'),
+  body('paisNormativoClave').optional({ values: 'falsy' }).isString().trim().isLength({ min: 1, max: 50 }).withMessage('paisNormativoClave inválido.'),
   body('actividadEconomicaCiiu').optional({ values: 'falsy' }).trim().isLength({ max: 20 }),
   body('actividadEconomicaDesc').optional({ values: 'falsy' }).trim().isLength({ max: 200 }),
   manejarErroresValidacion,

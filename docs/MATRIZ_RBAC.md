@@ -251,6 +251,16 @@
 | PUT | `/api/catalogo-sectores/:clave` | superadmin |
 | PATCH | `/api/catalogo-sectores/:clave/estado` | superadmin |
 
+## `/api/catalogo-paises`
+
+**Clasificacion del dato:** catalogo (perfil normativo por pais, Fase 4 del plan de fusion con SISSO Demo -- Lote C)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/catalogo-paises/` | cualquier rol autenticado (sin restriccion de rol) |
+| GET | `/api/catalogo-paises/:clave` | cualquier rol autenticado (sin restriccion de rol) |
+| PUT | `/api/catalogo-paises/:clave` | superadmin |
+
 ## `/api/alertas`
 
 **Clasificacion del dato:** operativo_individual (con fragmento clinico condicional)
@@ -538,4 +548,4 @@
 
 ---
 
-**Resumen:** 225 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 55 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 228 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 57 requieren sesion valida pero no restringen por rol especifico.

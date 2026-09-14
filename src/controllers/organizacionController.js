@@ -26,10 +26,14 @@ async function obtenerPerfil(req, res) {
               o.logo_url, o.creado_en,
               o.sector_empresarial_clave, o.numero_trabajadores_declarado,
               o.riesgos_presentes, o.configuracion_sectorial_aplicada_en,
+              o.pais_normativo_clave,
               s.etiqueta AS sector_etiqueta, s.icono AS sector_icono,
-              s.color_acento AS sector_color_acento
+              s.color_acento AS sector_color_acento,
+              p.nombre AS pais_nombre, p.bandera_emoji AS pais_bandera,
+              p.estado AS pais_estado
        FROM organizaciones o
        LEFT JOIN catalogo_sectores s ON s.clave = o.sector_empresarial_clave
+       LEFT JOIN catalogo_paises_normativos p ON p.clave = o.pais_normativo_clave
        WHERE o.id = $1`,
       [req.usuario.organizacionId]
     );
@@ -181,6 +185,26 @@ async function aplicarConfiguracionSectorial(req, res) {
       return res.status(400).json({ error: 'El sector seleccionado no existe o no esta disponible.' });
     }
 
+    // Lote C (Fase 4): el pais normativo es opcional en este endpoint
+    // -- si no se envia, se conserva el que ya tenia la organizacion
+    // (por defecto 'ecuador' desde migration_080). Igual que con el
+    // sector, solo se valida que exista y este activo en el
+    // catalogo; un pais en estado 'en_desarrollo' es perfectamente
+    // seleccionable (esa es justamente la Fase 4: registrar la
+    // preferencia SIN declarar que ya hay reglas especificas
+    // implementadas para ese pais).
+    let paisNormativoClave = null;
+    if (b.paisNormativoClave) {
+      const paisRes = await query(
+        `SELECT clave FROM catalogo_paises_normativos WHERE clave = $1 AND activo = true`,
+        [b.paisNormativoClave]
+      );
+      if (paisRes.rows.length === 0) {
+        return res.status(400).json({ error: 'El país seleccionado no existe o no está disponible en el catálogo.' });
+      }
+      paisNormativoClave = b.paisNormativoClave;
+    }
+
     const resultado = await query(
       `UPDATE organizaciones
        SET sector_empresarial_clave = $1,
@@ -188,16 +212,18 @@ async function aplicarConfiguracionSectorial(req, res) {
            riesgos_presentes = $3::jsonb,
            actividad_economica_ciiu = COALESCE($4, actividad_economica_ciiu),
            actividad_economica_desc = COALESCE($5, actividad_economica_desc),
+           pais_normativo_clave = COALESCE($6, pais_normativo_clave),
            configuracion_sectorial_aplicada_en = now()
-       WHERE id = $6
+       WHERE id = $7
        RETURNING id, sector_empresarial_clave, numero_trabajadores_declarado,
-                 riesgos_presentes, configuracion_sectorial_aplicada_en`,
+                 riesgos_presentes, pais_normativo_clave, configuracion_sectorial_aplicada_en`,
       [
         b.sectorClave,
         b.numeroTrabajadoresDeclarado ?? null,
         JSON.stringify(Array.isArray(b.riesgosPresentes) ? b.riesgosPresentes : []),
         b.actividadEconomicaCiiu || null,
         b.actividadEconomicaDesc || null,
+        paisNormativoClave,
         req.usuario.organizacionId,
       ]
     );
@@ -212,6 +238,7 @@ async function aplicarConfiguracionSectorial(req, res) {
         sectorClave: b.sectorClave,
         numeroTrabajadoresDeclarado: b.numeroTrabajadoresDeclarado ?? null,
         riesgosPresentes: Array.isArray(b.riesgosPresentes) ? b.riesgosPresentes : [],
+        paisNormativoClave: paisNormativoClave || '(sin cambio)',
       },
       req,
     });
