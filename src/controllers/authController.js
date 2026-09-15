@@ -1216,9 +1216,20 @@ async function logout(req, res) {
 // ------------------------------------------------------------
 async function perfil(req, res) {
   try {
+    // CORREGIDO: antes esta funcion devolvia un objeto "usuario" con
+    // una forma DISTINTA a la que devuelve completarLogin() (aqui
+    // nombre_completo en snake_case suelto; en login, nombreCompleto
+    // y un sub-objeto organizacion{id,nombre,logoUrl}). Nadie lo
+    // notaba porque nada mas consumia /auth/perfil todavia. Ahora
+    // shared/api.js lo usa para restaurar la sesion en el celular
+    // cuando sessionStorage se pierde por segundo plano (reporte del
+    // usuario: "al cambiar de pestaña en el celular se cierra la
+    // app"), asi que la forma tiene que ser IDENTICA a la de login,
+    // o el sidebar se rompe (usuario.organizacion.nombre, etc, ya no
+    // existirian).
     const userRes = await query(
-      `SELECT u.id, u.email, u.nombre_completo, u.rol, u.ultimo_login, u.mfa_habilitado,
-              o.id AS organizacion_id, o.nombre AS organizacion_nombre, o.plan
+      `SELECT u.id, u.email, u.nombre_completo, u.rol, u.requiere_cambio_password, u.mfa_habilitado,
+              o.id AS organizacion_id, o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM usuarios u JOIN organizaciones o ON o.id = u.organizacion_id
        WHERE u.id = $1`,
       [req.usuario.id]
@@ -1231,13 +1242,11 @@ async function perfil(req, res) {
       usuario: {
         id: fila.id,
         email: fila.email,
-        nombre_completo: fila.nombre_completo,
+        nombreCompleto: fila.nombre_completo,
         rol: fila.rol,
-        ultimo_login: fila.ultimo_login,
         mfaHabilitado: fila.mfa_habilitado,
-        organizacion_id: fila.organizacion_id,
-        organizacion_nombre: fila.organizacion_nombre,
-        plan: fila.plan,
+        organizacion: { id: fila.organizacion_id, nombre: fila.organizacion_nombre, logoUrl: fila.organizacion_logo_url || null },
+        requiereCambioPassword: fila.requiere_cambio_password,
       },
     });
   } catch (err) {
