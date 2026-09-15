@@ -116,7 +116,17 @@ async function registrarExamen(req, res) {
         $51
       ) RETURNING id, fecha_examen, fvc_pre, fev1_pre, fev1_fvc_medido,
                   fvc_pct_predicho, fev1_pct_predicho, patron,
-                  reversibilidad_positiva, cambio_fev1_pct_predicho, interpretable, calidad_grado`,
+                  reversibilidad_positiva, cambio_fev1_pct_predicho, cambio_fev1_ml,
+                  cambio_fvc_pct_predicho, cambio_fvc_ml,
+                  reversibilidad_protocolo_valido, reversibilidad_motivo_no_evaluable,
+                  interpretable, calidad_grado,
+                  criterio_interpretativo, metadatos_referencia`,
+      // CORREGIDO en Auditoria N.16 (C-16-01, P0): la respuesta del
+      // POST debia incluir criterio_interpretativo y
+      // metadatos_referencia (ya se persistian desde N.13, pero no
+      // se devolvian aqui) para que el frontend pueda mostrar de
+      // inmediato, sin una segunda llamada, el criterio real que uso
+      // el backend en vez de un texto fijo desactualizado.
       [
         req.usuario.organizacionId, trabajadorId, req.usuario.id, input.fechaExamen || null,
         t.sexo, edadAnios, t.talla_cm, t.peso_kg || null,
@@ -183,8 +193,12 @@ async function listarExamenes(req, res) {
     const res2 = await query(
       `SELECT e.id, e.fecha_examen, e.fvc_pre, e.fev1_pre, e.fev1_fvc_medido,
               e.fvc_pct_predicho, e.fev1_pct_predicho, e.patron,
-              e.reversibilidad_positiva, e.cambio_fev1_pct_predicho,
+              e.fvc_post, e.fev1_post, e.minutos_post_broncodilatador,
+              e.reversibilidad_positiva, e.cambio_fev1_pct_predicho, e.cambio_fev1_ml,
+              e.cambio_fvc_pct_predicho, e.cambio_fvc_ml,
+              e.reversibilidad_protocolo_valido, e.reversibilidad_motivo_no_evaluable,
               e.interpretable, e.calidad_grado,
+              e.criterio_interpretativo, e.metadatos_referencia,
               e.observaciones, e.creado_en,
               u.nombre_completo AS medico_nombre
        FROM examenes_espirometria e

@@ -30,7 +30,8 @@ async function obtenerPerfil(req, res) {
               s.etiqueta AS sector_etiqueta, s.icono AS sector_icono,
               s.color_acento AS sector_color_acento,
               p.nombre AS pais_nombre, p.bandera_emoji AS pais_bandera,
-              p.estado AS pais_estado
+              p.estado AS pais_estado, p.descripcion_estado AS pais_descripcion_estado,
+              p.cobertura_detalle AS pais_cobertura_detalle
        FROM organizaciones o
        LEFT JOIN catalogo_sectores s ON s.clave = o.sector_empresarial_clave
        LEFT JOIN catalogo_paises_normativos p ON p.clave = o.pais_normativo_clave
