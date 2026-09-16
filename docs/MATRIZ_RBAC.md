@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-14.
+> Ultima generacion: 2026-09-16.
 
 ## `/api/auth`
 
@@ -250,6 +250,16 @@
 | GET | `/api/catalogo-sectores/:clave` | cualquier rol autenticado (sin restriccion de rol) |
 | PUT | `/api/catalogo-sectores/:clave` | superadmin |
 | PATCH | `/api/catalogo-sectores/:clave/estado` | superadmin |
+
+## `/api/configuracion-sectorial`
+
+**Clasificacion del dato:** gestion (motor base de propuestas/confirmaciones sectoriales, Auditoria N.16 Seccion 4/16 -> N.17 P1; autorizacion fina por tipo de propuesta dentro del controlador)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/configuracion-sectorial/propuestas/generar` | admin |
+| GET | `/api/configuracion-sectorial/propuestas` | admin, sso, medico |
+| PUT | `/api/configuracion-sectorial/propuestas/:id/confirmar` | admin, sso, medico |
 
 ## `/api/catalogo-paises`
 
@@ -548,4 +558,4 @@
 
 ---
 
-**Resumen:** 228 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 57 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 231 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 57 requieren sesion valida pero no restringen por rol especifico.

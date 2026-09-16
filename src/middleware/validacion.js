@@ -540,6 +540,21 @@ const validarActualizarLogoOrganizacion = [
   manejarErroresValidacion,
 ];
 
+// Motor base de propuestas sectoriales (Auditoria N.16 -> N.17, P1).
+// datosModificados solo es obligatorio cuando accion==='modificar' --
+// aceptar/rechazar no necesitan payload adicional mas alla del
+// comentario opcional.
+const validarConfirmarPropuestaSectorial = [
+  body('accion').isIn(['aceptar', 'rechazar', 'modificar']).withMessage('accion debe ser "aceptar", "rechazar" o "modificar".'),
+  body('comentario').optional({ values: 'falsy' }).trim().isLength({ max: 1000 }).withMessage('comentario no puede superar 1000 caracteres.'),
+  body('datosModificados')
+    .if(body('accion').equals('modificar'))
+    .notEmpty().withMessage('datosModificados es obligatorio cuando accion es "modificar".')
+    .bail()
+    .isObject().withMessage('datosModificados debe ser un objeto.'),
+  manejarErroresValidacion,
+];
+
 // ------------------------------------------------------------
 // Validacion para crear/actualizar un item de la Matriz de Riesgos.
 // ------------------------------------------------------------
@@ -618,4 +633,5 @@ module.exports = {
   validarActualizarLogoOrganizacion,
   validarCrearItemMatrizRiesgos,
   validarCrearAusencia,
+  validarConfirmarPropuestaSectorial,
 };
