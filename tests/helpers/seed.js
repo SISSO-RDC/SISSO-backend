@@ -96,6 +96,15 @@ async function sembrar() {
 
 async function limpiar() {
   await queryComoSuperadmin(`DELETE FROM organizaciones WHERE codigo IN ('TEST-ORG-A', 'TEST-ORG-B')`);
+  // Algunos archivos de test (auditoria_n14_p0, auditoria_n16_p0) siembran
+  // un superadmin standalone (organizacion_id NULL) para probar rutas
+  // exclusivas de superadmin -- al no colgar de ninguna organizacion, el
+  // DELETE de arriba (por codigo de organizacion + cascada) nunca lo
+  // toca, y quedaba huerfano entre corridas, chocando con
+  // idx_usuarios_superadmin_email_unico en la siguiente ejecucion.
+  // Se limpia aqui, en el punto central, para que cualquier archivo de
+  // test que use este mismo email quede cubierto sin duplicar logica.
+  await queryComoSuperadmin(`DELETE FROM usuarios WHERE email = 'superadmin.prueba@sisso-test.com' AND organizacion_id IS NULL`);
 }
 
 module.exports = { sembrar, limpiar };

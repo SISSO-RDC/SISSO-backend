@@ -20,6 +20,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+   require('dotenv').config();
 const { verificarOrigenCookie } = require('../src/middleware/auth');
 
 function crearReq({ origin, referer } = {}) {

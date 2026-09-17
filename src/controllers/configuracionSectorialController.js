@@ -249,11 +249,20 @@ async function confirmarPropuesta(req, res) {
       }
       actualizada = updRes.rows[0];
 
+      // OJO: datos_propuestos puede ser un string simple (area/epp/
+      // herramienta_ergonomica vienen como strings en catalogo_sectores,
+      // ver MAPA_TIPOS), no solo un objeto. El driver de pg NO
+      // re-serializa un string JS a JSON al enviarlo como parametro --
+      // lo manda como texto plano, lo que revienta el cast ::jsonb
+      // (p.ej. "Emergencias" en vez de "\"Emergencias\""). Por eso aqui
+      // SIEMPRE se hace JSON.stringify explicito, sin importar el tipo
+      // del dato, en vez de confiar en la serializacion automatica.
+      const datosParaHistorial = nuevoEstado === 'modificada' ? datosModificados : actualizada.datos_propuestos;
       await client.query(
         `INSERT INTO confirmaciones_configuracion_sectorial
            (propuesta_id, organizacion_id, accion, datos, comentario, usuario_id)
          VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
-        [id, organizacionId, nuevoEstado, datosConfirmados || actualizada.datos_propuestos, comentario || null, req.usuario.id]
+        [id, organizacionId, nuevoEstado, JSON.stringify(datosParaHistorial), comentario || null, req.usuario.id]
       );
 
       await registrarAuditoria({
