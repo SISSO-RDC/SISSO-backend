@@ -1,0 +1,608 @@
+
+> sisso-backend@1.0.0 test
+> node --test --test-concurrency=1 tests/*.test.js
+
+(node:15785) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:15807) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ ACCIDENTES: th NO recibe tipo_lesion ni descripcion en el listado (2697.099285ms)
+✔ ACCIDENTES: admin SI recibe tipo_lesion y descripcion en el listado (acceso completo) (62.085476ms)
+✔ ACCIDENTES: th NO recibe investigacion/acciones/evidencias al obtener el detalle (31.59183ms)
+✔ ACCIDENTES: sso SI recibe el expediente completo al obtener el detalle (150.605061ms)
+✔ ACCIDENTES: th no puede obtener la URL firmada de una evidencia (3.373107ms)
+✔ ACCIDENTES: admin SI puede obtener la URL firmada de una evidencia (70.49886ms)
+✔ INDICADORES: th NO recibe aptitudMedica ni hallazgosAnormales ni matrizRiesgos (144.837577ms)
+✔ INDICADORES: sso NO recibe aptitudMedica ni hallazgosAnormales (59.060567ms)
+✔ INDICADORES: medico SI recibe aptitudMedica y hallazgosAnormales (86.699922ms)
+✔ INDICADORES: admin NO recibe aptitudMedica ni hallazgosAnormales (no se vuelve lector clinico) (57.346649ms)
+✔ REPORTES: th NO recibe aptitudMedica ni matrizRiesgos, SI recibe ausentismo (339.59486ms)
+✔ REPORTES: sso NO recibe ausentismo ni aptitudMedica, SI recibe matrizRiesgos y ergonomia (323.927286ms)
+✔ REPORTES: medico SI recibe aptitudMedica y examenesComplementarios (321.209894ms)
+✔ REPORTES: el PDF respeta la misma matriz que el JSON y no revienta para ningun rol (1495.408094ms)
+(node:16123) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:16142) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] Error en registrarAptitud: error: Fallo simulado de auditoria (prueba de atomicidad C-N08-01)
+    at /workspaces/SISSO-backend/node_modules/pg/lib/client.js:652:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async registrarAuditoria (/workspaces/SISSO-backend/src/utils/auditoria.js:110:5)
+    at async /workspaces/SISSO-backend/src/controllers/aptitudController.js:641:7
+    at async withTransaction (/workspaces/SISSO-backend/src/db/pool.js:168:20)
+    at async registrarAptitud (/workspaces/SISSO-backend/src/controllers/aptitudController.js:593:23) {
+  length: 186,
+  severity: 'ERROR',
+  code: 'P0001',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: 'PL/pgSQL function test_forzar_fallo_auditoria() line 3 at RAISE',
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'pl_exec.c',
+  line: '3909',
+  routine: 'exec_stmt_raise'
+}
+✔ ATOMICIDAD: si el INSERT de auditoria falla, NO queda un registro parcial de aptitud (rollback completo) (2017.335235ms)
+✔ ATOMICIDAD: sin la restriccion forzada, registrar aptitud SI funciona normalmente (no quedo nada roto) (223.630357ms)
+✔ G15-05: todo controlador con rutas de escritura sobre un recurso clinico_individual llama a registrarAuditoria al menos una vez (452.133368ms)
+(node:16375) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:16394) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ C14-02: registrar aptitud (no "no_apto") para un trabajador con PUESTO_SIN_MATRIZ es rechazado (409) (2203.642749ms)
+✔ C14-02: confirmar-sin-exposiciones exige un motivo de al menos 15 caracteres (33.513234ms)
+✔ C14-02: tras confirmar-sin-exposiciones, el puesto pasa a PUESTO_CON_MATRIZ_VALIDADA y el registro de aptitud ya no se bloquea (365.438306ms)
+✔ C14-05: admin NO puede retirar una regla GLOBAL de contraindicacion (403) (33.027229ms)
+✔ C14-05: medico SI puede retirar una regla GLOBAL de contraindicacion (69.933134ms)
+✔ C14-05: admin SI puede retirar una regla propia de su organizacion (no global) (67.034564ms)
+(node:16574) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:16587) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ G14-01: sso puede crear una evaluacion psicosocial individual (2205.415378ms)
+✔ G14-01: admin NO puede listar evaluaciones psicosociales individuales (403) (34.219603ms)
+✔ G14-01: admin NO puede leer el detalle de una evaluacion psicosocial individual (403) (5.076426ms)
+✔ G14-01: admin SI puede ver el resumen agregado de riesgo psicosocial (34.847362ms)
+✔ G14-01: medico SI puede leer el detalle de la evaluacion individual (162.207671ms)
+✔ G14-09: documentar-decision-retest-sts sobre un examen que NO es retest confirmatorio devuelve 404 (64.814417ms)
+✔ G14-09: documentar-decision-retest-sts SI funciona sobre un examen marcado es_retest_confirmatorio=true (127.545239ms)
+✔ G14-10: el catalogo de limites de higiene expone al menos el limite de ruido continuo 8h (37.787202ms)
+✔ G14-10: una medicion vinculada al catalogo toma el limite del catalogo, no el enviado por el cliente (108.327238ms)
+(node:16832) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:16862) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ N16-P0: cualquier rol autenticado puede listar el catalogo de sectores (3758.179444ms)
+✔ N16-P0: sin token, listar el catalogo de sectores es rechazado (401) (3.32054ms)
+✔ N16-P0: cualquier rol autenticado puede listar el catalogo de paises/normativa (33.634961ms)
+✔ N16-P0: admin de organizacion NO puede editar el catalogo global de sectores (403) (4.107176ms)
+✔ N16-P0: medico/sso/th NO pueden editar ni cambiar estado del catalogo de sectores (403) (16.347221ms)
+✔ N16-P0: superadmin SI puede editar el catalogo global de sectores, y queda auditado (124.373903ms)
+✔ N16-P0: admin de organizacion NO puede editar el catalogo global de paises/normativa (403) (3.0914ms)
+✔ N16-P0: sso/medico/th NO pueden aplicar la configuracion sectorial (403) (9.368907ms)
+✔ N16-P0: un sectorClave inexistente es rechazado (400), no se aplica silenciosamente (35.749127ms)
+✔ N16-P0: un paisNormativoClave inexistente es rechazado (400) (66.798413ms)
+✔ N16-P0: admin de A aplica configuracion sectorial; el perfil de B queda intacto (aislamiento) (260.594851ms)
+(node:17108) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:17121) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ N17-motor-base: generar propuestas sin sector configurado es rechazado (400) (3353.100392ms)
+✔ N17-motor-base: sso/medico/th NO pueden generar propuestas (403) (105.225251ms)
+✔ N17-motor-base: admin genera propuestas a partir del sector configurado (711.379735ms)
+✔ N17-motor-base: generar de nuevo es idempotente -- no duplica lo ya propuesto (416.22826ms)
+✔ N17-motor-base: listar propuestas devuelve solo las de la propia organizacion (74.221668ms)
+✔ N17-motor-base: th NO puede listar ni confirmar propuestas (403) (8.353833ms)
+✔ N17-motor-base: tipo/estado invalidos en el listado son rechazados (400) (6.648838ms)
+✔ N17-motor-base: solo medico puede confirmar una propuesta de tipo "examen" (154.010671ms)
+✔ N17-motor-base: solo sso puede confirmar una propuesta de tipo "riesgo" (146.370046ms)
+✔ N17-motor-base: solo admin puede confirmar una propuesta de tipo "area" (rechaza sso/medico) (150.551953ms)
+✔ N17-motor-base: modificar exige datosModificados (400 si falta) (4.322848ms)
+✔ N17-motor-base: modificar con datosModificados guarda el dato editado (81.351606ms)
+✔ N17-motor-base: una propuesta ya revisada no se puede volver a revisar (409) (34.126447ms)
+✔ N17-motor-base: rechazar una propuesta y volver a generar NO la revive (respeta la decision) (445.873316ms)
+✔ N17-motor-base: la organizacion B no puede confirmar una propuesta de A aunque conozca su ID (404) (34.289593ms)
+✔ N17-motor-base: cada confirmacion queda en el historial append-only (29.30103ms)
+✔ N17-motor-base: generar y confirmar quedan registrados en la auditoria general (55.6473ms)
+✔ G12-01: calcularPromedioAgudos exige las 3 frecuencias (2000/3000/4000 Hz), no acepta 2 de 3 (1.643047ms)
+✔ G12-02 (regresion de negocio, no solo del bug ||null): un umbral de 0 dB HL es un dato valido y debe participar en el promedio (0.238946ms)
+✔ calcularSTS: cambio >=10 dB en el promedio de agudos es positivo (criterio OSHA), y datosInsuficientes es explicito (0.307303ms)
+✔ G12-04: el patron de notch se etiqueta como tamizaje ("notch_ocupacional_tamizaje"), nunca como diagnostico confirmado (1.854742ms)
+✔ clasificarPatron: audiometria normal (todo <=25 dB) se clasifica como normal (0.249155ms)
+✔ C12-02: el patron ya NO usa el cociente fijo 0.70 como criterio principal -- un joven con ratio bajo el LLN especifico se marca obstructivo aunque el ratio este por encima de 0.70 (1.084073ms)
+✔ C12-02: reversibilidad post-broncodilatador usa >10% del predicho, no >=12%+200mL del valor pre-BD (0.576997ms)
+✔ C12-02: una espirometria sin datos de calidad de maniobra queda marcada interpretable=false (no se asume buena calidad por defecto) (0.232885ms)
+✔ C12-02: una espirometria con maniobras suficientes y buena repetibilidad (<=150 mL) queda interpretable=true, grado A (0.75518ms)
+✔ C12-02: patron restrictivo sugerido cuando FVC < LLN y el cociente esta dentro de rango normal (0.414735ms)
+✔ G15-03: en produccion, un Origin que NO esta en CORS_ORIGINS es rechazado (403) para rutas cookie-authenticated (1.498727ms)
+✔ G15-03: en produccion, un Referer que NO esta en CORS_ORIGINS es rechazado (403) igual que un Origin invalido (0.27831ms)
+✔ G15-03: en produccion, un Origin que SI esta en CORS_ORIGINS pasa (next() llamado, sin respuesta de error) (0.34257ms)
+✔ G15-03: en produccion, SIN CORS_ORIGINS configurada, cualquier Origin con header es rechazado (fail-closed, no fail-open) (0.279562ms)
+✔ G15-03: en produccion, una peticion SIN Origin ni Referer (Postman, apps moviles, health checks) pasa (0.271286ms)
+✔ G15-03: fuera de produccion (desarrollo/test), el middleware es permisivo a proposito (no traba el flujo local) (0.372778ms)
+✔ G15-03 (salvaguarda de regresion): las rutas /api/auth/refrescar y /api/auth/logout usan verificarOrigenCookie en su cadena de middlewares (205.965983ms)
+(node:17396) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:17408) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ DASHBOARD: admin NO recibe el campo "aptitud" en emosProximas (3131.843618ms)
+✔ DASHBOARD: sso NO recibe el campo "aptitud" en emosProximas (75.193082ms)
+✔ DASHBOARD: th NO recibe el campo "aptitud" en emosProximas (73.839685ms)
+✔ DASHBOARD: medico SI recibe el campo "aptitud" en emosProximas (73.456322ms)
+✔ DASHBOARD: actividadReciente de admin jamas contiene una entrada tipo='aptitud' (38.920224ms)
+✔ DASHBOARD: actividadReciente de sso jamas contiene una entrada tipo='aptitud' (36.180233ms)
+✔ DASHBOARD: actividadReciente de th jamas contiene una entrada tipo='aptitud' (66.329528ms)
+✔ DASHBOARD: actividadReciente de medico SI puede contener una entrada tipo='aptitud' (38.902563ms)
+✔ DASHBOARD: distribucionAptitud nunca incluye identidad de un trabajador (para ningun rol) (147.51311ms)
+✔ TRABAJADORES: sso NO recibe datos antropometricos (sexo/fecha_nacimiento/talla/peso) al listar (75.703346ms)
+✔ TRABAJADORES: admin SI recibe datos antropometricos (los administra legitimamente) (70.053158ms)
+✔ TRABAJADORES: th SI recibe datos antropometricos (los administra legitimamente) (71.398108ms)
+✔ TRABAJADORES: medico recibe el conjunto completo, incluida aptitud (71.224712ms)
+✔ TRABAJADORES: admin/th NO reciben el campo "aptitud" (sin cambios respecto a la version anterior) (73.613956ms)
+(node:17679) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ firmaPdf: la consulta de obtenerFirmaParaPdf() corre sin error contra el esquema real (regresion: u.nombre no existe, es u.nombre_completo) (665.071561ms)
+(node:17909) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+SQL ejecutado {
+  text: 'SELECT tabla, columna_finalidad, categoria_datos FROM gobierno_datos_inventario',
+  duration: 8,
+  filas: 22
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 12,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 8,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 10,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 8,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 8,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 8,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 8,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 8,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 8,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 10,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 8,
+  filas: 1
+}
+SQL ejecutado {
+  text: 'SELECT is_nullable FROM information_schema.columns\n' +
+    '       WHERE table_name = $1 AND column_name = $2',
+  duration: 9,
+  filas: 1
+}
+✔ Gobierno de datos: toda tabla del inventario tiene su columna de finalidad en NOT NULL (742.01237ms)
+✔ Gobierno de datos: la base de datos RECHAZA insertar una evaluacion ocupacional sin finalidad_tratamiento_codigo (28.827057ms)
+SQL ejecutado {
+  text: '\n' +
+    '    SELECT gi.tabla\n' +
+    '    FROM gobierno_datos_inventario gi\n' +
+    '    JOIN information_schema.columns c\n' +
+    '      ON c.table_name = gi.tabla AND c.column_name = gi.columna_finalidad\n' +
+    "    WHERE gi.categoria_datos IN ('sensible', 'personal') AND c.is_nullable = 'YES'\n" +
+    '  ',
+  duration: 32,
+  filas: 0
+}
+✔ Gobierno de datos: ninguna tabla sensible/personal del inventario quedo con finalidad nullable (32.127317ms)
+(node:17922) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:17934) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ HISTORIA CLINICA: registrar preocupacional con payload minimo responde 201 (no 500) (1648.352271ms)
+✔ HISTORIA CLINICA: registrar periodica con payload minimo responde 201 (no 500) (74.756326ms)
+✔ HISTORIA CLINICA: registrar reintegro con payload minimo responde 201 (no 500) (80.879716ms)
+✔ HISTORIA CLINICA: registrar retiro con payload minimo responde 201 (no 500) (75.036679ms)
+✔ G15-01: ninguna ruta de la aplicacion es publica salvo la lista explicita y justificada de excepciones (460.633442ms)
+✔ G15-01: toda ruta que modifica datos (POST/PUT/PATCH/DELETE) fuera de la lista publica exige un rol especifico o sesion valida (3.961824ms)
+✔ G15-06: todo archivo que implementa logica de k-anonimato/grupo-pequeño importa el umbral centralizado, ninguno lo reimplementa suelto (7.967733ms)
+✔ G15-06: ningun controlador compara un conteo contra el literal "5" en una condicion que menciona grupo/redaccion (deberia usar UMBRAL_K_ANONIMATO) (8.464577ms)
+(node:18203) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:18216) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ APTITUD: sso no puede acceder a catalogo de reglas de contraindicacion (2525.514834ms)
+✔ APTITUD: th no puede acceder a catalogo de reglas de contraindicacion (29.816363ms)
+✔ APTITUD: admin SI puede acceder al catalogo de reglas (no es dato clinico individual) (59.722395ms)
+✔ APTITUD: admin NO puede acceder al historial de aptitud de un trabajador (dato clinico individual) (2.76985ms)
+✔ APTITUD: sso NO puede acceder al historial de aptitud de un trabajador (2.818982ms)
+✔ APTITUD: medico SI puede acceder al historial de aptitud de un trabajador (108.726283ms)
+✔ RESTRICCIONES: admin no puede emitir una restriccion medica (3.928964ms)
+✔ RESTRICCIONES: sso no puede emitir una restriccion medica (4.117245ms)
+✔ RESTRICCIONES: admin no puede ni siquiera leer restricciones de un trabajador (2.388337ms)
+✔ RESTRICCIONES: sso SI puede leer restricciones de un trabajador (proyeccion operativa) (55.602695ms)
+✔ ENFERMEDAD PROFESIONAL: sso no puede crear un caso (detalle clinico) (3.322954ms)
+✔ ENFERMEDAD PROFESIONAL: admin no puede listar casos de un trabajador (5.37345ms)
+✔ ENFERMEDAD PROFESIONAL: th no puede acceder a la vista preventiva SSO (es exclusiva de sso, no de todo el equipo SST) (3.876817ms)
+✔ ENFERMEDAD PROFESIONAL: medico no puede acceder a la vista preventiva SSO (ruta exclusiva de sso) (2.688268ms)
+✔ ENFERMEDAD PROFESIONAL: sso SI puede acceder a su vista preventiva agregada (65.438001ms)
+✔ AUDIOMETRIA: admin no puede listar examenes de un trabajador (2.804274ms)
+✔ AUDIOMETRIA: th no puede listar examenes de un trabajador (3.059901ms)
+✔ AUDIOMETRIA: sso SI puede listar examenes (version resumida, sin detalle clinico) (55.602384ms)
+✔ AUDIOMETRIA: sso no puede registrar un examen nuevo (5.308398ms)
+✔ ESPIROMETRIA: admin no puede listar examenes de un trabajador (4.474464ms)
+✔ ESPIROMETRIA: th no puede listar examenes de un trabajador (4.072622ms)
+✔ ESPIROMETRIA: sso SI puede listar examenes (version resumida, sin detalle clinico) (65.273756ms)
+✔ ESPIROMETRIA: sso no puede registrar un examen nuevo (9.2147ms)
+✔ VISIOMETRIA: admin no puede listar examenes de un trabajador (7.608652ms)
+✔ VISIOMETRIA: th no puede listar examenes de un trabajador (5.626532ms)
+✔ VISIOMETRIA: sso SI puede listar examenes (version resumida, sin detalle clinico) (58.26359ms)
+✔ VISIOMETRIA: sso no puede registrar un examen nuevo (2.319642ms)
+✔ CERTIFICADOS: admin no puede generar el certificado de aptitud individual (dato clinico) (4.329301ms)
+✔ CERTIFICADOS: sso no puede generar el certificado de aptitud individual (3.270122ms)
+✔ CERTIFICADOS: th no puede generar el certificado de aptitud individual (1.964808ms)
+✔ CERTIFICADOS: medico SI puede generar el certificado de aptitud individual (no da 403) (179.141388ms)
+✔ AUSENTISMO: sso NO recibe el campo diagnostico_cie10 al obtener una ausencia (30.240824ms)
+✔ AUSENTISMO: admin NO recibe el campo diagnostico_cie10 al obtener una ausencia (31.671817ms)
+✔ AUSENTISMO: th NO recibe el campo diagnostico_cie10 al obtener una ausencia (32.95914ms)
+✔ AUSENTISMO: medico SI recibe el campo diagnostico_cie10 al obtener una ausencia (31.246593ms)
+✔ AUSENTISMO: sso no puede obtener la URL firmada del certificado escaneado (dato clinico) (3.89512ms)
+✔ ALERTAS: sso NO recibe incluyeClinicas=true en el listado de alertas (83.065456ms)
+✔ ALERTAS: medico SI recibe incluyeClinicas=true en el listado de alertas (265.548471ms)
+✔ ALERTAS: el listado de sso jamas contiene una alerta con es_clinica=true (79.520597ms)
+(node:18463) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ REFRESH TOKEN: dos tokens del mismo usuario emitidos en el mismo instante NUNCA colisionan (jti unico) (1209.781415ms)
+[servidor-pruebas] (node:18482) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ REFRESH TOKEN: refrescar inmediatamente despues del login (mismo segundo) sigue detectando reuso del token viejo (709.731509ms)
+(node:18739) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+SQL ejecutado {
+  text: 'SELECT id, organizacion_id FROM trabajadores',
+  duration: 27,
+  filas: 1
+}
+✔ RLS: una consulta SIN "WHERE organizacion_id" (el bug exacto que teme la auditoria) sigue aislada gracias a la politica de base de datos (545.410718ms)
+SQL ejecutado { text: 'SELECT id FROM trabajadores', duration: 26, filas: 0 }
+✔ RLS: sin NINGUN contexto de organizacion ni superadmin, una consulta sin WHERE no devuelve nada de ninguna organizacion (26.608896ms)
+SQL ejecutado {
+  text: 'SELECT id, organizacion_id, exposicion_codigo, codigo_cie10_patron\n' +
+    '             FROM reglas_contraindicacion\n' +
+    '             WHERE activa = true AND (organizacion_id IS NULL OR organizacion_id = $1)',
+  duration: 28,
+  filas: 23
+}
+✔ RLS C12-01: organizacion A ve reglas de contraindicacion globales (organizacion_id NULL) y las suyas propias, nunca las de B (29.269192ms)
+SQL ejecutado {
+  text: 'SELECT id FROM reglas_contraindicacion WHERE organizacion_id IS NULL',
+  duration: 26,
+  filas: 0
+}
+✔ RLS C12-01: sin contexto de organizacion (peticion no autenticada), las reglas globales NO se filtran (fail-closed, no fail-open) (26.588288ms)
+SQL ejecutado {
+  text: 'SELECT id, nombre, codigo_cie10_patron, tipo_coincidencia, exposicion_codigo,\n' +
+    '                    severidad, descripcion_riesgo, sugerencia_accion, fuente_referencia\n' +
+    '             FROM reglas_contraindicacion\n' +
+    '             WHERE activa = true AND (organizacion_id IS NULL OR organizacion_id = $1)',
+  duration: 26,
+  filas: 23
+}
+✔ C12-01: el motor de contraindicaciones detecta el caso global conocido (epilepsia + trabajo en alturas) con las filas que RLS permite ver para la organizacion A (27.653537ms)
+✔ C12-01 (salvaguarda de regresion): catalogo_exposiciones y reglas_contraindicacion NO deben tener la politica generica "aislamiento_tenant" (28.743841ms)
+SQL ejecutado {
+  text: 'SELECT id FROM auditoria_pendiente WHERE id = $1',
+  duration: 27,
+  filas: 0
+}
+✔ G12-08: auditoria_pendiente esta protegida por RLS -- una organizacion normal no puede leerla, el superadmin si (108.192695ms)
+SQL ejecutado {
+  text: 'SELECT id FROM trabajadores WHERE id = ANY($1::uuid[])',
+  duration: 27,
+  filas: 2
+}
+✔ RLS: con es_superadmin=true, una consulta sin WHERE si ve filas de ambas organizaciones (comportamiento esperado) (27.149287ms)
+(node:18758) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[servidor-pruebas] (node:18771) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ C1: admin de Organizacion A NO puede leer un trabajador de Organizacion B por ID directo (2618.556821ms)
+✔ C1: admin de Organizacion A SI puede leer un trabajador de su propia organizacion (59.665919ms)
+✔ C1: admin de Organizacion B tampoco puede leer un trabajador de Organizacion A (88.204157ms)
+✔ C1: listar trabajadores en Organizacion B jamas incluye trabajadores de Organizacion A (61.114533ms)
+✔ G4: SSO no puede acceder al catalogo de Historia Clinica (exclusivo de medico) (34.501118ms)
+✔ G4: TH no puede acceder al catalogo de Historia Clinica (32.156942ms)
+✔ G4: admin no puede acceder al catalogo de Historia Clinica (dato clinico exclusivo de medico) (8.86095ms)
+✔ G4: medico SI puede acceder al catalogo de Historia Clinica (32.819629ms)
+✔ G4: sin token, cualquier ruta protegida responde 401 (no 403, no 200) (4.98739ms)
+✔ G1: tras 5 codigos TOTP incorrectos, el usuario queda bloqueado (429) aunque el 6to codigo sea correcto (667.15109ms)
+ℹ tests 162
+ℹ suites 0
+ℹ pass 162
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 405352.502869

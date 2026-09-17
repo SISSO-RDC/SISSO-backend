@@ -28,27 +28,49 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 
+const { Client } = require('pg');
 const { iniciarServidor, detenerServidor } = require('./helpers/servidor');
 const { iniciarSesionCompleta, peticion } = require('./helpers/cliente');
 const { sembrar, limpiar } = require('./helpers/seed');
-const { pool, queryComoSuperadmin } = require('../src/db/pool');
+const { queryComoSuperadmin } = require('../src/db/pool');
 
 let datos;
 let tokenMedicoA;
+
+// CORREGIDO (N.17, tras adoptar un rol de conexion restringido para
+// tests -- ver DATABASE_URL_ADMIN en .env.example): CREATE/DROP
+// TRIGGER y CREATE/DROP FUNCTION sobre la tabla `auditoria` exigen
+// ser DUEÑO de esa tabla en Postgres. A diferencia de TRIGGER o
+// CREATE (que si se pueden otorgar por GRANT a un rol que no es
+// dueño), "ser dueño" no es algo que se pueda conceder por partes --
+// asi que esta prueba puntual, que deliberadamente rompe la tabla
+// auditoria a proposito para verificar la atomicidad, necesita su
+// propia conexion directa como dueño SOLO para montar y desmontar
+// ese andamiaje de prueba. El resto de la prueba (la llamada real a
+// la API via peticion(), y las lecturas de verificacion via
+// queryComoSuperadmin) sigue exactamente igual que antes, con el rol
+// normal de pruebas -- "superadmin" en este proyecto es un concepto
+// de aplicacion (una variable de sesion que las politicas RLS leen),
+// no un privilegio de Postgres, asi que queryComoSuperadmin no
+// necesita esta conexion especial.
+let clienteAdmin;
 
 before(async () => {
   await limpiar();
   datos = await sembrar();
   await iniciarServidor();
   tokenMedicoA = await iniciarSesionCompleta(datos.usuarios.medico.email, datos.passwordPrueba, datos.secretoTotp);
+  clienteAdmin = new Client({ connectionString: process.env.DATABASE_URL_ADMIN || process.env.DATABASE_URL });
+  await clienteAdmin.connect();
 });
 
 after(async () => {
   detenerServidor();
   // Por si alguna prueba fallara antes de poder quitar el trigger,
   // nos aseguramos de dejarlo removido siempre.
-  await pool.query(`DROP TRIGGER IF EXISTS test_trigger_fallo_auditoria ON auditoria`).catch(() => {});
-  await pool.query(`DROP FUNCTION IF EXISTS test_forzar_fallo_auditoria()`).catch(() => {});
+  await clienteAdmin.query(`DROP TRIGGER IF EXISTS test_trigger_fallo_auditoria ON auditoria`).catch(() => {});
+  await clienteAdmin.query(`DROP FUNCTION IF EXISTS test_forzar_fallo_auditoria()`).catch(() => {});
+  await clienteAdmin.end().catch(() => {});
   await limpiar();
 });
 
@@ -75,14 +97,14 @@ test('ATOMICIDAD: si el INSERT de auditoria falla, NO queda un registro parcial 
   // minima de justificacion_clinica y responde 400 en ese caso, lo
   // cual interferiria con esta prueba si reutilizaramos ese mismo
   // codigo de error para un motivo distinto.
-  await pool.query(`
+  await clienteAdmin.query(`
     CREATE OR REPLACE FUNCTION test_forzar_fallo_auditoria() RETURNS TRIGGER AS $f$
     BEGIN
       RAISE EXCEPTION 'Fallo simulado de auditoria (prueba de atomicidad C-N08-01)';
     END;
     $f$ LANGUAGE plpgsql;
   `);
-  await pool.query(`
+  await clienteAdmin.query(`
     CREATE TRIGGER test_trigger_fallo_auditoria BEFORE INSERT ON auditoria
     FOR EACH ROW EXECUTE FUNCTION test_forzar_fallo_auditoria();
   `);
@@ -105,8 +127,8 @@ test('ATOMICIDAD: si el INSERT de auditoria falla, NO queda un registro parcial 
     assert.ok(cuerpo.error, 'debe incluir un mensaje de error.');
   } finally {
     // Quitar el trigger SIEMPRE, incluso si la asercion de arriba fallara.
-    await pool.query(`DROP TRIGGER IF EXISTS test_trigger_fallo_auditoria ON auditoria`);
-    await pool.query(`DROP FUNCTION IF EXISTS test_forzar_fallo_auditoria()`);
+    await clienteAdmin.query(`DROP TRIGGER IF EXISTS test_trigger_fallo_auditoria ON auditoria`);
+    await clienteAdmin.query(`DROP FUNCTION IF EXISTS test_forzar_fallo_auditoria()`);
   }
 
   // Verificacion de fondo: NINGUN cambio clinico debe haber quedado
