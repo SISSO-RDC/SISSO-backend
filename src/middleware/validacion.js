@@ -551,7 +551,19 @@ const validarConfirmarPropuestaSectorial = [
     .if(body('accion').equals('modificar'))
     .notEmpty().withMessage('datosModificados es obligatorio cuando accion es "modificar".')
     .bail()
-    .isObject().withMessage('datosModificados debe ser un objeto.'),
+    // BUG encontrado durante Auditoria N.17 (C-17-03, materializacion
+    // de 'area'): esto exigia .isObject(), pero el propio controlador
+    // (configuracionSectorialController.js, ver comentario junto a
+    // JSON.stringify en confirmarPropuesta) documenta que 'area',
+    // 'epp' y 'herramienta_ergonomica' vienen como STRING simple, no
+    // como objeto -- .isObject() rechazaba con 400 cualquier
+    // "modificar" sobre esos 3 tipos. Ningun test anterior lo
+    // detecto porque "N17-motor-base: modificar con datosModificados
+    // guarda el dato editado" usa un tipo que si es objeto (riesgo/
+    // examen/kpi). Se acepta objeto O string no vacio, igual que
+    // MAPA_TIPOS.clave() ya tolera ambos casos al generar.
+    .custom((value) => (typeof value === 'object' && value !== null) || (typeof value === 'string' && value.trim().length > 0))
+    .withMessage('datosModificados debe ser un objeto o un texto no vacío.'),
   manejarErroresValidacion,
 ];
 

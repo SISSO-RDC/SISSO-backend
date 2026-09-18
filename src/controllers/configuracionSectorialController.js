@@ -68,6 +68,48 @@ const ROLES_POR_TIPO = {
 };
 
 // ------------------------------------------------------------
+// MATERIALIZADORES (Auditoria N.17, C-17-03 -- "el motor todavia
+// PROPONE y registra decisiones, pero no materializa
+// automaticamente las propuestas aceptadas en las entidades
+// reales"). Cada entrada sabe crear (o reutilizar, si ya existe)
+// el objeto real de su tipo dentro de la MISMA transaccion que
+// confirma la propuesta, y devuelve {tabla, id} para dejar
+// trazabilidad en propuestas_configuracion_sectorial.
+//
+// Solo 'area' tiene materializador en este lote (ver
+// migration_084 para por que 'area' no tenia tabla propia hasta
+// ahora). Los otros 6 tipos quedan exactamente como los dejo el
+// motor base de migration_083 -- sin materializador, aplicado
+// permanece false -- hasta que se aborden en un lote siguiente.
+// ------------------------------------------------------------
+const MATERIALIZADORES = {
+  async area(client, { organizacionId, nombre, usuarioId }) {
+    if (!nombre || typeof nombre !== 'string') {
+      // Dato propuesto/modificado sin un nombre reconocible: no se
+      // materializa nada (misma cautela que MAPA_TIPOS.clave() al
+      // generar -- nunca se inventa un nombre).
+      return null;
+    }
+    const res = await client.query(
+      `INSERT INTO areas_organizacion (organizacion_id, nombre, creado_por, origen)
+       VALUES ($1, $2, $3, 'sectorial')
+       ON CONFLICT (organizacion_id, nombre) DO UPDATE SET activo = true
+       RETURNING id`,
+      [organizacionId, nombre, usuarioId]
+    );
+    return { tabla: 'areas_organizacion', id: res.rows[0].id };
+  },
+};
+
+// Extrae el nombre a materializar de un dato propuesto/modificado
+// de un tipo dado, con la misma tolerancia string-u-objeto que
+// MAPA_TIPOS.clave() (ver comentario de esa constante).
+function extraerNombreMaterializable(tipo, datos) {
+  const clave = MAPA_TIPOS[tipo]?.clave;
+  return clave ? clave(datos) : null;
+}
+
+// ------------------------------------------------------------
 // POST /api/configuracion-sectorial/propuestas/generar
 // ------------------------------------------------------------
 async function generarPropuestas(req, res) {
@@ -210,7 +252,7 @@ async function confirmarPropuesta(req, res) {
 
   try {
     const propRes = await query(
-      `SELECT id, tipo, estado FROM propuestas_configuracion_sectorial WHERE id = $1 AND organizacion_id = $2`,
+      `SELECT id, tipo, clave_item, estado FROM propuestas_configuracion_sectorial WHERE id = $1 AND organizacion_id = $2`,
       [id, organizacionId]
     );
     const propuesta = propRes.rows[0];
@@ -235,13 +277,40 @@ async function confirmarPropuesta(req, res) {
 
     let actualizada;
     await withTransaction(async (client) => {
+      // C-17-03: si acepta o modifica y este tipo YA tiene
+      // materializador, crear/reutilizar el objeto real ANTES del
+      // UPDATE de abajo, para poder dejar la referencia
+      // (entidad_materializada_*) en la misma fila y en la misma
+      // transaccion -- si el materializador falla, toda la
+      // confirmacion se revierte (nunca queda "aceptada" sin su
+      // objeto real, ni viceversa).
+      let materializacion = null;
+      if (nuevoEstado === 'aceptada' || nuevoEstado === 'modificada') {
+        const materializador = MATERIALIZADORES[propuesta.tipo];
+        if (materializador) {
+          const nombre = nuevoEstado === 'modificada'
+            ? extraerNombreMaterializable(propuesta.tipo, datosModificados)
+            : extraerNombreMaterializable(propuesta.tipo, propuesta.clave_item) || propuesta.clave_item;
+          materializacion = await materializador(client, {
+            organizacionId, nombre, usuarioId: req.usuario.id,
+          });
+        }
+      }
+
       const updRes = await client.query(
         `UPDATE propuestas_configuracion_sectorial
          SET estado = $1, datos_confirmados = $2::jsonb, revisado_por = $3,
-             revisado_en = now(), comentario_revision = $4
+             revisado_en = now(), comentario_revision = $4,
+             aplicado = $7, aplicado_en = CASE WHEN $7 THEN now() ELSE NULL END,
+             entidad_materializada_tabla = $8, entidad_materializada_id = $9
          WHERE id = $5 AND organizacion_id = $6 AND estado = 'pendiente'
-         RETURNING id, tipo, clave_item, datos_propuestos, datos_confirmados, estado, revisado_en, comentario_revision`,
-        [nuevoEstado, datosConfirmados, req.usuario.id, comentario || null, id, organizacionId]
+         RETURNING id, tipo, clave_item, datos_propuestos, datos_confirmados, estado,
+                   revisado_en, comentario_revision, aplicado, aplicado_en,
+                   entidad_materializada_tabla, entidad_materializada_id`,
+        [
+          nuevoEstado, datosConfirmados, req.usuario.id, comentario || null, id, organizacionId,
+          Boolean(materializacion), materializacion?.tabla || null, materializacion?.id || null,
+        ]
       );
       if (updRes.rows.length === 0) {
         // Carrera: otro revisor la resolvio entre el SELECT y el UPDATE.
@@ -271,7 +340,16 @@ async function confirmarPropuesta(req, res) {
         accion: 'confirmar_propuesta_configuracion_sectorial',
         entidad: 'propuestas_configuracion_sectorial',
         entidadId: id,
-        detalle: { tipo: propuesta.tipo, resultado: nuevoEstado, comentario: comentario || null },
+        detalle: {
+          tipo: propuesta.tipo,
+          resultado: nuevoEstado,
+          comentario: comentario || null,
+          // C-17-03: trazabilidad de que objeto real quedo creado/
+          // reutilizado (null si este tipo aun no tiene
+          // materializador, o si la propuesta fue rechazada).
+          entidadMaterializadaTabla: materializacion?.tabla || null,
+          entidadMaterializadaId: materializacion?.id || null,
+        },
         req,
         client,
       });
