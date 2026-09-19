@@ -18,9 +18,11 @@
 //     EDITADO, no el original propuesto.
 //   - Rechazar una propuesta de 'area' NUNCA crea nada en
 //     areas_organizacion.
-//   - Los otros 6 tipos (sin materializador todavia) siguen sin
-//     tocar aplicado/entidad_materializada_* -- confirma que este
-//     lote no se extendio por accidente a tipos que no le tocaban.
+//   (La confirmacion de que los OTROS tipos aun sin materializador
+//   no se ven afectados vivio aqui mientras C-17-03 estuvo a medio
+//   camino -- con los 7 tipos ya materializados, ver el archivo de
+//   pruebas propio de cada tipo, incluido
+//   n17_c17_03_materializacion_kpis.test.js para el ultimo.)
 // ============================================================
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -161,18 +163,4 @@ test('C-17-03: aceptar una propuesta cuyo nombre YA existe como area real reutil
     [datos.orgAId]
   );
   assert.equal(conteo.rows[0].n, 1, 'Nunca debe quedar mas de una fila real para el mismo nombre de area.');
-});
-
-test('C-17-03: los tipos SIN materializador todavia (p.ej. kpi) siguen sin aplicar/entidad_materializada al aceptar', async () => {
-  const listado = await peticion('GET', '/configuracion-sectorial/propuestas?tipo=kpi', tokenAdminA);
-  const propuesta = listado.datos.propuestas[0];
-  assert.ok(propuesta, 'Debia existir al menos una propuesta de tipo kpi para este sector.');
-
-  const confirmar = await peticion(
-    'PUT', `/configuracion-sectorial/propuestas/${propuesta.id}/confirmar`, tokenAdminA, { accion: 'aceptar' }
-  );
-  assert.equal(confirmar.status, 200, JSON.stringify(confirmar.datos));
-  assert.equal(confirmar.datos.propuesta.aplicado, false,
-    'A esta altura (lotes area/puesto/epp/riesgo) "kpi" no debe verse afectado todavia.');
-  assert.equal(confirmar.datos.propuesta.entidad_materializada_id, null);
 });

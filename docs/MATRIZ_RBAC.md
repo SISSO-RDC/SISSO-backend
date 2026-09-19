@@ -244,6 +244,30 @@
 |---|---|---|
 | GET | `/api/riesgos-organizacion/` | cualquier rol autenticado (sin restriccion de rol) |
 
+## `/api/examenes-organizacion`
+
+**Clasificacion del dato:** (sin clasificar -- revisar)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/examenes-organizacion/` | cualquier rol autenticado (sin restriccion de rol) |
+
+## `/api/herramientas-ergonomicas-organizacion`
+
+**Clasificacion del dato:** (sin clasificar -- revisar)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/herramientas-ergonomicas-organizacion/` | cualquier rol autenticado (sin restriccion de rol) |
+
+## `/api/kpis-organizacion`
+
+**Clasificacion del dato:** (sin clasificar -- revisar)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/kpis-organizacion/` | cualquier rol autenticado (sin restriccion de rol) |
+
 ## `/api/organizacion`
 
 **Clasificacion del dato:** administrativo
@@ -574,4 +598,4 @@
 
 ---
 
-**Resumen:** 233 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 59 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 236 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 62 requieren sesion valida pero no restringen por rol especifico.

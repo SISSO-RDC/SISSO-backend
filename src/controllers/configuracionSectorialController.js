@@ -76,12 +76,11 @@ const ROLES_POR_TIPO = {
 // confirma la propuesta, y devuelve {tabla, id} para dejar
 // trazabilidad en propuestas_configuracion_sectorial.
 //
-// Solo 'area', 'puesto', 'epp' y 'riesgo' tienen materializador en
-// este lote (ver migration_084, migration_085, migration_086 y el
-// comentario de cada funcion). Los otros 3 tipos (examen,
-// herramienta_ergonomica, kpi) quedan exactamente como los dejo el
-// motor base de migration_083 -- sin materializador, aplicado
-// permanece false -- hasta que se aborden en lotes siguientes.
+// Los 7 tipos de C-17-03 tienen materializador (ver migrations
+// 084/085/086/087/088/089 y el comentario de cada funcion). Con
+// 'kpi' se cierra por completo C-17-03: ya no queda ningun tipo de
+// propuesta que solo cambie de estado sin crear su objeto real
+// correspondiente.
 // ------------------------------------------------------------
 const MATERIALIZADORES = {
   async area(client, { organizacionId, datos, usuarioId }) {
@@ -207,6 +206,84 @@ const MATERIALIZADORES = {
       [organizacionId, nombre, nivel, descripcion, usuarioId]
     );
     return { tabla: 'riesgos_organizacion', id: res.rows[0].id };
+  },
+
+  // 'examen': crea (o reutiliza) una fila en examenes_organizacion
+  // (tabla NUEVA -- ver migration_087 para por que no se usa
+  // audiometria/espirometria/visiometria/historia_clinica, que son
+  // registros clinicos de examenes YA realizados a un trabajador,
+  // no un catalogo de protocolo a nivel organizacion).
+  async examen(client, { organizacionId, datos, usuarioId }) {
+    const nombre = extraerNombreMaterializable('examen', datos);
+    if (!nombre || typeof nombre !== 'string') return null;
+    const TIPOS_VALIDOS = ['Sugerido por sector', 'Condicionado a exposición', 'Requiere criterio médico'];
+    const tipo = (typeof datos === 'object' && datos !== null && TIPOS_VALIDOS.includes(datos.tipo))
+      ? datos.tipo
+      : 'Sugerido por sector';
+    const frecuencia = (typeof datos === 'object' && datos !== null && typeof datos.frecuencia === 'string')
+      ? datos.frecuencia
+      : null;
+    // normaReferencia (camelCase, tal como lo dejo migration_081 en
+    // catalogo_sectores) solo se copia si ya viene verificada
+    // (nunca se inventa una norma que el dato original no trae).
+    const normaReferencia = (typeof datos === 'object' && datos !== null && typeof datos.normaReferencia === 'string')
+      ? datos.normaReferencia
+      : null;
+
+    const res = await client.query(
+      `INSERT INTO examenes_organizacion (organizacion_id, nombre, tipo, frecuencia, norma_referencia, creado_por, origen)
+       VALUES ($1, $2, $3, $4, $5, $6, 'sectorial')
+       ON CONFLICT (organizacion_id, nombre) DO UPDATE SET activo = true
+       RETURNING id`,
+      [organizacionId, nombre, tipo, frecuencia, normaReferencia, usuarioId]
+    );
+    return { tabla: 'examenes_organizacion', id: res.rows[0].id };
+  },
+
+  // 'herramienta_ergonomica': crea (o reutiliza) una fila en
+  // herramientas_ergonomicas_organizacion (tabla NUEVA -- ver
+  // migration_088 para por que no se usa
+  // evaluaciones_reba/rula/niosh, que son evaluaciones YA
+  // realizadas con datos reales de postura/carga).
+  async herramienta_ergonomica(client, { organizacionId, datos, usuarioId }) {
+    const nombre = extraerNombreMaterializable('herramienta_ergonomica', datos);
+    if (!nombre || typeof nombre !== 'string') return null;
+    const descripcion = (typeof datos === 'object' && datos !== null && typeof datos.descripcion === 'string')
+      ? datos.descripcion
+      : null;
+
+    const res = await client.query(
+      `INSERT INTO herramientas_ergonomicas_organizacion (organizacion_id, nombre, descripcion, creado_por, origen)
+       VALUES ($1, $2, $3, $4, 'sectorial')
+       ON CONFLICT (organizacion_id, nombre) DO UPDATE SET activo = true
+       RETURNING id`,
+      [organizacionId, nombre, descripcion, usuarioId]
+    );
+    return { tabla: 'herramientas_ergonomicas_organizacion', id: res.rows[0].id };
+  },
+
+  // 'kpi': crea (o reutiliza) una fila en kpis_organizacion (tabla
+  // NUEVA -- ver migration_089). Es el SEPTIMO y ULTIMO tipo de
+  // C-17-03 -- con este, los 7 tipos del motor sectorial quedan
+  // materializados.
+  async kpi(client, { organizacionId, datos, usuarioId }) {
+    const nombre = extraerNombreMaterializable('kpi', datos);
+    if (!nombre || typeof nombre !== 'string') return null;
+    const meta = (typeof datos === 'object' && datos !== null && typeof datos.meta === 'string')
+      ? datos.meta
+      : null;
+    const descripcion = (typeof datos === 'object' && datos !== null && typeof datos.descripcion === 'string')
+      ? datos.descripcion
+      : null;
+
+    const res = await client.query(
+      `INSERT INTO kpis_organizacion (organizacion_id, nombre, meta, descripcion, creado_por, origen)
+       VALUES ($1, $2, $3, $4, $5, 'sectorial')
+       ON CONFLICT (organizacion_id, nombre) DO UPDATE SET activo = true
+       RETURNING id`,
+      [organizacionId, nombre, meta, descripcion, usuarioId]
+    );
+    return { tabla: 'kpis_organizacion', id: res.rows[0].id };
   },
 };
 
