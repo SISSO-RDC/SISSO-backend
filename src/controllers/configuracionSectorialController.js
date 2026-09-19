@@ -410,6 +410,7 @@ async function listarPropuestas(req, res) {
     const resultado = await query(
       `SELECT p.id, p.tipo, p.clave_item, p.clave_sector, p.datos_propuestos, p.datos_confirmados,
               p.estado, p.generado_en, p.revisado_en, p.comentario_revision,
+              p.aplicado, p.aplicado_en, p.entidad_materializada_tabla, p.entidad_materializada_id,
               ug.nombre_completo AS generado_por_nombre,
               ur.nombre_completo AS revisado_por_nombre
        FROM propuestas_configuracion_sectorial p
