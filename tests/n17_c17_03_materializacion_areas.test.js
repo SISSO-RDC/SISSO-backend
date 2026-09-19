@@ -163,20 +163,16 @@ test('C-17-03: aceptar una propuesta cuyo nombre YA existe como area real reutil
   assert.equal(conteo.rows[0].n, 1, 'Nunca debe quedar mas de una fila real para el mismo nombre de area.');
 });
 
-test('C-17-03: los tipos SIN materializador todavia (p.ej. riesgo) siguen sin aplicar/entidad_materializada al aceptar', async () => {
-  const listado = await peticion('GET', '/configuracion-sectorial/propuestas?tipo=riesgo', tokenAdminA);
+test('C-17-03: los tipos SIN materializador todavia (p.ej. kpi) siguen sin aplicar/entidad_materializada al aceptar', async () => {
+  const listado = await peticion('GET', '/configuracion-sectorial/propuestas?tipo=kpi', tokenAdminA);
   const propuesta = listado.datos.propuestas[0];
-  assert.ok(propuesta, 'Debia existir al menos una propuesta de tipo riesgo para este sector.');
+  assert.ok(propuesta, 'Debia existir al menos una propuesta de tipo kpi para este sector.');
 
-  // 'riesgo' es exclusivo de sso, no de admin (ver ROLES_POR_TIPO) --
-  // se confirma con sso para que el 403 de autorizacion no oculte lo
-  // que este test realmente verifica.
-  const tokenSsoA = await iniciarSesionCompleta(datos.usuarios.sso.email, datos.passwordPrueba, datos.secretoTotp);
   const confirmar = await peticion(
-    'PUT', `/configuracion-sectorial/propuestas/${propuesta.id}/confirmar`, tokenSsoA, { accion: 'aceptar' }
+    'PUT', `/configuracion-sectorial/propuestas/${propuesta.id}/confirmar`, tokenAdminA, { accion: 'aceptar' }
   );
   assert.equal(confirmar.status, 200, JSON.stringify(confirmar.datos));
   assert.equal(confirmar.datos.propuesta.aplicado, false,
-    'C-17-03 fue deliberadamente limitado a "area" en este lote -- "riesgo" no debe verse afectado todavia.');
+    'A esta altura (lotes area/puesto/epp/riesgo) "kpi" no debe verse afectado todavia.');
   assert.equal(confirmar.datos.propuesta.entidad_materializada_id, null);
 });
