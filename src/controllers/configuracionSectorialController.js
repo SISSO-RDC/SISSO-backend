@@ -76,14 +76,16 @@ const ROLES_POR_TIPO = {
 // confirma la propuesta, y devuelve {tabla, id} para dejar
 // trazabilidad en propuestas_configuracion_sectorial.
 //
-// Solo 'area' tiene materializador en este lote (ver
-// migration_084 para por que 'area' no tenia tabla propia hasta
-// ahora). Los otros 6 tipos quedan exactamente como los dejo el
+// Solo 'area', 'puesto', 'epp' y 'riesgo' tienen materializador en
+// este lote (ver migration_084, migration_085, migration_086 y el
+// comentario de cada funcion). Los otros 3 tipos (examen,
+// herramienta_ergonomica, kpi) quedan exactamente como los dejo el
 // motor base de migration_083 -- sin materializador, aplicado
-// permanece false -- hasta que se aborden en un lote siguiente.
+// permanece false -- hasta que se aborden en lotes siguientes.
 // ------------------------------------------------------------
 const MATERIALIZADORES = {
-  async area(client, { organizacionId, nombre, usuarioId }) {
+  async area(client, { organizacionId, datos, usuarioId }) {
+    const nombre = extraerNombreMaterializable('area', datos);
     if (!nombre || typeof nombre !== 'string') {
       // Dato propuesto/modificado sin un nombre reconocible: no se
       // materializa nada (misma cautela que MAPA_TIPOS.clave() al
@@ -98,6 +100,113 @@ const MATERIALIZADORES = {
       [organizacionId, nombre, usuarioId]
     );
     return { tabla: 'areas_organizacion', id: res.rows[0].id };
+  },
+
+  // 'puesto': crea (o reutiliza) una fila en puestos_trabajo
+  // (catalogo ya existente desde migration_022 -- ver comentario de
+  // esa migracion: es complementario, no toca trabajadores.puesto
+  // de texto libre). A diferencia de areas_organizacion, esta tabla
+  // YA existia con datos reales de organizaciones en produccion
+  // ANTES de este lote, asi que aqui NO se agrega ninguna
+  // restriccion UNIQUE nueva (podria fallar la migracion si ya
+  // existieran duplicados reales) -- la deduplicacion se hace a
+  // mano dentro de la transaccion: primero se busca por nombre
+  // (sin distinguir mayusculas/minusculas), y solo si no existe se
+  // inserta.
+  //
+  // 'area' aqui es la sugerencia del catalogo sectorial
+  // (puestos_frecuentes[].area, ver migration_085) y se guarda
+  // igual que cualquier area escrita a mano en este campo -- es
+  // texto libre (puestos_trabajo.area no tiene FK hacia
+  // areas_organizacion), asi que materializar 'puesto' NO requiere
+  // en lo tecnico que la propuesta de 'area' correspondiente ya
+  // haya sido aceptada. Es una recomendacion de orden practico
+  // (tiene mas sentido revisar areas primero), no una dependencia
+  // dura del sistema.
+  async puesto(client, { organizacionId, datos, usuarioId }) {
+    const nombre = extraerNombreMaterializable('puesto', datos);
+    if (!nombre || typeof nombre !== 'string') return null;
+    const area = (typeof datos === 'object' && datos !== null && typeof datos.area === 'string')
+      ? datos.area
+      : null;
+
+    const existente = await client.query(
+      `SELECT id FROM puestos_trabajo WHERE organizacion_id = $1 AND lower(nombre_puesto) = lower($2) LIMIT 1`,
+      [organizacionId, nombre]
+    );
+    if (existente.rows.length > 0) {
+      return { tabla: 'puestos_trabajo', id: existente.rows[0].id };
+    }
+
+    const res = await client.query(
+      `INSERT INTO puestos_trabajo (organizacion_id, nombre_puesto, area, creado_por)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [organizacionId, nombre, area, usuarioId]
+    );
+    return { tabla: 'puestos_trabajo', id: res.rows[0].id };
+  },
+
+  // 'epp': crea (o reutiliza) una fila en catalogo_epp (tabla ya
+  // existente desde migration_041, con datos reales de
+  // organizaciones en produccion). Mismo criterio que 'puesto': SIN
+  // restriccion UNIQUE nueva sobre una tabla que ya tenia datos
+  // reales -- deduplicacion manual dentro de la transaccion.
+  //
+  // catalogo_epp.tipo es NOT NULL, pero el dato propuesto por el
+  // catalogo sectorial (epp_sugerido) es solo un nombre (string) --
+  // no trae "tipo" de por si. Se usa el mismo texto ya adoptado en
+  // migration_081 para el caso analogo de examenes sin fuente
+  // verificada: 'Sugerido por sector' (nunca se inventa una norma
+  // ANSI/NTE especifica que no fue verificada). Si la propuesta fue
+  // MODIFICADA con un tipo explicito (datosModificados.tipo), se
+  // respeta ese valor en su lugar.
+  async epp(client, { organizacionId, datos, usuarioId }) {
+    const nombre = extraerNombreMaterializable('epp', datos);
+    if (!nombre || typeof nombre !== 'string') return null;
+    const tipo = (typeof datos === 'object' && datos !== null && typeof datos.tipo === 'string' && datos.tipo.trim())
+      ? datos.tipo.trim()
+      : 'Sugerido por sector';
+
+    const existente = await client.query(
+      `SELECT id FROM catalogo_epp WHERE organizacion_id = $1 AND lower(nombre) = lower($2) LIMIT 1`,
+      [organizacionId, nombre]
+    );
+    if (existente.rows.length > 0) {
+      return { tabla: 'catalogo_epp', id: existente.rows[0].id };
+    }
+
+    const res = await client.query(
+      `INSERT INTO catalogo_epp (organizacion_id, nombre, tipo, creado_por)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [organizacionId, nombre, tipo, usuarioId]
+    );
+    return { tabla: 'catalogo_epp', id: res.rows[0].id };
+  },
+
+  // 'riesgo': crea (o reutiliza) una fila en riesgos_organizacion
+  // (tabla NUEVA -- ver migration_086 para por que no se usa
+  // matriz_riesgos, que exige juicio humano/probabilidad x
+  // consecuencia que este catalogo sectorial no provee).
+  async riesgo(client, { organizacionId, datos, usuarioId }) {
+    const nombre = extraerNombreMaterializable('riesgo', datos);
+    if (!nombre || typeof nombre !== 'string') return null;
+    const nivel = (typeof datos === 'object' && datos !== null && ['alto', 'medio', 'bajo'].includes(datos.nivel))
+      ? datos.nivel
+      : null;
+    const descripcion = (typeof datos === 'object' && datos !== null && typeof datos.descripcion === 'string')
+      ? datos.descripcion
+      : null;
+
+    const res = await client.query(
+      `INSERT INTO riesgos_organizacion (organizacion_id, nombre, nivel, descripcion, creado_por, origen)
+       VALUES ($1, $2, $3, $4, $5, 'sectorial')
+       ON CONFLICT (organizacion_id, nombre) DO UPDATE SET activo = true
+       RETURNING id`,
+      [organizacionId, nombre, nivel, descripcion, usuarioId]
+    );
+    return { tabla: 'riesgos_organizacion', id: res.rows[0].id };
   },
 };
 
@@ -252,7 +361,7 @@ async function confirmarPropuesta(req, res) {
 
   try {
     const propRes = await query(
-      `SELECT id, tipo, clave_item, estado FROM propuestas_configuracion_sectorial WHERE id = $1 AND organizacion_id = $2`,
+      `SELECT id, tipo, clave_item, datos_propuestos, estado FROM propuestas_configuracion_sectorial WHERE id = $1 AND organizacion_id = $2`,
       [id, organizacionId]
     );
     const propuesta = propRes.rows[0];
@@ -288,11 +397,15 @@ async function confirmarPropuesta(req, res) {
       if (nuevoEstado === 'aceptada' || nuevoEstado === 'modificada') {
         const materializador = MATERIALIZADORES[propuesta.tipo];
         if (materializador) {
-          const nombre = nuevoEstado === 'modificada'
-            ? extraerNombreMaterializable(propuesta.tipo, datosModificados)
-            : extraerNombreMaterializable(propuesta.tipo, propuesta.clave_item) || propuesta.clave_item;
+          // 'datos' es el objeto/string completo propuesto/editado -- se
+          // pasa entero (no solo el nombre) porque algunos tipos
+          // necesitan otros campos ademas del nombre para
+          // materializar (p.ej. 'puesto' tambien usa el area sugerida
+          // para esa vacante). Cada materializador decide que campos
+          // le sirven.
+          const datos = nuevoEstado === 'modificada' ? datosModificados : propuesta.datos_propuestos;
           materializacion = await materializador(client, {
-            organizacionId, nombre, usuarioId: req.usuario.id,
+            organizacionId, datos, usuarioId: req.usuario.id,
           });
         }
       }

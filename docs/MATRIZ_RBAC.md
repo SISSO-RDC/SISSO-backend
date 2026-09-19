@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-18.
+> Ultima generacion: 2026-09-19.
 
 ## `/api/auth`
 
@@ -235,6 +235,14 @@
 | Metodo | Ruta | Rol(es) permitido(s) |
 |---|---|---|
 | GET | `/api/areas-organizacion/` | cualquier rol autenticado (sin restriccion de rol) |
+
+## `/api/riesgos-organizacion`
+
+**Clasificacion del dato:** (sin clasificar -- revisar)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/riesgos-organizacion/` | cualquier rol autenticado (sin restriccion de rol) |
 
 ## `/api/organizacion`
 
@@ -566,4 +574,4 @@
 
 ---
 
-**Resumen:** 232 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 58 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 233 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 59 requieren sesion valida pero no restringen por rol especifico.
