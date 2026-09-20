@@ -193,6 +193,18 @@ jobs:
           set -e
           find src tests -name '*.js' -print0 | xargs -0 -n1 node --check
 
+      # N.18 (G18-10 / M18-09): analisis de composicion de software (SCA) y SBOM.
+      # El informe JSON completo se archiva siempre; el paso FALLA si hay
+      # vulnerabilidades de severidad alta o critica en dependencias de
+      # PRODUCCION (las moderadas quedan reportadas en el artefacto).
+      - name: SCA - npm audit de dependencias de produccion
+        run: |
+          npm audit --omit=dev --json > /tmp/npm-audit-prod.json || true
+          npm audit --omit=dev --audit-level=high
+
+      - name: SBOM CycloneDX de dependencias de produccion
+        run: npm sbom --sbom-format cyclonedx --omit dev > /tmp/sbom-cyclonedx.json
+
       - name: Esperar PostgreSQL
         run: |
           for i in $(seq 1 20); do
@@ -245,5 +257,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: resultado-tests-${{ github.sha }}
-          path: /tmp/resultado-tests.log
+          path: |
+            /tmp/resultado-tests.log
+            /tmp/npm-audit-prod.json
+            /tmp/sbom-cyclonedx.json
           retention-days: 90

@@ -14,11 +14,21 @@
 // ============================================================
 const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { calcularCoberturaContenido } = require('../utils/coberturaSectorial');
 
 const COLUMNAS_EDITABLES = [
   'etiqueta', 'icono', 'color_acento', 'color_fondo', 'descripcion',
   'riesgos', 'areas', 'examenes_sugeridos', 'herramientas_ergonomicas',
   'epp_sugerido', 'kpis_sugeridos', 'puestos_frecuentes', 'orden', 'activo',
+  // N.18 (G18-04): estado explicito de validacion del contenido.
+  'estado_contenido', 'contenido_validado_por', 'contenido_validado_en', 'notas_contenido',
+];
+
+// Columnas de CONTENIDO ocupacional: si cambian, cualquier validacion previa
+// deja de valer (se valido OTRO contenido).
+const COLUMNAS_DE_CONTENIDO = [
+  'riesgos', 'areas', 'examenes_sugeridos', 'herramientas_ergonomicas',
+  'epp_sugerido', 'kpis_sugeridos', 'puestos_frecuentes',
 ];
 
 const CAMPOS_JSON = new Set([
@@ -38,12 +48,15 @@ async function listar(req, res) {
     const resultado = await query(
       `SELECT id, clave, etiqueta, icono, color_acento, color_fondo, descripcion,
               riesgos, areas, examenes_sugeridos, herramientas_ergonomicas,
-              epp_sugerido, kpis_sugeridos, puestos_frecuentes, activo, orden
+              epp_sugerido, kpis_sugeridos, puestos_frecuentes, activo, orden,
+              estado_contenido, contenido_validado_por, contenido_validado_en, notas_contenido
        FROM catalogo_sectores
        ${filtro}
        ORDER BY orden ASC, etiqueta ASC`
     );
-    return res.json({ sectores: resultado.rows });
+    return res.json({
+      sectores: resultado.rows.map((s) => ({ ...s, cobertura_contenido: calcularCoberturaContenido(s) })),
+    });
   } catch (err) {
     console.error('Error en listar (catalogo de sectores):', err);
     return res.status(500).json({ error: 'Error interno al obtener el catalogo de sectores.' });
@@ -61,14 +74,15 @@ async function obtener(req, res) {
     const resultado = await query(
       `SELECT id, clave, etiqueta, icono, color_acento, color_fondo, descripcion,
               riesgos, areas, examenes_sugeridos, herramientas_ergonomicas,
-              epp_sugerido, kpis_sugeridos, puestos_frecuentes, activo, orden
+              epp_sugerido, kpis_sugeridos, puestos_frecuentes, activo, orden,
+              estado_contenido, contenido_validado_por, contenido_validado_en, notas_contenido
        FROM catalogo_sectores WHERE clave = $1`,
       [req.params.clave]
     );
     if (resultado.rows.length === 0) {
       return res.status(404).json({ error: 'Sector no encontrado.' });
     }
-    return res.json({ sector: resultado.rows[0] });
+    return res.json({ sector: { ...resultado.rows[0], cobertura_contenido: calcularCoberturaContenido(resultado.rows[0]) } });
   } catch (err) {
     console.error('Error en obtener (catalogo de sectores):', err);
     return res.status(500).json({ error: 'Error interno al obtener el sector.' });
@@ -89,6 +103,24 @@ async function actualizar(req, res) {
   const columnas = Object.keys(cambios).filter((c) => COLUMNAS_EDITABLES.includes(c));
   if (columnas.length === 0) {
     return res.status(400).json({ error: 'No se recibio ningun campo editable valido.' });
+  }
+
+  // N.18 (G18-04): un sector 'validado' solo puede declararse con quien lo valido y cuando.
+  if (cambios.estado_contenido !== undefined && !['borrador_sin_validar', 'validado'].includes(cambios.estado_contenido)) {
+    return res.status(400).json({ error: 'estado_contenido debe ser "borrador_sin_validar" o "validado".' });
+  }
+  if (cambios.estado_contenido === 'validado'
+    && (!String(cambios.contenido_validado_por || '').trim() || !cambios.contenido_validado_en)) {
+    return res.status(400).json({ error: 'Para marcar el contenido como "validado" indique contenido_validado_por y contenido_validado_en.' });
+  }
+  // Si cambia el CONTENIDO y el request no decide el estado, la validacion previa deja de valer.
+  if (columnas.some((c) => COLUMNAS_DE_CONTENIDO.includes(c)) && cambios.estado_contenido === undefined) {
+    cambios.estado_contenido = 'borrador_sin_validar';
+    cambios.contenido_validado_por = null;
+    cambios.contenido_validado_en = null;
+    ['estado_contenido', 'contenido_validado_por', 'contenido_validado_en'].forEach((c) => {
+      if (!columnas.includes(c)) columnas.push(c);
+    });
   }
 
   const asignaciones = columnas.map((c, i) => `${c} = $${i + 2}${CAMPOS_JSON.has(c) ? '::jsonb' : ''}`);

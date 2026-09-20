@@ -127,3 +127,12 @@ inicial NO cubre todavia, y que valdria la pena agregar despues:
   endpoints de un rol superior).
 - Pruebas de suspension de usuarios/organizaciones (que efectivamente
   corten el acceso de inmediato).
+
+## Entorno reproducible (Auditoría N.18, C18-01)
+
+Antes de correr la suite, `npm test` ejecuta `scripts/verificar_entorno_pruebas.js`
+(script `pretest`), que falla en segundos y con un mensaje accionable si falta
+una variable, la base no responde, el rol de `DATABASE_URL` es superusuario o
+tiene `BYPASSRLS` (invalidaría las pruebas de RLS) o hay migraciones sin
+aplicar. Procedimiento completo (Docker o Postgres local) en
+`docs/ENTORNO_PRUEBAS.md`.

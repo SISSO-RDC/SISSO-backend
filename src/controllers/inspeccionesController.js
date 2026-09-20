@@ -173,12 +173,27 @@ async function agregarItem(req, res) {
       return res.status(404).json({ error: 'Inspeccion no encontrada.' });
     }
 
-    const itemRes = await query(
-      `INSERT INTO inspecciones_items (inspeccion_id, organizacion_id, item, cumple, observacion)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, item, cumple, observacion, creado_en`,
-      [req.params.id, orgId, item.trim(), cumple, observacion || null]
-    );
+    // N.18 (G18-02): esta escritura no dejaba rastro de auditoria; ahora el
+    // INSERT y su registro de auditoria van en la misma transaccion.
+    const itemRes = await withTransaction(async (client) => {
+      const insertado = await client.query(
+        `INSERT INTO inspecciones_items (inspeccion_id, organizacion_id, item, cumple, observacion)
+         VALUES ($1,$2,$3,$4,$5)
+         RETURNING id, item, cumple, observacion, creado_en`,
+        [req.params.id, orgId, item.trim(), cumple, observacion || null]
+      );
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'agregar_item_inspeccion',
+        entidad: 'inspecciones_items',
+        entidadId: insertado.rows[0].id,
+        detalle: { inspeccionId: req.params.id, cumple },
+        req,
+        client,
+      });
+      return insertado;
+    });
 
     return res.status(201).json({ item: itemRes.rows[0] });
   } catch (err) {
@@ -280,12 +295,13 @@ async function generarCapaDesdeHallazgo(req, res) {
         [capaRes.rows[0].id, req.params.hallazgoId, orgId]
       );
 
-      return capaRes.rows[0].id;
-    });
+      // N.18 (G18-02): la auditoria va DENTRO de la misma transaccion que la escritura.
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'inspeccion_hallazgo_genero_capa',
+        entidad: 'inspecciones_hallazgos', entidadId: req.params.hallazgoId, detalle: { capaId: capaRes.rows[0].id }, req, client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'inspeccion_hallazgo_genero_capa',
-      entidad: 'inspecciones_hallazgos', entidadId: req.params.hallazgoId, detalle: { capaId: resultado }, req,
+      return capaRes.rows[0].id;
     });
 
     return res.status(201).json({ capaId: resultado });

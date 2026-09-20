@@ -33,6 +33,7 @@
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { calcularCoberturaContenido } = require('../utils/coberturaSectorial');
 
 // Columna de catalogo_sectores de la que sale cada tipo de
 // propuesta, y como extraer una clave estable (para el UNIQUE de
@@ -315,7 +316,8 @@ async function generarPropuestas(req, res) {
 
     const sectorRes = await query(
       `SELECT clave, activo, areas, riesgos, examenes_sugeridos,
-              herramientas_ergonomicas, epp_sugerido, kpis_sugeridos, puestos_frecuentes
+              herramientas_ergonomicas, epp_sugerido, kpis_sugeridos, puestos_frecuentes,
+              estado_contenido, contenido_validado_por, contenido_validado_en
        FROM catalogo_sectores WHERE clave = $1`,
       [sectorClave]
     );
@@ -362,11 +364,35 @@ async function generarPropuestas(req, res) {
         usuarioId: req.usuario.id,
         accion: 'generar_propuestas_configuracion_sectorial',
         entidad: 'propuestas_configuracion_sectorial',
-        detalle: { sectorClave, consideradas, generadas: nuevas.length },
+        detalle: {
+          sectorClave, consideradas, generadas: nuevas.length,
+          dimensionesSinContenido: calcularCoberturaContenido(sector).dimensionesSinContenido,
+        },
         req,
         client,
       });
     });
+
+    // N.18 (G18-04): en vez de devolver 0 propuestas de un tipo sin explicacion,
+    // se declara explicitamente que dimensiones NO tienen contenido en el
+    // catalogo de este sector y si el contenido esta validado.
+    const cobertura = calcularCoberturaContenido(sector);
+    const advertencias = [];
+    if (cobertura.dimensionesSinContenido.length > 0) {
+      advertencias.push({
+        codigo: 'SECTOR_SIN_CONTENIDO_PARA_TIPOS',
+        tipos: cobertura.dimensionesSinContenido,
+        mensaje: `El catalogo del sector "${sectorClave}" no tiene contenido cargado para: `
+          + `${cobertura.dimensionesSinContenido.join(', ')}. No se generaron propuestas de esos tipos `
+          + '(no significa que el sector no los requiera).',
+      });
+    }
+    if (cobertura.estadoContenido !== 'validado') {
+      advertencias.push({
+        codigo: 'CONTENIDO_SECTORIAL_SIN_VALIDAR',
+        mensaje: 'El contenido del catalogo de este sector es un borrador sin validar por un profesional de SSO/medicina ocupacional; revise cada propuesta antes de aceptarla.',
+      });
+    }
 
     return res.status(201).json({
       sectorClave,
@@ -374,6 +400,8 @@ async function generarPropuestas(req, res) {
       generadas: nuevas.length,
       omitidas: consideradas - nuevas.length,
       propuestas: nuevas,
+      cobertura,
+      advertencias,
     });
   } catch (err) {
     console.error('Error en generarPropuestas (configuracion sectorial):', err);
