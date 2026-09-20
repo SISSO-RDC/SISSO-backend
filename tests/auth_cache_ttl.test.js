@@ -6,10 +6,12 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
 const RAIZ = path.join(__dirname, '..');
+// dotenv se carga igual que en src/index.js: en un Codespace/local las variables viven en .env,
+// no exportadas en el shell, y el hijo no las heredaria (fallaba con 'falta JWT_ACCESS_SECRET').
 function cargarAuth(valor) {
   const env = { ...process.env };
   if (valor === undefined) delete env.AUTH_CACHE_TTL_MS; else env.AUTH_CACHE_TTL_MS = valor;
-  return spawnSync(process.execPath, ['-e', "require('./src/middleware/auth'); console.log('cargado')"], { cwd: RAIZ, env, encoding: 'utf8' });
+  return spawnSync(process.execPath, ['-e', "require('dotenv').config(); require('./src/middleware/auth'); console.log('cargado')"], { cwd: RAIZ, env, encoding: 'utf8' });
 }
 
 test('G18-09: valores validos de AUTH_CACHE_TTL_MS (ausente, 0, 5000, 300000) cargan el middleware', () => {
