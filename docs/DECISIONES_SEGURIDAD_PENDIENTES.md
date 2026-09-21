@@ -35,7 +35,45 @@ cambio de arquitectura, no una correccion de codigo.
   en todas las paginas, reduciendo el impacto de un intento de
   inyectar un script externo.
 
-**Pendiente real (no cosmetico):** todas las paginas mantienen
+**ACTUALIZACION Auditoria N.18 (C18-02 / G18-08):** el prerrequisito de
+abajo YA SE CUMPLIO en el frontend: los ~358 atributos `onclick`/`onchange`/
+`oninput` pasaron a `data-on-*` ejecutados por un delegador sin `eval`
+(`shared/csp-eventos.js`), los 24 bloques `<script>` en linea se movieron a
+archivos, y las 37 paginas llevan la MISMA CSP con `script-src 'self'`
+(verificado por `tests/csp.test.js` en el CI del frontend). Un `<script>`,
+un `onerror=` o un `javascript:` inyectados ya no se ejecutan.
+Riesgo residual que sigue vigente y debe leerse con honestidad:
+- `style-src` conserva `'unsafe-inline'` (hay ~636 atributos `style=`):
+  permite inyeccion de CSS, no de codigo.
+- La CSP va en una etiqueta `<meta>` (GitHub Pages no permite cabeceras
+  HTTP): `frame-ancestors` y `report-uri` NO se aplican desde un `<meta>`;
+  habria que servir el frontend con cabeceras reales (p. ej. detras de
+  Cloudflare o Render Static Sites) para tenerlos.
+- Sigue siendo posible un XSS que reutilice funciones ya existentes de la
+  pagina y lea el token; la CSP estricta lo dificulta, no lo elimina.
+
+**Plan formal para retirar el access token de `sessionStorage` (N.18):**
+1. *Opcion recomendada a mediano plazo — BFF:* un servicio propio (Render
+   Web Service) sirve el frontend y hace de proxy; el navegador solo tiene
+   una cookie `HttpOnly; Secure; SameSite=Strict` de sesion y el access token
+   nunca toca JavaScript. Requiere infraestructura nueva y mover el frontend
+   fuera de GitHub Pages.
+2. *Opcion sin nueva infraestructura — token solo en memoria:* NO es un
+   cambio trivial y por eso no se hizo. El frontend es multi-pagina: cada
+   navegacion perderia el token y tendria que refrescar con la cookie. Con
+   la rotacion de refresh tokens y la deteccion de reutilizacion actuales,
+   dos pestañas refrescando a la vez presentan el mismo refresh token y la
+   segunda seria tratada como REUTILIZACION (compromiso) => se revoca toda
+   la familia y se cierra la sesion. Antes de adoptar esta opcion hace falta
+   (a) coordinar el refresco entre pestañas (Web Locks API / BroadcastChannel,
+   una sola pestaña "lider" refresca) y (b) una ventana de gracia acotada
+   (segundos) en el backend para el token recien rotado. Debe probarse con
+   pruebas E2E multi-pestaña antes de desplegarse.
+3. *Mientras tanto (vigente):* access token de 15 min, refresh token solo en
+   cookie HttpOnly, CSP estricta de scripts, escapado centralizado, y el
+   riesgo residual documentado arriba.
+
+**Pendiente real (no cosmetico) — HISTORICO, cerrado por N.18 en lo que toca a `script-src`:** todas las paginas mantienen
 `'unsafe-inline'` en `script-src` (necesario hoy porque usan
 atributos `onclick`/`oninput` inline extensivamente -- ver M15-03).
 Mientras `'unsafe-inline'` siga presente, la CSP NO bloquea la

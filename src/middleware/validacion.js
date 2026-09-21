@@ -568,6 +568,23 @@ const validarConfirmarPropuestaSectorial = [
 ];
 
 // ------------------------------------------------------------
+// Validacion de la verificacion formal de la norma de un examen del
+// protocolo (Auditoria N.18, G18-05). verificada=true exige fuente,
+// jurisdiccion, articulo y fecha de validacion; verificada=false
+// retira la verificacion (vuelve a 'no_verificada').
+// ------------------------------------------------------------
+const validarVerificarNormaExamen = [
+  body('verificada').isBoolean({ strict: true }).withMessage('verificada debe ser true o false.'),
+  body('fuenteNorma').if(body('verificada').equals('true')).trim().isLength({ min: 5, max: 250 }).withMessage('fuenteNorma es obligatoria (5 a 250 caracteres).'),
+  body('jurisdiccion').if(body('verificada').equals('true')).trim().isLength({ min: 2, max: 80 }).withMessage('jurisdiccion es obligatoria (2 a 80 caracteres).'),
+  body('articuloReferencia').if(body('verificada').equals('true')).trim().isLength({ min: 1, max: 150 }).withMessage('articuloReferencia es obligatorio (max. 150 caracteres).'),
+  body('fechaValidacion').if(body('verificada').equals('true')).isISO8601({ strict: true }).withMessage('fechaValidacion debe ser una fecha AAAA-MM-DD valida.'),
+  body('vigenteHasta').optional({ values: 'falsy' }).isISO8601({ strict: true }).withMessage('vigenteHasta debe ser una fecha AAAA-MM-DD valida.'),
+  body('frecuencia').optional({ values: 'falsy' }).trim().isLength({ max: 100 }).withMessage('frecuencia no puede superar 100 caracteres.'),
+  manejarErroresValidacion,
+];
+
+// ------------------------------------------------------------
 // Validacion para crear/actualizar un item de la Matriz de Riesgos.
 // ------------------------------------------------------------
 const validarCrearItemMatrizRiesgos = [
@@ -646,4 +663,5 @@ module.exports = {
   validarCrearItemMatrizRiesgos,
   validarCrearAusencia,
   validarConfirmarPropuestaSectorial,
+  validarVerificarNormaExamen,
 };

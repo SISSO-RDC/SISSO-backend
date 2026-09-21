@@ -5,7 +5,7 @@
 // ============================================================
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto'); // N.18: uuid (dependencia con advisory) reemplazado por el equivalente nativo
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria, drenarAuditoriaPendiente, backlogAuditoriaPendiente } = require('../utils/auditoria');
 const { rotarSecretosMfaLegados } = require('../utils/mfaLegado');
@@ -135,17 +135,19 @@ async function crearEmpresa(req, res) {
         [organizacion.id, email.toLowerCase().trim(), passwordHash, nombreAdmin]
       );
 
-      return { organizacion, usuario: userRes.rows[0] };
-    });
+      // N.18 (G18-02): la auditoria va DENTRO de la misma transaccion que la escritura.
+      await registrarAuditoria({
+        organizacionId: organizacion.id,
+        usuarioId: req.usuario.id,
+        accion: 'empresa_creada_por_superadmin',
+        entidad: 'organizacion',
+        entidadId: organizacion.id,
+        detalle: { nombreEmpresa, creadoPorSuperadmin: req.usuario.id },
+        req,
+        client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: resultado.organizacion.id,
-      usuarioId: req.usuario.id,
-      accion: 'empresa_creada_por_superadmin',
-      entidad: 'organizacion',
-      entidadId: resultado.organizacion.id,
-      detalle: { nombreEmpresa, creadoPorSuperadmin: req.usuario.id },
-      req,
+      return { organizacion, usuario: userRes.rows[0] };
     });
 
     return res.status(201).json({
@@ -339,22 +341,24 @@ async function cambiarSuspensionOrganizacion(req, res) {
         );
       }
 
+      // N.18 (G18-02): la auditoria va DENTRO de la misma transaccion que la escritura.
+      await registrarAuditoria({
+        organizacionId: orgRes.rows[0].id,
+        usuarioId: req.usuario.id,
+        accion: suspender ? 'organizacion_suspendida_por_superadmin' : 'organizacion_reactivada_por_superadmin',
+        entidad: 'organizacion',
+        entidadId: orgRes.rows[0].id,
+        detalle: { motivo: motivo || null },
+        req,
+        client,
+      });
+
       return orgRes.rows[0];
     });
 
     if (!resultado) {
       return res.status(404).json({ error: 'Organizacion no encontrada.' });
     }
-
-    await registrarAuditoria({
-      organizacionId: resultado.id,
-      usuarioId: req.usuario.id,
-      accion: suspender ? 'organizacion_suspendida_por_superadmin' : 'organizacion_reactivada_por_superadmin',
-      entidad: 'organizacion',
-      entidadId: resultado.id,
-      detalle: { motivo: motivo || null },
-      req,
-    });
 
     return res.json({ organizacion: resultado });
   } catch (err) {

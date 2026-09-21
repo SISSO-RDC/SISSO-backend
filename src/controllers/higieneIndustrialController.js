@@ -214,12 +214,13 @@ async function generarCapaDesdeMedicion(req, res) {
         [capaRes.rows[0].id, req.params.id, orgId]
       );
 
-      return capaRes.rows[0].id;
-    });
+      // N.18 (G18-02): la auditoria va DENTRO de la misma transaccion que la escritura.
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'medicion_higiene_genero_capa',
+        entidad: 'mediciones_higiene_industrial', entidadId: req.params.id, detalle: { capaId: capaRes.rows[0].id }, req, client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'medicion_higiene_genero_capa',
-      entidad: 'mediciones_higiene_industrial', entidadId: req.params.id, detalle: { capaId: resultado }, req,
+      return capaRes.rows[0].id;
     });
 
     return res.status(201).json({ capaId: resultado });

@@ -216,6 +216,13 @@ async function crear(req, res) {
 // no bloquear la importacion del resto de los datos del
 // trabajador, que si son validos.
 //
+// N.18 (M18-03): la decision de ignorarla es correcta, pero hacerlo
+// EN SILENCIO era enganoso -- quien importa un Excel con aptitud
+// podia creer que quedo cargada. Ahora la respuesta incluye
+// `advertencias` con el codigo COLUMNA_APTITUD_IGNORADA y cuantas
+// filas la traian (solo el conteo, nunca el valor), y el conteo
+// tambien queda en el registro de auditoria.
+//
 // Responde con un detalle fila por fila: cuales se crearon,
 // cuales se actualizaron, y cuales fallaron (y por que), para
 // que el frontend pueda mostrar un resumen claro.
@@ -234,6 +241,11 @@ async function importarMasivo(req, res) {
   let creados = 0;
   let actualizados = 0;
   let fallidos = 0;
+
+  // N.18 (M18-03): cuenta las filas que traian un valor de aptitud
+  // (que se ignora siempre). Solo el conteo; el valor nunca se guarda.
+  const filasConAptitudIgnorada = filas.filter((f) => f && typeof f === 'object'
+    && f.aptitud !== undefined && f.aptitud !== null && String(f.aptitud).trim() !== '').length;
 
   // CORREGIDO en Auditoria N.11 (hallazgo GRAVE G11-08, P1): la
   // verificacion anterior corria en su propia consulta, ANTES del
@@ -257,7 +269,7 @@ async function importarMasivo(req, res) {
         `SELECT o.id, p.limite_trabajadores AS limite
          FROM organizaciones o LEFT JOIN planes p ON p.id = o.plan_id
          WHERE o.id = $1
-         FOR UPDATE`,
+         FOR UPDATE OF o`,
         [req.usuario.organizacionId]
       );
       const limite = orgRes.rows[0] ? orgRes.rows[0].limite : null;
@@ -335,14 +347,26 @@ async function importarMasivo(req, res) {
         usuarioId: req.usuario.id,
         accion: 'importar_trabajadores_masivo',
         entidad: 'trabajador',
-        detalle: { total: filas.length, creados, actualizados, fallidos },
+        detalle: { total: filas.length, creados, actualizados, fallidos, aptitud_ignorada_en_filas: filasConAptitudIgnorada },
         req,
         client,
       });
     });
 
+    const advertencias = [];
+    if (filasConAptitudIgnorada > 0) {
+      advertencias.push({
+        codigo: 'COLUMNA_APTITUD_IGNORADA',
+        filas: filasConAptitudIgnorada,
+        mensaje: 'La columna "aptitud" fue ignorada en '
+          + `${filasConAptitudIgnorada} fila(s): la aptitud solo la registra el medico ocupacional `
+          + 'desde el modulo de Aptitud. Todos los trabajadores importados quedan en "pendiente".',
+      });
+    }
+
     return res.status(200).json({
       resumen: { total: filas.length, creados, actualizados, fallidos },
+      advertencias,
       detalle: resultados,
     });
   } catch (errTransaccion) {

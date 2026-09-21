@@ -33,7 +33,10 @@ async function certificadoCapacitacion(req, res) {
 
   try {
     const capacitacionRes = await query(
-      `SELECT * FROM capacitaciones WHERE id = $1 AND organizacion_id = $2`,
+      // N.18 (M18-02): allowlist explicita en lugar de SELECT *. Solo lo
+      // que el PDF y la busqueda de la firma del instructor necesitan.
+      `SELECT id, nombre, tema, instructor, instructor_usuario_id, creado_por, fecha, horas_duracion
+       FROM capacitaciones WHERE id = $1 AND organizacion_id = $2`,
       [capacitacionId, orgId]
     );
     if (capacitacionRes.rows.length === 0) {

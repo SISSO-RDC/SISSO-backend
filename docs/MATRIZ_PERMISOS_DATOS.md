@@ -5,9 +5,11 @@
 Espirometría y Visiometría corregidas (ahora auditadas con
 `lecturaSensible:true`, ver G12-05); agregadas las filas de los
 módulos nuevos de N.12 (revisión de baseline audiométrica, canal
-directo del titular, incidentes de seguridad). Pendiente para el
-próximo ciclo (no bloqueante): una prueba automatizada que contraste
-esta tabla contra `src/routes/*.js` en vez de mantenimiento manual.
+directo del titular, incidentes de seguridad). **N.18 (M18-06):** ya existe la prueba automatizada que contrasta esta
+tabla contra las rutas reales (`tests/matriz_permisos_datos_sincronizada.test.js`):
+verifica que cada endpoint concreto citado exista y que ningún rol citado
+quede bloqueado por la ruta. Al primer intento detectó dos filas desactualizadas
+(Aptitud/historial y `PUT /api/ausentismo`), ya corregidas.
 
 Hasta ahora los permisos vivían repartidos entre `routes/*.js`
 (`autorizar(...)`), controladores (funciones `proyectarXPorRol`),
@@ -34,7 +36,7 @@ clínico/diagnóstico)
 | Historia clínica | `GET /api/historia-clinica/:id` | ME | Registro completo (sin orientación sexual/identidad de género) | D3 | `vigilancia_salud_ocupacional` | Sí (`lecturaSensible`) | Sí (RLS + filtro explícito) |
 | Historia clínica | `GET /api/historia-clinica/trabajadores/:id` (listado) | ME | Listado completo | D3 | `vigilancia_salud_ocupacional` | Sí (`lecturaSensible`) | Sí |
 | Historia clínica | `GET /api/historia-clinica/:id/pdf`, `/certificado` | ME | PDF con datos clínicos | D3 | `vigilancia_salud_ocupacional` | Sí, antes de generar (`lecturaSensible`) | Sí |
-| Aptitud médica | `GET /api/aptitud/trabajadores/:id/historial` | ME, AD, SSO, TH | Historial de aptitud | D1/D3 según rol (ver `historiaClinicaController`) | `vigilancia_salud_ocupacional` | Sí para lectura clínica | Sí |
+| Aptitud médica | `GET /api/aptitud/trabajadores/:id/historial` | ME | Historial de aptitud (registro clínico). AD, SSO y TH reciben 403: la ruta está restringida a médico (corregido en N.18 / M18-06: esta fila decía que también los recibían) | D3 | `vigilancia_salud_ocupacional` | Sí para lectura clínica | Sí |
 | Nordico | `GET /api/nordico/trabajadores/:id` | ME | Detalle completo (regiones, observaciones) | D3 | `evaluaciones_ergonomicas` | No (best-effort) | Sí |
 | Nordico | `GET /api/nordico/trabajadores/:id` | SSO | `prioridad_preventiva`, `accion_requerida` (sin conteos ni zonas) | D2 | `evaluaciones_ergonomicas` | No | Sí |
 | Visiometría | `GET /api/visiometria/trabajadores/:id` | ME | Detalle completo | D3 | `gestion_vigilancia_salud` | Sí (`lecturaSensible`, G12-05) | Sí |
@@ -47,7 +49,7 @@ clínico/diagnóstico)
 | Ausentismo | `GET /api/ausentismo` | ME | Incluye diagnóstico CIE-10, certificado | D3 | `gestion_ausentismo` | No | Sí |
 | Ausentismo | `GET /api/ausentismo` | AD, SSO, TH | Sin diagnóstico ni certificado | D1 | `gestion_ausentismo` | No | Sí |
 | Ausentismo | `GET /api/ausentismo/:id/certificado-url` | ME | URL firmada del certificado escaneado | D3 | `gestion_ausentismo` | Sí (`lecturaSensible`, G12-05) | Sí |
-| Ausentismo | `POST/PUT /api/ausentismo` | SSO, TH | 403 si intentan escribir diagnóstico/certificado | — | `gestion_ausentismo` | Sí (evento de escritura) | Sí |
+| Ausentismo | `POST /api/ausentismo`, `PUT /api/ausentismo/:id` | SSO, TH | 403 si intentan escribir diagnóstico/certificado | — | `gestion_ausentismo` | Sí (evento de escritura) | Sí |
 | Consentimientos | `GET /api/consentimientos/trabajadores/:id` | ME | Nombre real del tipo + estado | D2 | ligado al tipo (`tipos_consentimiento.categoria`) | No | Sí |
 | Consentimientos | `GET /api/consentimientos/trabajadores/:id` | SSO, TH | Tipo genérico "clínico reservado" si `categoria='clinico'`; estado sí visible | D1 | ídem | No | Sí |
 | Consentimientos | `GET /api/consentimientos/:id/firma-url`, `/pdf` | ME | Contenido firmado completo | D3 | ídem | Sí (`lecturaSensible`) | Sí |

@@ -32,7 +32,7 @@ async function verificarLimitePlan(client, organizacionId, recurso, cantidadAAgr
      FROM organizaciones o
      LEFT JOIN planes p ON p.id = o.plan_id
      WHERE o.id = $1
-     FOR UPDATE`,
+     FOR UPDATE OF o`,
     [organizacionId]
   );
   if (orgRes.rows.length === 0) {

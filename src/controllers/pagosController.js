@@ -22,7 +22,7 @@
 // activar cualquier cosa. Confiar en el reporte del cliente sin
 // esta verificacion permitiria activar una suscripcion sin pagar.
 // ============================================================
-const { query } = require('../db/pool');
+const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 const PAYPHONE_BASE_URL = 'https://pay.payphonetodoesposible.com/api';
@@ -84,11 +84,24 @@ async function iniciarPago(req, res) {
     const montoUsd = Number(orgRes.rows[0].precio_mensual_usd);
     const clientTransactionId = `SISSO-${orgId.slice(0, 8)}-${Date.now()}`;
 
-    await query(
-      `INSERT INTO pagos_suscripcion (organizacion_id, plan_id, monto_usd, estado, pasarela, referencia_pasarela)
-       VALUES ($1, (SELECT plan_id FROM organizaciones WHERE id = $1), $2, 'pendiente', 'payphone', $3)`,
-      [orgId, montoUsd, clientTransactionId]
-    );
+    // N.18 (G18-02): el alta del pago pendiente no dejaba rastro de auditoria;
+    // ahora el INSERT y su registro van en la misma transaccion.
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO pagos_suscripcion (organizacion_id, plan_id, monto_usd, estado, pasarela, referencia_pasarela)
+         VALUES ($1, (SELECT plan_id FROM organizaciones WHERE id = $1), $2, 'pendiente', 'payphone', $3)`,
+        [orgId, montoUsd, clientTransactionId]
+      );
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'iniciar_pago_suscripcion',
+        entidad: 'pagos_suscripcion',
+        detalle: { pasarela: 'payphone', montoUsd, referencia: clientTransactionId },
+        req,
+        client,
+      });
+    });
 
     return res.json({
       storeId: process.env.PAYPHONE_STORE_ID,

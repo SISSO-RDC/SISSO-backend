@@ -12,7 +12,7 @@
 // ============================================================
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto'); // N.18: uuid (dependencia con advisory) reemplazado por el equivalente nativo
 const { authenticator } = require('otplib');
 const QRCode = require('qrcode');
 const { query, withTransaction } = require('../db/pool');
@@ -164,17 +164,19 @@ async function registrarOrganizacion(req, res) {
         [organizacion.id, email.toLowerCase().trim(), passwordHash, nombreAdmin]
       );
 
-      return { organizacion, usuario: userRes.rows[0] };
-    });
+      // N.18 (G18-02): la auditoria va DENTRO de la misma transaccion que la escritura.
+      await registrarAuditoria({
+        organizacionId: organizacion.id,
+        usuarioId: userRes.rows[0].id,
+        accion: 'organizacion_creada',
+        entidad: 'organizacion',
+        entidadId: organizacion.id,
+        detalle: { nombreEmpresa },
+        req,
+        client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: resultado.organizacion.id,
-      usuarioId: resultado.usuario.id,
-      accion: 'organizacion_creada',
-      entidad: 'organizacion',
-      entidadId: resultado.organizacion.id,
-      detalle: { nombreEmpresa },
-      req,
+      return { organizacion, usuario: userRes.rows[0] };
     });
 
     return res.status(201).json({

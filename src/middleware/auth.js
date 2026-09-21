@@ -43,7 +43,26 @@ const { queryComoSuperadmin } = require('../db/pool');
 // auditoria. Se deja documentado como siguiente paso si SISSO
 // escala a mas de una instancia.
 // ------------------------------------------------------------
-const ORGANIZACION_CACHE_TTL_MS = 20 * 1000;
+//
+// N.18 (G18-09): el TTL ya no esta fijo. AUTH_CACHE_TTL_MS (milisegundos,
+// default 20000, maximo 300000) controla AMBAS caches (estado de la
+// organizacion y auth_epoch del usuario). Con AUTH_CACHE_TTL_MS=0 las
+// caches quedan desactivadas y cada peticion consulta la base: es la
+// configuracion a usar ANTES de escalar a mas de una instancia, porque
+// el cache es por proceso y una suspension/revocacion tardaria hasta el
+// TTL en llegar a las demas instancias. Con una sola instancia (el
+// despliegue actual en Render) el valor por defecto sigue siendo seguro.
+function leerTtlCacheAuth() {
+  const crudo = process.env.AUTH_CACHE_TTL_MS;
+  if (crudo === undefined || crudo === '') return 20 * 1000;
+  const n = Number(crudo);
+  if (!Number.isInteger(n) || n < 0 || n > 300000) {
+    throw new Error('AUTH_CACHE_TTL_MS invalido: debe ser un entero de 0 a 300000 (milisegundos).');
+  }
+  return n;
+}
+const AUTH_CACHE_TTL_MS = leerTtlCacheAuth();
+const ORGANIZACION_CACHE_TTL_MS = AUTH_CACHE_TTL_MS;
 const cacheEstadoOrganizacion = new Map(); // organizacionId -> { activa, suspendidaManualmente, expiraEn }
 
 async function organizacionEstaBloqueada(organizacionId) {
@@ -91,7 +110,7 @@ async function organizacionEstaBloqueada(organizacionId) {
 // consulta a BD por peticion. Mismo TTL, misma limitacion
 // documentada (cache por instancia de proceso).
 // ------------------------------------------------------------
-const USUARIO_EPOCH_CACHE_TTL_MS = 20 * 1000;
+const USUARIO_EPOCH_CACHE_TTL_MS = AUTH_CACHE_TTL_MS;
 const cacheEpochUsuario = new Map(); // usuarioId -> { authEpoch, expiraEn }
 
 async function obtenerAuthEpochActual(usuarioId) {

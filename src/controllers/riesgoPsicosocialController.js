@@ -74,12 +74,13 @@ async function crearEvaluacion(req, res) {
         }
       }
 
-      return evaluacion;
-    });
+      // N.18 (G18-02): la auditoria va DENTRO de la misma transaccion que la escritura.
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'evaluacion_psicosocial_creada',
+        entidad: 'evaluaciones_psicosociales', entidadId: evaluacion.id, detalle: { nivelRiesgo }, req, client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'evaluacion_psicosocial_creada',
-      entidad: 'evaluaciones_psicosociales', entidadId: resultado.id, detalle: { nivelRiesgo }, req,
+      return evaluacion;
     });
 
     return res.status(201).json({ evaluacion: resultado });
@@ -275,12 +276,13 @@ async function generarCapaDesdeEvaluacion(req, res) {
         [capaRes.rows[0].id, req.params.id, orgId]
       );
 
-      return capaRes.rows[0].id;
-    });
+      // N.18 (G18-02): la auditoria va DENTRO de la misma transaccion que la escritura.
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'evaluacion_psicosocial_genero_capa',
+        entidad: 'evaluaciones_psicosociales', entidadId: req.params.id, detalle: { capaId: capaRes.rows[0].id }, req, client,
+      });
 
-    await registrarAuditoria({
-      organizacionId: orgId, usuarioId: req.usuario.id, accion: 'evaluacion_psicosocial_genero_capa',
-      entidad: 'evaluaciones_psicosociales', entidadId: req.params.id, detalle: { capaId: resultado }, req,
+      return capaRes.rows[0].id;
     });
 
     return res.status(201).json({ capaId: resultado });

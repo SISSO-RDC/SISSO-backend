@@ -37,7 +37,11 @@ async function obtener(req, res) {
   const orgId = req.usuario.organizacionId;
   try {
     const capacitacion = await query(
-      `SELECT * FROM capacitaciones WHERE id = $1 AND organizacion_id = $2`,
+      // N.18 (M18-01): allowlist explicita en lugar de SELECT * -- una
+      // columna nueva de la tabla (interna o de gobierno de datos) ya no
+      // se expone por accidente. Mismas columnas que listar().
+      `SELECT id, nombre, tema, instructor, instructor_usuario_id, fecha, horas_duracion, creado_en
+       FROM capacitaciones WHERE id = $1 AND organizacion_id = $2`,
       [req.params.id, orgId]
     );
     if (capacitacion.rows.length === 0) {
@@ -128,17 +132,19 @@ async function crear(req, res) {
         }
       }
 
-      return capacitacion.rows[0];
-    });
+      // N.18 (G18-02): la auditoria va DENTRO de la misma transaccion que la escritura.
+      await registrarAuditoria({
+        organizacionId: orgId,
+        usuarioId: req.usuario.id,
+        accion: 'crear_capacitacion',
+        entidad: 'capacitacion',
+        entidadId: capacitacionId,
+        detalle: { nombre: b.nombre, asistentes: asistentesIds.length },
+        req,
+        client: cliente,
+      });
 
-    await registrarAuditoria({
-      organizacionId: orgId,
-      usuarioId: req.usuario.id,
-      accion: 'crear_capacitacion',
-      entidad: 'capacitacion',
-      entidadId: capacitacionCreada.id,
-      detalle: { nombre: b.nombre, asistentes: asistentesIds.length },
-      req,
+      return capacitacion.rows[0];
     });
 
     return res.status(201).json({ capacitacion: capacitacionCreada });
