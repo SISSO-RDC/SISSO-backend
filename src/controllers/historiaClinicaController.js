@@ -3,6 +3,7 @@
 // Primera pieza: formulario preocupacional - inicio (HCU 077).
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 // CREADO en Auditoria N.11 (C11-03): red de seguridad centralizada
 // de minimizacion por campo, ver src/utils/politicaMinimizacion.js.
@@ -87,7 +88,7 @@ async function registrarPreocupacional(req, res) {
     // igual que en consentimientos/audiometria.
     let firma = { url: null, publicId: null };
     if (b.firmaBase64) {
-      firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
+      firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS, { politica: 'firma' });
     }
 
     let insertRes;
@@ -308,7 +309,7 @@ async function registrarRetiro(req, res) {
 
     let firma = { url: null, publicId: null };
     if (b.firmaBase64) {
-      firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
+      firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS, { politica: 'firma' });
     }
 
     let insertRes;
@@ -474,7 +475,7 @@ async function registrarPeriodica(req, res) {
 
     let firma = { url: null, publicId: null };
     if (b.firmaBase64) {
-      firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
+      firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS, { politica: 'firma' });
     }
 
     let insertRes;
@@ -657,7 +658,7 @@ async function registrarReintegro(req, res) {
 
     let firma = { url: null, publicId: null };
     if (b.firmaBase64) {
-      firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
+      firma = await subirEvidencia(b.firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS, { politica: 'firma' });
     }
 
     let insertRes;
@@ -836,7 +837,7 @@ async function listarPorTrabajador(req, res) {
 async function obtenerEvaluacion(req, res) {
   try {
     const resultado = await query(
-      `SELECT e.*, u.nombre_completo AS medico_nombre,
+      `SELECT ${columnas('evaluaciones_ocupacionales', 'e')}, u.nombre_completo AS medico_nombre,
               t.nombre_completo AS trabajador_nombre, t.documento AS trabajador_documento,
               t.sexo AS trabajador_sexo, t.fecha_nacimiento AS trabajador_fecha_nacimiento,
               t.puesto AS trabajador_puesto, t.area AS trabajador_area
@@ -897,7 +898,7 @@ async function obtenerEvaluacion(req, res) {
 async function descargarPdf(req, res) {
   try {
     const resultado = await query(
-      `SELECT e.*, u.nombre_completo AS medico_nombre, u.registro_senescyt_especialidad AS medico_registro_senescyt,
+      `SELECT ${columnas('evaluaciones_ocupacionales', 'e')}, u.nombre_completo AS medico_nombre, u.registro_senescyt_especialidad AS medico_registro_senescyt,
               t.nombre_completo AS trabajador_nombre, t.documento AS trabajador_documento,
               o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM evaluaciones_ocupacionales e
@@ -985,7 +986,7 @@ async function descargarPdf(req, res) {
 async function descargarCertificado(req, res) {
   try {
     const resultado = await query(
-      `SELECT e.*, u.nombre_completo AS medico_nombre, u.registro_senescyt_especialidad AS medico_registro_senescyt,
+      `SELECT ${columnas('evaluaciones_ocupacionales', 'e')}, u.nombre_completo AS medico_nombre, u.registro_senescyt_especialidad AS medico_registro_senescyt,
               t.nombre_completo AS trabajador_nombre, t.documento AS trabajador_documento,
               o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM evaluaciones_ocupacionales e

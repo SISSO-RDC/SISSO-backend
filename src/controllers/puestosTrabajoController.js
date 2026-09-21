@@ -5,6 +5,7 @@
 // duplicar esa taxonomia en dos lugares del sistema.
 // ============================================================
 const { query } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { validarFactoresRiesgo } = require('../historiaClinica/historiaClinica');
 const catalogosRiesgo = require('../historiaClinica/catalogosRiesgo');
@@ -82,7 +83,7 @@ async function listar(req, res) {
 async function obtener(req, res) {
   try {
     const resultado = await query(
-      `SELECT p.*, u.nombre_completo AS creado_por_nombre,
+      `SELECT ${columnas('puestos_trabajo', 'p')}, u.nombre_completo AS creado_por_nombre,
               (SELECT count(*) FROM trabajadores t WHERE t.puesto_trabajo_id = p.id AND t.activo = true) AS trabajadores_asignados
        FROM puestos_trabajo p
        JOIN usuarios u ON u.id = p.creado_por

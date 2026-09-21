@@ -20,6 +20,7 @@
 const { query } = require('../db/pool');
 const { subirEvidenciaConCompensacion, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { analizarDataUri } = require('../utils/validarArchivo');
 
 const CARPETA_FIRMAS = 'sisso/firmas-digitales-usuario';
 
@@ -98,15 +99,18 @@ async function actualizarMiRegistroSenescyt(req, res) {
 // ------------------------------------------------------------
 async function subirMiFirma(req, res) {
   const { imagenBase64 } = req.body;
-  if (!imagenBase64 || typeof imagenBase64 !== 'string' || !imagenBase64.startsWith('data:image')) {
+  if (!imagenBase64 || typeof imagenBase64 !== 'string') {
     return res.status(400).json({ error: 'imagenBase64 es obligatorio y debe ser una imagen en formato data URI (ej. desde un canvas).' });
   }
+  // G19-11 (Auditoria N.19): validacion estricta de tipo, tamano y contenido.
+  const chkFirma = analizarDataUri(imagenBase64, 'firma');
+  if (!chkFirma.ok) return res.status(400).json({ error: `imagenBase64 invalido: ${chkFirma.motivo}` });
 
   try {
     const existente = await query(`SELECT imagen_public_id FROM firmas_digitales_usuario WHERE usuario_id = $1`, [req.usuario.id]);
 
     const { subida } = await subirEvidenciaConCompensacion(
-      imagenBase64, req.usuario.organizacionId, CARPETA_FIRMAS, { privado: true },
+      imagenBase64, req.usuario.organizacionId, CARPETA_FIRMAS, { privado: true, politica: 'firma' },
       async (subidaResultado) => {
         await query(
           `INSERT INTO firmas_digitales_usuario (usuario_id, organizacion_id, imagen_url, imagen_public_id, actualizado_por)

@@ -38,7 +38,9 @@
 // de la organizacion, TH tampoco puede generar la URL firmada.
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { analizarDataUri } = require('../utils/validarArchivo');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 
 const CARPETA_EVIDENCIA = 'sisso/evidencia-accidentes';
@@ -179,7 +181,7 @@ async function obtener(req, res) {
   const accesoCompleto = ROLES_ACCESO_COMPLETO.includes(req.usuario.rol);
   try {
     const casoRes = await query(
-      `SELECT ai.*, t.nombre_completo AS trabajador_nombre, pt.nombre_puesto
+      `SELECT ${columnas('accidentes_incidentes', 'ai')}, t.nombre_completo AS trabajador_nombre, pt.nombre_puesto
        FROM accidentes_incidentes ai
        LEFT JOIN trabajadores t ON t.id = ai.trabajador_id
        LEFT JOIN puestos_trabajo pt ON pt.id = ai.puesto_trabajo_id
@@ -197,14 +199,14 @@ async function obtener(req, res) {
     const [investigacionRes, accionesRes, evidenciasRes] = accesoCompleto
       ? await Promise.all([
           query(
-            `SELECT i.*, u.nombre_completo AS investigador_nombre
+            `SELECT ${columnas('investigaciones_accidentes', 'i')}, u.nombre_completo AS investigador_nombre
              FROM investigaciones_accidentes i
              LEFT JOIN usuarios u ON u.id = i.investigador_id
              WHERE i.accidente_id = $1 AND i.organizacion_id = $2`,
             [req.params.id, orgId]
           ),
           query(
-            `SELECT a.*, u.nombre_completo AS responsable_nombre
+            `SELECT ${columnas('accidentes_acciones', 'a')}, u.nombre_completo AS responsable_nombre
              FROM accidentes_acciones a
              LEFT JOIN usuarios u ON u.id = a.responsable_id
              WHERE a.accidente_id = $1 AND a.organizacion_id = $2
@@ -558,6 +560,9 @@ async function subirEvidenciaCaso(req, res) {
   if (!archivoBase64) {
     return res.status(400).json({ error: 'archivoBase64 es obligatorio.' });
   }
+  // G19-11 (Auditoria N.19): antes no se validaba NADA del contenido.
+  const chkArchivo = analizarDataUri(archivoBase64, 'evidencia');
+  if (!chkArchivo.ok) return res.status(400).json({ error: `archivoBase64 invalido: ${chkArchivo.motivo}` });
 
   try {
     const casoRes = await query(

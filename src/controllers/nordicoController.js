@@ -4,6 +4,7 @@
 // criterio de "atencion prioritaria" (senal, no diagnostico).
 // ============================================================
 const { query } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { REGIONES, calcularResumenNordico, validarRegionesNordico } = require('../nordico/nordico');
 const catalogosNordico = require('../nordico/nordico');
@@ -173,7 +174,7 @@ async function listarCuestionarios(req, res) {
 async function obtenerCuestionario(req, res) {
   try {
     const res2 = await query(
-      `SELECT c.*, u.nombre_completo AS aplicado_por_nombre, t.nombre_completo AS trabajador_nombre
+      `SELECT ${columnas('cuestionarios_nordicos', 'c')}, u.nombre_completo AS aplicado_por_nombre, t.nombre_completo AS trabajador_nombre
        FROM cuestionarios_nordicos c
        JOIN usuarios u ON u.id = c.aplicado_por
        JOIN trabajadores t ON t.id = c.trabajador_id

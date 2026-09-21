@@ -126,3 +126,8 @@ funcion controladora de una ruta de escritura sensible llame a
 `registrarAuditoria` en su propio cuerpo) daria una garantia mas
 fuerte que la verificacion a nivel de archivo. Queda como mejora de
 arquitectura para una proxima entrega.
+
+
+## G19-02 -- Access token en sessionStorage (Auditoría N.19)
+
+Sigue pendiente. Ver `docs/CORRECCIONES_N19.md` («Decisiones pendientes»): la mitigación mínima (token solo en memoria) obliga a un refresh por página y necesita pruebas E2E (G19-06); la solución de fondo es una sesión BFF/cookie.

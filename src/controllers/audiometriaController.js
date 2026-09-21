@@ -2,6 +2,7 @@
 // Controlador de audiometria ocupacional.
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { calcularAudiometria } = require('../audiometria/audiometria');
 
@@ -240,7 +241,7 @@ async function listarExamenes(req, res) {
 async function obtenerExamen(req, res) {
   try {
     const res2 = await query(
-      `SELECT e.*, u.nombre_completo AS medico_nombre, t.nombre_completo AS trabajador_nombre
+      `SELECT ${columnas('examenes_audiometria', 'e')}, u.nombre_completo AS medico_nombre, t.nombre_completo AS trabajador_nombre
        FROM examenes_audiometria e
        JOIN usuarios u ON u.id = e.medico_id
        JOIN trabajadores t ON t.id = e.trabajador_id

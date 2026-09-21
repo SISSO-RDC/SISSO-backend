@@ -10,6 +10,7 @@
 // usuario autenticado, igual que accidentes.
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 const ORIGENES_VALIDOS = ['accidente', 'casi_accidente', 'matriz_riesgo', 'inspeccion', 'enfermedad_profesional', 'auditoria', 'manual'];
@@ -124,7 +125,7 @@ async function obtener(req, res) {
   const orgId = req.usuario.organizacionId;
   try {
     const resultado = await query(
-      `SELECT c.*, ur.nombre_completo AS responsable_nombre, uv.nombre_completo AS verificado_por_nombre,
+      `SELECT ${columnas('capa_acciones', 'c')}, ur.nombre_completo AS responsable_nombre, uv.nombre_completo AS verificado_por_nombre,
               ue.nombre_completo AS evaluado_por_nombre, uc.nombre_completo AS creado_por_nombre
        FROM capa_acciones c
        LEFT JOIN usuarios ur ON ur.id = c.responsable_id

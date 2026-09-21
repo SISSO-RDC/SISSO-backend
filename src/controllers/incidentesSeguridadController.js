@@ -17,6 +17,7 @@
 // decide).
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 const GRAVEDADES_VALIDAS = ['baja', 'media', 'alta', 'critica'];
@@ -118,7 +119,7 @@ async function obtenerDetalle(req, res) {
 
   try {
     const resultado = await query(
-      `SELECT i.*, u.nombre_completo AS responsable_nombre
+      `SELECT ${columnas('incidentes_seguridad_datos', 'i')}, u.nombre_completo AS responsable_nombre
        FROM incidentes_seguridad_datos i
        LEFT JOIN usuarios u ON u.id = i.responsable_id
        WHERE i.id = $1 AND i.organizacion_id = $2`,

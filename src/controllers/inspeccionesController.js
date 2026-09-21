@@ -9,6 +9,7 @@
 // Lectura: cualquier usuario autenticado.
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 // ------------------------------------------------------------
@@ -83,7 +84,7 @@ async function obtener(req, res) {
   const orgId = req.usuario.organizacionId;
   try {
     const inspeccionRes = await query(
-      `SELECT i.*, pt.nombre_puesto, u.nombre_completo AS inspector_nombre
+      `SELECT ${columnas('inspecciones', 'i')}, pt.nombre_puesto, u.nombre_completo AS inspector_nombre
        FROM inspecciones i
        LEFT JOIN puestos_trabajo pt ON pt.id = i.puesto_trabajo_id
        LEFT JOIN usuarios u ON u.id = i.inspector_id

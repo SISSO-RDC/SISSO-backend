@@ -7,6 +7,7 @@
 // autenticado (dato tecnico/preventivo, no clinico).
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 const TIPOS_VALIDOS = ['ruido', 'iluminacion', 'vibracion', 'quimico', 'estres_termico', 'polvo', 'radiacion', 'otro'];
@@ -147,7 +148,7 @@ async function obtener(req, res) {
   const orgId = req.usuario.organizacionId;
   try {
     const resultado = await query(
-      `SELECT m.*, pt.nombre_puesto, u.nombre_completo AS responsable_nombre
+      `SELECT ${columnas('mediciones_higiene_industrial', 'm')}, pt.nombre_puesto, u.nombre_completo AS responsable_nombre
        FROM mediciones_higiene_industrial m
        LEFT JOIN puestos_trabajo pt ON pt.id = m.puesto_trabajo_id
        LEFT JOIN usuarios u ON u.id = m.responsable_id

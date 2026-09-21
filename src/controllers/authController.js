@@ -27,6 +27,7 @@ const {
   REFRESH_EXPIRES,
 } = require('../utils/jwt');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { obtenerIpCliente } = require('../utils/ipCliente');
 const { verificarLimitePlan } = require('../utils/planes');
 // CORREGIDO tras auditoria de seguridad (hallazgo CRITICO): el secreto
 // TOTP ya no se guarda en texto plano. Ver src/utils/crypto.js.
@@ -607,7 +608,7 @@ async function completarLogin(usuario, req, res) {
       familiaId,
       hashToken(refreshToken),
       req.headers['user-agent'] || null,
-      req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
+      obtenerIpCliente(req),
       new Date(Date.now() + expiraEnMs),
     ]
   );
@@ -1138,7 +1139,7 @@ async function refrescar(req, res) {
           tokenFila.familia_id,
           hashToken(nuevoRefreshToken),
           req.headers['user-agent'] || null,
-          req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
+          obtenerIpCliente(req),
           new Date(Date.now() + expiraEnMs),
         ]
       );

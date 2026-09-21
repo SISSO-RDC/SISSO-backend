@@ -11,6 +11,7 @@
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:entorno": "node scripts/verificar_entorno_pruebas.js",
     "migrate": "node src/db/migrate.js",
+    "verificar:esquema": "node scripts/verificar_esquema_release.js",
     "seed": "node src/db/seed.js",
     "cargar-cie10": "node scripts/cargar_cie10.js"
   },

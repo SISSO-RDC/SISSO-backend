@@ -11,6 +11,7 @@
 const { verificarAccessToken, verificarTokenMfaPendiente } = require('../utils/jwt');
 const { ejecutarConContexto } = require('../utils/contextoSolicitud');
 const { queryComoSuperadmin } = require('../db/pool');
+const { resolverConfigCacheAuth } = require('../utils/configCacheAuth');
 
 // ------------------------------------------------------------
 // CORREGIDO en Auditoria N.09 (hallazgo GRAVE/MODERADO G-N09-11):
@@ -52,14 +53,14 @@ const { queryComoSuperadmin } = require('../db/pool');
 // el cache es por proceso y una suspension/revocacion tardaria hasta el
 // TTL en llegar a las demas instancias. Con una sola instancia (el
 // despliegue actual en Render) el valor por defecto sigue siendo seguro.
+// G19-12 (Auditoria N.19): la validacion vive en utils/configCacheAuth.js. Ademas de
+// validar el rango, se niega a arrancar si el operador declara INSTANCIAS_MULTIPLES=true
+// con un TTL > 0, y deja registrado el TTL efectivo en cada arranque.
 function leerTtlCacheAuth() {
-  const crudo = process.env.AUTH_CACHE_TTL_MS;
-  if (crudo === undefined || crudo === '') return 20 * 1000;
-  const n = Number(crudo);
-  if (!Number.isInteger(n) || n < 0 || n > 300000) {
-    throw new Error('AUTH_CACHE_TTL_MS invalido: debe ser un entero de 0 a 300000 (milisegundos).');
-  }
-  return n;
+  const { ttlMs, advertencias } = resolverConfigCacheAuth(process.env);
+  console.log(`[auth] cache de autenticacion: TTL=${ttlMs} ms${ttlMs === 0 ? ' (desactivada)' : ''}`);
+  for (const a of advertencias) console.warn(`ADVERTENCIA: ${a}`);
+  return ttlMs;
 }
 const AUTH_CACHE_TTL_MS = leerTtlCacheAuth();
 const ORGANIZACION_CACHE_TTL_MS = AUTH_CACHE_TTL_MS;

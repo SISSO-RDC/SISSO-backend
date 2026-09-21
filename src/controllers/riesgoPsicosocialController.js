@@ -15,6 +15,7 @@
 // pero TH queda fuera -- no es informacion operativa de TH).
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { UMBRAL_K_ANONIMATO } = require('../utils/kAnonimato');
 
@@ -130,7 +131,7 @@ async function obtenerEvaluacion(req, res) {
   const orgId = req.usuario.organizacionId;
   try {
     const evalRes = await query(
-      `SELECT e.*, t.nombre_completo AS trabajador_nombre, pt.nombre_puesto, u.nombre_completo AS evaluador_nombre
+      `SELECT ${columnas('evaluaciones_psicosociales', 'e')}, t.nombre_completo AS trabajador_nombre, pt.nombre_puesto, u.nombre_completo AS evaluador_nombre
        FROM evaluaciones_psicosociales e
        LEFT JOIN trabajadores t ON t.id = e.trabajador_id
        LEFT JOIN puestos_trabajo pt ON pt.id = e.puesto_trabajo_id

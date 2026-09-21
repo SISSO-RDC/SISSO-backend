@@ -67,6 +67,8 @@ const CARPETA_BASE_POR_DEFECTO = 'sisso/evidencia-ergonomia';
 // de servir casi de inmediato.
 const SEGUNDOS_VALIDEZ_URL_FIRMADA = 300;
 
+const { analizarDataUri, ArchivoInvalidoError } = require('../utils/validarArchivo');
+
 /**
  * Sube un archivo (foto, video, o imagen de firma) a Cloudinary.
  *
@@ -81,7 +83,9 @@ const SEGUNDOS_VALIDEZ_URL_FIRMADA = 300;
  *        ergonomica vs. firmas de consentimiento). Si se omite,
  *        usa la carpeta de evidencia ergonomica por defecto, para
  *        no romper las llamadas ya existentes en REBA/RULA.
- * @param {{privado?: boolean}} [opciones] - privado=true (default)
+ * @param {{privado?: boolean, politica?: 'firma'|'logo'|'evidencia'|'certificado'}} [opciones]
+ *        politica (G19-11): que tipos y tamano se aceptan (ver utils/validarArchivo.js);
+ *        default 'evidencia'. privado=true (default)
  *        sube el archivo como recurso "authenticated" (requiere
  *        URL firmada para verlo, ver generarUrlFirmada). Pasar
  *        privado:false SOLO para contenido que debe ser publico a
@@ -92,8 +96,15 @@ const SEGUNDOS_VALIDEZ_URL_FIRMADA = 300;
  *        generar una URL firmada con generarUrlFirmada(publicId, ...).
  */
 async function subirEvidencia(base64DataUri, organizacionId, carpetaBase = CARPETA_BASE_POR_DEFECTO, opciones = {}) {
-  const { privado = true } = opciones;
-  const esVideo = base64DataUri.startsWith('data:video');
+  const { privado = true, politica = 'evidencia' } = opciones;
+
+  // G19-11 (Auditoria N.19): validacion central ANTES de tocar Cloudinary. Solo se
+  // aceptan data URI base64 bien formados, de un tipo permitido para este uso, con
+  // tamano acotado y contenido que coincida con el tipo declarado. Sin esto, el SDK
+  // aceptaba tambien URLs remotas y rutas locales como "archivo".
+  const analisis = analizarDataUri(base64DataUri, politica);
+  if (!analisis.ok) throw new ArchivoInvalidoError(analisis.motivo);
+  const esVideo = analisis.esVideo;
 
   const resultado = await cloudinary.uploader.upload(base64DataUri, {
     folder: `${carpetaBase}/${organizacionId}`,

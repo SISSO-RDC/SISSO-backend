@@ -17,6 +17,7 @@
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { analizarDataUri } = require('../utils/validarArchivo');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 const { generarPdfFirmado, generarPdfEnBlanco } = require('../consentimientos/pdfConsentimiento');
 const { obtenerLogoBuffer } = require('../utils/logoPdf');
@@ -78,9 +79,12 @@ async function firmarConsentimiento(req, res) {
   if (!tipoConsentimientoCodigo || typeof tipoConsentimientoCodigo !== 'string') {
     return res.status(400).json({ error: 'tipoConsentimientoCodigo es obligatorio.' });
   }
-  if (!firmaBase64 || typeof firmaBase64 !== 'string' || !firmaBase64.startsWith('data:image')) {
+  if (!firmaBase64 || typeof firmaBase64 !== 'string') {
     return res.status(400).json({ error: 'firmaBase64 es obligatorio y debe ser una imagen en formato data URI (ej: la firma capturada en el canvas).' });
   }
+  // G19-11 (Auditoria N.19): validacion estricta de tipo, tamano y contenido.
+  const chkFirma = analizarDataUri(firmaBase64, 'firma');
+  if (!chkFirma.ok) return res.status(400).json({ error: `firmaBase64 invalido: ${chkFirma.motivo}` });
 
   try {
     const trabajadorRes = await query(
@@ -100,7 +104,7 @@ async function firmarConsentimiento(req, res) {
     }
     const tipo = tipoRes.rows[0];
 
-    const firma = await subirEvidencia(firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
+    const firma = await subirEvidencia(firmaBase64, req.usuario.organizacionId, CARPETA_FIRMAS, { politica: 'firma' });
 
     // CORREGIDO en Auditoria N.09 (G-N09-06): la firma es un dato
     // biometrico/sensible; si la transaccion de BD falla despues de
@@ -524,9 +528,11 @@ async function firmarFisico(req, res) {
   if (!tipoConsentimientoCodigo || typeof tipoConsentimientoCodigo !== 'string') {
     return res.status(400).json({ error: 'tipoConsentimientoCodigo es obligatorio.' });
   }
-  if (!imagenBase64 || typeof imagenBase64 !== 'string' || !imagenBase64.startsWith('data:image')) {
+  if (!imagenBase64 || typeof imagenBase64 !== 'string') {
     return res.status(400).json({ error: 'imagenBase64 es obligatorio: la foto o escaneo del documento firmado, en formato data URI.' });
   }
+  const chkImagen = analizarDataUri(imagenBase64, 'firma');
+  if (!chkImagen.ok) return res.status(400).json({ error: `imagenBase64 invalido: ${chkImagen.motivo}` });
 
   try {
     const trabajadorRes = await query(
@@ -546,7 +552,7 @@ async function firmarFisico(req, res) {
     }
     const tipo = tipoRes.rows[0];
 
-    const imagen = await subirEvidencia(imagenBase64, req.usuario.organizacionId, CARPETA_FIRMAS);
+    const imagen = await subirEvidencia(imagenBase64, req.usuario.organizacionId, CARPETA_FIRMAS, { politica: 'firma' });
 
     // CORREGIDO en Auditoria N.09 (G-N09-06): compensacion si la
     // transaccion de BD falla despues de subir la imagen escaneada.

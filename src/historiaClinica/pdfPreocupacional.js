@@ -178,10 +178,13 @@ function generarPdfPreocupacional(e, nombreOrganizacion, logoBuffer, firmaMedico
   doc.text(`Trabajador: ${e.trabajador_nombre}   |   Documento: ${e.trabajador_documento}`);
   doc.text(`Fecha de atención: ${formatearFecha(e.fecha_atencion)}${e.hora_atencion ? '  ' + e.hora_atencion : ''}   |   Profesional: ${e.medico_nombre}`);
 
+  // C19-01 (Auditoria N.19): se retiro del PDF todo el codigo que imprimia religion,
+  // antecedentes gineco-obstetricos/reproductivos y habitos toxicos (Sentencia 59-19-IN/24).
+  // Ya no se solicitan ni se leen (politicaMinimizacion los elimina de la fila antes de
+  // llegar aqui); dejar la rama viva habria reabierto la exposicion si esa politica cambia.
   // ---- Bloque A ----
   tituloBloque(doc, 'A', 'Datos generales del trabajador');
   campo(doc, 'N° de archivo', e.numero_archivo);
-  campo(doc, 'Religión', formatEnum(e.religion));
   campo(doc, 'Grupo sanguíneo', e.grupo_sanguineo);
   campo(doc, 'Lateralidad', formatEnum(e.lateralidad));
   campo(doc, 'Fecha de ingreso al trabajo', formatearFecha(e.fecha_ingreso_trabajo));
@@ -192,13 +195,6 @@ function generarPdfPreocupacional(e, nombreOrganizacion, logoBuffer, firmaMedico
     doc.moveDown(0.3);
     campo(doc, 'Discapacidad', `${e.discapacidad_tipo || 'No especificada'}${e.discapacidad_porcentaje ? ` (${e.discapacidad_porcentaje}%)` : ''}`);
   }
-  if (e.antecedentes_ginecobstetricos) {
-    const g = e.antecedentes_ginecobstetricos;
-    doc.moveDown(0.3);
-    campo(doc, 'Menarquia', g.menarquiaEdad ? `${g.menarquiaEdad} años` : null);
-    campo(doc, 'Ciclos', g.ciclosDias ? `${g.ciclosDias} días` : null);
-    campo(doc, 'Última menstruación', formatearFecha(g.fechaUltimaMenstruacion));
-  }
 
   // ---- Bloque B ----
   tituloBloque(doc, 'B', 'Motivo de consulta');
@@ -207,29 +203,6 @@ function generarPdfPreocupacional(e, nombreOrganizacion, logoBuffer, firmaMedico
   // ---- Bloque C ----
   tituloBloque(doc, 'C', 'Antecedentes personales');
   if (e.antecedentes_clinicos_quirurgicos) { doc.font('Helvetica-Bold').text('Clínico-quirúrgicos:'); parrafo(doc, e.antecedentes_clinicos_quirurgicos); doc.moveDown(0.3); }
-  if (e.antecedentes_ginecologicos_examenes) {
-    const g = e.antecedentes_ginecologicos_examenes;
-    campo(doc, 'Gestas/Partos/Cesáreas/Abortos', `${g.gestas ?? '-'} / ${g.partos ?? '-'} / ${g.cesareas ?? '-'} / ${g.abortos ?? '-'}`);
-    campo(doc, 'Hijos vivos/fallecidos', `${g.hijosVivos ?? '-'} / ${g.hijosMuertos ?? '-'}`);
-    if (g.examenes) {
-      campo(doc, 'Papanicolau', g.examenes.papanicolau?.resultado ? `${g.examenes.papanicolau.resultado} (${formatearFecha(g.examenes.papanicolau.fecha)})` : null);
-      campo(doc, 'Eco mamario', g.examenes.ecoMamario?.resultado ? `${g.examenes.ecoMamario.resultado} (${formatearFecha(g.examenes.ecoMamario.fecha)})` : null);
-      campo(doc, 'Mamografía', g.examenes.mamografia?.resultado ? `${g.examenes.mamografia.resultado} (${formatearFecha(g.examenes.mamografia.fecha)})` : null);
-    }
-    doc.moveDown(0.3);
-  }
-  if (e.antecedentes_reproductivos_masculinos) {
-    const m = e.antecedentes_reproductivos_masculinos;
-    campo(doc, 'Antígeno prostático', m.antigenoProstatico?.resultado ? `${m.antigenoProstatico.resultado} (${formatearFecha(m.antigenoProstatico.fecha)})` : null);
-    campo(doc, 'Eco prostático', m.ecoProstatico?.resultado ? `${m.ecoProstatico.resultado} (${formatearFecha(m.ecoProstatico.fecha)})` : null);
-    doc.moveDown(0.3);
-  }
-  if (e.habitos_toxicos) {
-    const h = e.habitos_toxicos;
-    campo(doc, 'Tabaco', h.tabaco?.consume && h.tabaco.consume !== 'no' ? `${h.tabaco.consume} — ${h.tabaco.detalle || ''}` : 'No');
-    campo(doc, 'Alcohol', h.alcohol?.consume && h.alcohol.consume !== 'no' ? `${h.alcohol.consume} — ${h.alcohol.detalle || ''}` : 'No');
-    campo(doc, 'Otras drogas', h.otrasDrogas?.consume && h.otrasDrogas.consume !== 'no' ? `${h.otrasDrogas.consume} — ${h.otrasDrogas.detalle || ''}` : 'No');
-  }
   if (e.estilo_vida) {
     campo(doc, 'Actividad física', e.estilo_vida.actividadFisica);
     campo(doc, 'Medicación habitual', e.estilo_vida.medicacionHabitual);
@@ -656,12 +629,6 @@ function generarPdfPeriodica(e, nombreOrganizacion, logoBuffer, firmaMedico) {
 
   tituloBloque(doc, 'B', 'Antecedentes personales');
   if (e.antecedentes_clinicos_quirurgicos) { doc.font('Helvetica-Bold').text('Clínico-quirúrgicos:'); parrafo(doc, e.antecedentes_clinicos_quirurgicos); doc.moveDown(0.3); }
-  if (e.habitos_toxicos) {
-    const h = e.habitos_toxicos;
-    campo(doc, 'Tabaco', h.tabaco?.consume && h.tabaco.consume !== 'no' ? `${h.tabaco.consume} — ${h.tabaco.detalle || ''}` : 'No');
-    campo(doc, 'Alcohol', h.alcohol?.consume && h.alcohol.consume !== 'no' ? `${h.alcohol.consume} — ${h.alcohol.detalle || ''}` : 'No');
-    campo(doc, 'Otras drogas', h.otrasDrogas?.consume && h.otrasDrogas.consume !== 'no' ? `${h.otrasDrogas.consume} — ${h.otrasDrogas.detalle || ''}` : 'No');
-  }
   if (e.estilo_vida) {
     campo(doc, 'Actividad física', e.estilo_vida.actividadFisica);
     campo(doc, 'Medicación habitual', e.estilo_vida.medicacionHabitual);
