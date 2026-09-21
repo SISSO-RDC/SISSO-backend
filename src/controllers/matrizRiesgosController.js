@@ -3,6 +3,7 @@
 // src/matrizRiesgos/matrizRiesgos.js para el detalle completo.
 // ============================================================
 const { query } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { clasificarRiesgo, TIPOS_PELIGRO, ETIQUETAS_PROBABILIDAD, ETIQUETAS_CONSECUENCIA } = require('../matrizRiesgos/matrizRiesgos');
 
@@ -96,7 +97,7 @@ async function listar(req, res) {
 async function obtener(req, res) {
   try {
     const resultado = await query(
-      `SELECT m.*, p.nombre_puesto, u.nombre_completo AS creado_por_nombre
+      `SELECT ${columnas('matriz_riesgos', 'm')}, p.nombre_puesto, u.nombre_completo AS creado_por_nombre
        FROM matriz_riesgos m
        LEFT JOIN puestos_trabajo p ON p.id = m.puesto_trabajo_id
        JOIN usuarios u ON u.id = m.creado_por

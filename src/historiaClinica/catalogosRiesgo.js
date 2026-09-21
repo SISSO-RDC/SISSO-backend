@@ -94,8 +94,9 @@ const EXAMEN_FISICO_REGIONES = {
   neurologico: ['fuerza', 'sensibilidad', 'marcha', 'reflejos'],
 };
 
-const RELIGIONES = ['catolica', 'evangelica', 'testigos_jehova', 'mormona', 'otra', 'ninguna'];
 const LATERALIDADES = ['izquierdo', 'derecho', 'ambidiestro'];
+// C19-01 (Auditoria N.19): se elimino el catalogo RELIGIONES; la religion ya no se
+// solicita (Sentencia 59-19-IN/24) y ningun flujo lo usa.
 // DEPRECADO (Auditoria N.10, C10-01): NO usar para nueva captura de
 // datos. Se conserva solo como referencia del modelo heredado; ver
 // comentario de cabecera.
@@ -119,6 +120,6 @@ module.exports = {
   RIESGOS_FISICOS, RIESGOS_MECANICOS, RIESGOS_QUIMICOS,
   RIESGOS_BIOLOGICOS, RIESGOS_ERGONOMICOS, RIESGOS_PSICOSOCIALES,
   SISTEMAS_REVISION, EXAMEN_FISICO_REGIONES,
-  RELIGIONES, LATERALIDADES, APTITUDES_MSP,
+  LATERALIDADES, APTITUDES_MSP,
   NORMA_APLICADA_ACTUAL, VERSION_FORMULARIO_ACTUAL, BASE_JURIDICA_ACTUAL,
 };

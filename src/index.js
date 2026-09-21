@@ -98,6 +98,7 @@ const incidentesSeguridadRoutes = require('./routes/incidentesSeguridadRoutes');
 const puestoExposicionesRoutes = require('./routes/puestoExposicionesRoutes');
 const plataformaRoutes = require('./routes/plataformaRoutes');
 const { VERSION_SERVIDOR } = require('./utils/versionServidor');
+const { configurarTrustProxy } = require('./utils/ipCliente');
 
 const app = express();
 
@@ -107,6 +108,11 @@ app.use(helmet());
 // --- CORS: solo permitimos peticiones desde los dominios autorizados ---
 const origenesPermitidos = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
 const esProduccion = process.env.NODE_ENV === 'production';
+
+// G19-10 (Auditoria N.19): configuracion EXPLICITA de proxy de confianza. Sin esto,
+// req.ip era la IP del balanceador (el limitador de login y la auditoria no veian
+// al cliente real) o, leyendo X-Forwarded-For a mano, un valor falseable.
+app.set('trust proxy', configurarTrustProxy(process.env.TRUST_PROXY, esProduccion));
 
 app.use(cors({
   origin: function (origin, callback) {

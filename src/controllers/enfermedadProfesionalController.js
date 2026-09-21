@@ -19,6 +19,7 @@
 //     vista agregada), igual que con historia clinica y aptitud.
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 // ------------------------------------------------------------
@@ -134,7 +135,7 @@ async function obtenerCaso(req, res) {
   const { casoId } = req.params;
   try {
     const casoRes = await query(
-      `SELECT ep.*, c.descripcion AS diagnostico_descripcion
+      `SELECT ${columnas('enfermedad_profesional', 'ep')}, c.descripcion AS diagnostico_descripcion
        FROM enfermedad_profesional ep
        LEFT JOIN catalogo_cie10 c ON c.codigo = ep.diagnostico_cie10
        WHERE ep.id = $1 AND ep.organizacion_id = $2`,

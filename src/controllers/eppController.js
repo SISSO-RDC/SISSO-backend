@@ -8,6 +8,7 @@
 // ============================================================
 const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { analizarDataUri } = require('../utils/validarArchivo');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
 
 const CARPETA_FIRMAS_EPP = 'sisso/firmas-epp';
@@ -103,8 +104,11 @@ async function crearEntrega(req, res) {
 
     let firmaUrl = null;
     let firmaPublicId = null;
-    if (firmaBase64 && typeof firmaBase64 === 'string' && firmaBase64.startsWith('data:image')) {
-      const firma = await subirEvidencia(firmaBase64, orgId, CARPETA_FIRMAS_EPP);
+    if (firmaBase64) {
+      // G19-11 (Auditoria N.19): antes, una firma invalida se ignoraba en silencio.
+      const chkFirma = analizarDataUri(firmaBase64, 'firma');
+      if (!chkFirma.ok) return res.status(400).json({ error: `firmaBase64 invalido: ${chkFirma.motivo}` });
+      const firma = await subirEvidencia(firmaBase64, orgId, CARPETA_FIRMAS_EPP, { politica: 'firma' });
       firmaUrl = firma.url;
       firmaPublicId = firma.publicId;
     }

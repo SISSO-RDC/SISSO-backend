@@ -3,6 +3,7 @@
 // formados o maliciosos lleguen a la base de datos.
 // ============================================================
 const { body, validationResult } = require('express-validator');
+const { validarDataUri } = require('../utils/validarArchivo');
 
 function manejarErroresValidacion(req, res, next) {
   const errores = validationResult(req);
@@ -132,7 +133,9 @@ const validarCrearEvaluacionReba = [
   body('actividadCambiosPosturalesRapidos').optional().isBoolean(),
 
   body('evidenciaBase64').optional({ values: 'falsy' }).isString()
-    .withMessage('evidenciaBase64 debe ser una cadena (data URI).'),
+    .withMessage('evidenciaBase64 debe ser una cadena (data URI).')
+    .bail()
+    .custom(validarDataUri('evidencia')),
 
   manejarErroresValidacion,
 ];
@@ -192,7 +195,9 @@ const validarCrearEvaluacionRula = [
   body('grupoBFuerzaCarga').isIn(['menor_2kg_intermitente', 'entre_2_10kg_intermitente', 'entre_2_10kg_estatico_o_repetido', 'mayor_10kg_o_repetido_o_brusco']).withMessage('grupoBFuerzaCarga invalido.'),
 
   body('evidenciaBase64').optional({ values: 'falsy' }).isString()
-    .withMessage('evidenciaBase64 debe ser una cadena (data URI).'),
+    .withMessage('evidenciaBase64 debe ser una cadena (data URI).')
+    .bail()
+    .custom(validarDataUri('evidencia')),
 
   manejarErroresValidacion,
 ];
@@ -234,7 +239,7 @@ const validarRegistrarAptitud = [
 // ------------------------------------------------------------
 const validarFirmarConsentimiento = [
   body('tipoConsentimientoCodigo').trim().isLength({ min: 2, max: 50 }).withMessage('tipoConsentimientoCodigo es obligatorio.'),
-  body('firmaBase64').isString().custom((value) => value.startsWith('data:image')).withMessage('firmaBase64 debe ser una imagen en formato data URI.'),
+  body('firmaBase64').isString().custom(validarDataUri('firma')),
   manejarErroresValidacion,
 ];
 
@@ -245,7 +250,7 @@ const validarRevocarConsentimiento = [
 
 const validarFirmarFisico = [
   body('tipoConsentimientoCodigo').trim().isLength({ min: 2, max: 50 }).withMessage('tipoConsentimientoCodigo es obligatorio.'),
-  body('imagenBase64').isString().custom((value) => value.startsWith('data:image')).withMessage('imagenBase64 debe ser una foto/escaneo en formato data URI.'),
+  body('imagenBase64').isString().custom(validarDataUri('firma')),
   manejarErroresValidacion,
 ];
 
@@ -325,7 +330,7 @@ const validarRegistrarPreocupacional = [
 
   body('aptitudMsp').optional({ values: 'falsy' }).isIn(['apto', 'apto_en_observacion', 'apto_con_limitaciones', 'no_apto']).withMessage('aptitudMsp invalida.'),
   body('codigoProfesionalSalud').optional({ values: 'falsy' }).trim().isLength({ max: 50 }),
-  body('firmaBase64').optional({ values: 'falsy' }).isString().custom((value) => value.startsWith('data:image')).withMessage('firmaBase64 debe ser una imagen en formato data URI.'),
+  body('firmaBase64').optional({ values: 'falsy' }).isString().custom(validarDataUri('firma')),
 
   manejarErroresValidacion,
 ];
@@ -353,7 +358,7 @@ const validarRegistrarRetiro = [
 
   body('retiroSeRealizoEvaluacion').optional().isBoolean().withMessage('retiroSeRealizoEvaluacion debe ser verdadero o falso.'),
   body('codigoProfesionalSalud').optional({ values: 'falsy' }).trim().isLength({ max: 50 }),
-  body('firmaBase64').optional({ values: 'falsy' }).isString().custom((value) => value.startsWith('data:image')).withMessage('firmaBase64 debe ser una imagen en formato data URI.'),
+  body('firmaBase64').optional({ values: 'falsy' }).isString().custom(validarDataUri('firma')),
 
   manejarErroresValidacion,
 ];
@@ -377,7 +382,7 @@ const validarRegistrarPeriodica = [
 
   body('aptitudMsp').optional({ values: 'falsy' }).isIn(['apto', 'apto_en_observacion', 'apto_con_limitaciones', 'no_apto']).withMessage('aptitudMsp invalida.'),
   body('codigoProfesionalSalud').optional({ values: 'falsy' }).trim().isLength({ max: 50 }),
-  body('firmaBase64').optional({ values: 'falsy' }).isString().custom((value) => value.startsWith('data:image')).withMessage('firmaBase64 debe ser una imagen en formato data URI.'),
+  body('firmaBase64').optional({ values: 'falsy' }).isString().custom(validarDataUri('firma')),
 
   manejarErroresValidacion,
 ];
@@ -403,7 +408,7 @@ const validarRegistrarReintegro = [
 
   body('aptitudMsp').optional({ values: 'falsy' }).isIn(['apto', 'apto_en_observacion', 'apto_con_limitaciones', 'no_apto']).withMessage('aptitudMsp invalida.'),
   body('codigoProfesionalSalud').optional({ values: 'falsy' }).trim().isLength({ max: 50 }),
-  body('firmaBase64').optional({ values: 'falsy' }).isString().custom((value) => value.startsWith('data:image')).withMessage('firmaBase64 debe ser una imagen en formato data URI.'),
+  body('firmaBase64').optional({ values: 'falsy' }).isString().custom(validarDataUri('firma')),
 
   manejarErroresValidacion,
 ];
@@ -536,7 +541,7 @@ const validarAplicarConfiguracionSectorial = [
 ];
 
 const validarActualizarLogoOrganizacion = [
-  body('logoBase64').isString().custom((value) => value.startsWith('data:image')).withMessage('logoBase64 debe ser una imagen en formato data URI.'),
+  body('logoBase64').isString().custom(validarDataUri('logo')),
   manejarErroresValidacion,
 ];
 
@@ -623,7 +628,7 @@ const validarCrearAusencia = [
   body('diagnosticoCie10').optional({ values: 'falsy' }).trim().isLength({ max: 10 }),
   body('numeroCertificado').optional({ values: 'falsy' }).trim().isLength({ max: 60 }),
   body('certificadoBase64').optional({ values: 'falsy' }).isString()
-    .custom((value) => value.startsWith('data:image') || value.startsWith('data:application/pdf'))
+    .custom(validarDataUri('certificado'))
     .withMessage('certificadoBase64 debe ser una imagen o PDF en formato data URI.'),
   body('observaciones').optional({ values: 'falsy' }).trim().isLength({ max: 2000 }),
   manejarErroresValidacion,

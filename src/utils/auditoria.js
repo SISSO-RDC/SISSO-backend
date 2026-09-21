@@ -49,6 +49,7 @@
 // envuelve la escritura clinica + su auditoria).
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { obtenerIpCliente } = require('./ipCliente');
 
 /**
  * Registra una entrada de auditoria.
@@ -95,7 +96,9 @@ async function registrarAuditoria({
   client = null,
   lecturaSensible = false,
 }) {
-  const ip = req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress) : null;
+  // G19-10 (Auditoria N.19): la IP sale de req.ip (segun `trust proxy`), no de la
+  // cabecera X-Forwarded-For, que el cliente puede falsear.
+  const ip = obtenerIpCliente(req);
   const userAgent = req ? req.headers['user-agent'] : null;
   const sentencia = `INSERT INTO auditoria
       (organizacion_id, usuario_id, accion, entidad, entidad_id, detalle, ip_origen, user_agent)

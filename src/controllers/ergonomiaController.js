@@ -12,6 +12,7 @@
 // si viene, guardar el resultado y registrar auditoria.
 // ============================================================
 const { query, withTransaction } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { calcularReba } = require('../ergonomia/reba');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada } = require('../servicios/cloudinaryService');
@@ -125,7 +126,7 @@ async function listarSesionesPorTrabajador(req, res) {
 async function obtenerSesion(req, res) {
   try {
     const sesionRes = await query(
-      `SELECT s.*, t.nombre_completo AS trabajador_nombre, u.nombre_completo AS evaluador_nombre
+      `SELECT ${columnas('sesiones_evaluacion_ergonomica', 's')}, t.nombre_completo AS trabajador_nombre, u.nombre_completo AS evaluador_nombre
        FROM sesiones_evaluacion_ergonomica s
        JOIN trabajadores t ON t.id = s.trabajador_id
        JOIN usuarios u ON u.id = s.evaluador_id

@@ -4,6 +4,7 @@
 // detalle completo de formulas, tablas y fuentes.
 // ============================================================
 const { query } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { calcularNiosh } = require('../niosh/niosh');
 
@@ -128,7 +129,7 @@ async function listarEvaluaciones(req, res) {
 async function obtenerEvaluacion(req, res) {
   try {
     const res2 = await query(
-      `SELECT e.*, u.nombre_completo AS evaluado_por_nombre, t.nombre_completo AS trabajador_nombre
+      `SELECT ${columnas('evaluaciones_niosh', 'e')}, u.nombre_completo AS evaluado_por_nombre, t.nombre_completo AS trabajador_nombre
        FROM evaluaciones_niosh e
        JOIN usuarios u ON u.id = e.evaluado_por
        JOIN trabajadores t ON t.id = e.trabajador_id

@@ -15,6 +15,7 @@
 // cuenta -- eso requiere 'admin'.
 // ============================================================
 const { query, withTransaction, queryComoSuperadmin } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 
 async function crear(req, res) {
@@ -118,7 +119,7 @@ async function listar(req, res) {
 async function obtenerDetalle(req, res) {
   try {
     const resultado = await query(
-      `SELECT s.*, t.nombre_completo AS trabajador_nombre, u.nombre_completo AS responsable_nombre,
+      `SELECT ${columnas('solicitudes_titular', 's')}, t.nombre_completo AS trabajador_nombre, u.nombre_completo AS responsable_nombre,
               cp.nombre_completo AS creado_por_nombre
        FROM solicitudes_titular s
        LEFT JOIN trabajadores t ON t.id = s.trabajador_id

@@ -5,6 +5,7 @@
 // ============================================================
 const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { analizarDataUri } = require('../utils/validarArchivo');
 const { subirEvidencia, borrarEvidencia } = require('../servicios/cloudinaryService');
 
 const CARPETA_LOGOS = 'sisso/logos-empresa';
@@ -117,9 +118,12 @@ async function actualizarPerfil(req, res) {
 async function actualizarLogo(req, res) {
   const { logoBase64 } = req.body;
 
-  if (!logoBase64 || typeof logoBase64 !== 'string' || !logoBase64.startsWith('data:image')) {
+  if (!logoBase64 || typeof logoBase64 !== 'string') {
     return res.status(400).json({ error: 'logoBase64 es obligatorio, en formato data URI de imagen.' });
   }
+  // G19-11 (Auditoria N.19): el logo es PUBLICO; solo PNG/JPEG/WebP, con tope de tamano.
+  const chkLogo = analizarDataUri(logoBase64, 'logo');
+  if (!chkLogo.ok) return res.status(400).json({ error: `logoBase64 invalido: ${chkLogo.motivo}` });
 
   try {
     const actualRes = await query(`SELECT logo_public_id FROM organizaciones WHERE id = $1`, [req.usuario.organizacionId]);
@@ -129,7 +133,7 @@ async function actualizarLogo(req, res) {
     // a proposito (privado: false) — es la unica excepcion, ver nota
     // completa en cloudinaryService.js. No es informacion sensible y
     // necesita mostrarse en <img> sin pasar por el backend.
-    const logo = await subirEvidencia(logoBase64, req.usuario.organizacionId, CARPETA_LOGOS, { privado: false });
+    const logo = await subirEvidencia(logoBase64, req.usuario.organizacionId, CARPETA_LOGOS, { privado: false, politica: 'logo' });
 
     const resultado = await query(
       `UPDATE organizaciones SET logo_url = $1, logo_public_id = $2 WHERE id = $3

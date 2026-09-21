@@ -17,6 +17,7 @@
 // Indicadores SSO.
 // ============================================================
 const { query } = require('../db/pool');
+const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { subirEvidencia, borrarEvidencia, generarUrlFirmada, subirEvidenciaConCompensacion } = require('../servicios/cloudinaryService');
 const { TIPOS_AUSENCIA, CODIGOS_VALIDOS, esSubsidiablePorDefecto } = require('../ausentismo/ausentismo');
@@ -125,7 +126,7 @@ async function obtener(req, res) {
   const orgId = req.usuario.organizacionId;
   try {
     const resultado = await query(
-      `SELECT a.*, t.nombre_completo, t.area, t.documento
+      `SELECT ${columnas('ausencias', 'a')}, t.nombre_completo, t.area, t.documento
        FROM ausencias a
        JOIN trabajadores t ON t.id = a.trabajador_id
        WHERE a.id = $1 AND a.organizacion_id = $2`,
@@ -240,7 +241,7 @@ async function crear(req, res) {
     let resultado;
     if (b.certificadoBase64) {
       const { resultado: filaInsertada } = await subirEvidenciaConCompensacion(
-        b.certificadoBase64, orgId, CARPETA_CERTIFICADOS, {},
+        b.certificadoBase64, orgId, CARPETA_CERTIFICADOS, { politica: 'certificado' },
         (subida) => query(
           `INSERT INTO ausencias (
             organizacion_id, trabajador_id, tipo, subsidiado_iess, fecha_inicio, fecha_fin,
@@ -351,7 +352,7 @@ async function actualizar(req, res) {
           console.error('No se pudo borrar el certificado anterior en Cloudinary:', err.message)
         );
       }
-      const subida = await subirEvidencia(b.certificadoBase64, orgId, CARPETA_CERTIFICADOS);
+      const subida = await subirEvidencia(b.certificadoBase64, orgId, CARPETA_CERTIFICADOS, { politica: 'certificado' });
       certificadoUrl = subida.url;
       certificadoPublicId = subida.publicId;
       actualizarCertificado = true;
