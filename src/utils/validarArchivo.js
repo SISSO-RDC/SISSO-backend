@@ -36,6 +36,11 @@ const POLITICAS = {
   evidencia: { tipos: [...IMAGENES, 'video/mp4', 'video/webm', 'video/quicktime'], maxBytes: 12 * MB },
   // Certificado medico: imagen o PDF.
   certificado: { tipos: [...IMAGENES, 'application/pdf'], maxBytes: 10 * MB },
+  // CREADO Lote 2 (control documental, Sep 2026): politicas,
+  // procedimientos e instructivos. Solo PDF -- un documento
+  // controlado versionado no deberia entrar como foto de una
+  // pantalla o de una hoja impresa.
+  documento_control: { tipos: ['application/pdf'], maxBytes: 20 * MB },
 };
 
 class ArchivoInvalidoError extends Error {

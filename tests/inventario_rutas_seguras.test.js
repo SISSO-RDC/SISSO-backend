@@ -40,6 +40,7 @@ const RUTAS_PUBLICAS_APROBADAS = {
   'POST /api/auth/recuperar-superadmin': 'protegido por RECOVERY_SECRET, mismo motivo que bootstrap.',
   'POST /api/auth/mfa/verificar-login': 'usa el mfaToken corto de 5 minutos del flujo de login con MFA, no un access token -- ver autenticarOMfaPendiente.',
   'POST /api/solicitudes-titular/publico': 'formulario publico de derechos ARCO/habeas data: el titular de los datos, por definicion, no tiene ni deberia necesitar una cuenta en el sistema para ejercerlos.',
+  'POST /api/reportes-peligro/publico': 'canal publico de reporte de peligros por QR/enlace, protegido por su propio rate limiter: el trabajador que reporta no tiene ni deberia necesitar una cuenta SISSO.',
 };
 
 test('G15-01: ninguna ruta de la aplicacion es publica salvo la lista explicita y justificada de excepciones', () => {

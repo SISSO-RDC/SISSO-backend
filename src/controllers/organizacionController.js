@@ -7,8 +7,24 @@ const { query } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { analizarDataUri } = require('../utils/validarArchivo');
 const { subirEvidencia, borrarEvidencia } = require('../servicios/cloudinaryService');
+const QRCode = require('qrcode');
 
 const CARPETA_LOGOS = 'sisso/logos-empresa';
+
+// Base publica del frontend, para armar el enlace del canal de
+// reporte de peligro (Lote 1, Sep 2026). FRONTEND_URL es opcional:
+// si no se define, se usa el primer origen de CORS_ORIGINS -- esa
+// variable YA es obligatoria en produccion (ver src/index.js) y
+// representa exactamente el mismo dominio (el frontend de GitHub
+// Pages). Se documenta como opcional en .env.example para cubrir el
+// caso, hoy hipotetico, de que el frontend viva en un dominio propio
+// distinto de los origenes CORS permitidos.
+function baseFrontend() {
+  const explicita = (process.env.FRONTEND_URL || '').trim().replace(/\/+$/, '');
+  if (explicita) return explicita;
+  const primerOrigenCors = (process.env.CORS_ORIGINS || '').split(',')[0].trim().replace(/\/+$/, '');
+  return primerOrigenCors || null;
+}
 
 // ------------------------------------------------------------
 // GET /api/organizacion
@@ -255,4 +271,41 @@ async function aplicarConfiguracionSectorial(req, res) {
   }
 }
 
-module.exports = { obtenerPerfil, actualizarPerfil, actualizarLogo, aplicarConfiguracionSectorial };
+// ------------------------------------------------------------
+// GET /api/organizacion/qr-reporte-peligro
+// CREADO Lote 1 (plan de cierre de brechas frente a plataformas EHS
+// globales, Sep 2026): genera el enlace publico del canal de reporte
+// de peligros (ver reportesPeligroController.js:crearPublico) y su
+// codigo QR, para que la organizacion pueda imprimirlo y pegarlo en
+// planta.
+//
+// Reutiliza EXACTAMENTE el mismo patron ya probado en produccion
+// para el QR de MFA (authController.js: QRCode.toDataURL) -- no se
+// escribe ningun encoder de QR propio. No hay riesgo de SSRF: la
+// libreria solo codifica el texto de la URL como imagen, nunca la
+// visita.
+// ------------------------------------------------------------
+async function generarQrReportePeligro(req, res) {
+  try {
+    const orgRes = await query(`SELECT codigo FROM organizaciones WHERE id = $1`, [req.usuario.organizacionId]);
+    if (orgRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Organizacion no encontrada.' });
+    }
+
+    const base = baseFrontend();
+    if (!base) {
+      return res.status(503).json({ error: 'El enlace publico no esta configurado (falta FRONTEND_URL o CORS_ORIGINS). Contacte al administrador de la plataforma.' });
+    }
+
+    const codigo = orgRes.rows[0].codigo;
+    const url = `${base}/reporte-peligro/?org=${encodeURIComponent(codigo)}`;
+    const qrDataUrl = await QRCode.toDataURL(url);
+
+    return res.json({ url, qrDataUrl });
+  } catch (err) {
+    console.error('Error en generarQrReportePeligro (mi empresa):', err);
+    return res.status(500).json({ error: 'Error interno al generar el codigo QR.' });
+  }
+}
+
+module.exports = { obtenerPerfil, actualizarPerfil, actualizarLogo, aplicarConfiguracionSectorial, generarQrReportePeligro };
