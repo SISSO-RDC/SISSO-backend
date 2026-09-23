@@ -101,6 +101,7 @@ const CLASIFICACION_RECURSOS = {
   'auditorias': 'catalogo',
   'catalogo-sectores': 'catalogo (perfil inteligente de empresa, Fase 2 del plan de fusion con SISSO Demo)',
   'catalogo-paises': 'catalogo (perfil normativo por pais, Fase 4 del plan de fusion con SISSO Demo -- Lote C)',
+  'normativas': 'catalogo (normas sobre las que se sustenta SISSO -- panel de Normativas + integracion SISAT, ver migration_096)',
   'configuracion-sectorial': 'gestion (motor base de propuestas/confirmaciones sectoriales, Auditoria N.16 Seccion 4/16 -> N.17 P1; autorizacion fina por tipo de propuesta dentro del controlador)',
   'ejemplo': 'N/A (ruta de ejemplo/diagnostico, no expone datos de negocio)',
   'plataforma': 'N/A (informacion publica de la app y canal de sugerencias, sin datos de negocio)',

@@ -9,6 +9,7 @@ const controller = require('../controllers/obligacionesLegalesController');
 const { autenticar, autorizar } = require('../middleware/auth');
 
 router.post('/', autenticar, autorizar('admin', 'sso'), controller.crear);
+router.post('/generar-sisat', autenticar, autorizar('admin'), controller.generarPlantillaSisat);
 router.get('/', autenticar, autorizar('admin', 'sso'), controller.listar);
 router.get('/:id', autenticar, autorizar('admin', 'sso'), controller.obtener);
 router.patch('/:id/verificar', autenticar, autorizar('admin', 'sso'), controller.verificar);

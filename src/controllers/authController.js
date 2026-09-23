@@ -33,6 +33,14 @@ const { verificarLimitePlan } = require('../utils/planes');
 // TOTP ya no se guarda en texto plano. Ver src/utils/crypto.js.
 const { encriptar, desencriptar, esFormatoCifrado } = require('../utils/crypto');
 
+// Version actual del texto del disclaimer normativo (panel de
+// "Normativas", ver migration_096_normativas_sisso.sql). Si el
+// texto cambia de fondo (se agrega/quita una normativa relevante),
+// se sube este numero y todo usuario con una version anterior (o
+// sin ninguna) vuelve a ver el disclaimer una vez, aunque ya lo
+// hubiera aceptado antes.
+const DISCLAIMER_NORMATIVO_VERSION_ACTUAL = '2026-09-sisat-v1';
+
 // Tolerancia de +-1 paso (30s) para compensar pequenos desfaces de
 // reloj entre el celular del usuario y el servidor.
 // CORREGIDO (reporte de usuario: "el codigo del autenticador nunca
@@ -390,6 +398,7 @@ async function login(req, res) {
       `SELECT u.id, u.organizacion_id, u.email, u.password_hash, u.nombre_completo, u.rol,
               u.activo, u.intentos_fallidos, u.bloqueado_hasta, u.requiere_cambio_password,
               u.mfa_habilitado, u.auth_epoch,
+              u.disclaimer_normativo_aceptado_en, u.disclaimer_normativo_version,
               o.activa AS organizacion_activa, o.nombre AS organizacion_nombre, o.codigo AS organizacion_codigo,
               o.logo_url AS organizacion_logo_url, o.estado_suscripcion, o.fecha_fin_trial,
               o.fecha_proxima_renovacion, o.suspendida_manualmente
@@ -637,6 +646,12 @@ async function completarLogin(usuario, req, res) {
       // disponible sin pedir un endpoint aparte.
       organizacion: { id: usuario.organizacion_id, nombre: usuario.organizacion_nombre, logoUrl: usuario.organizacion_logo_url || null },
       requiereCambioPassword: usuario.requiere_cambio_password,
+      // Panel de "Normativas" / disclaimer de aceptacion (ver
+      // migration_096_normativas_sisso.sql). false tanto si nunca
+      // acepto como si acepto una version anterior del texto -- en
+      // ambos casos el layout debe volver a mostrarselo.
+      disclaimerNormativoAceptado: !!usuario.disclaimer_normativo_aceptado_en
+        && usuario.disclaimer_normativo_version === DISCLAIMER_NORMATIVO_VERSION_ACTUAL,
     },
   };
 }
@@ -843,6 +858,7 @@ async function verificarCodigoMfa(req, res) {
       `SELECT u.id, u.organizacion_id, u.email, u.nombre_completo, u.rol, u.activo,
               u.requiere_cambio_password, u.mfa_habilitado, u.mfa_secret, u.auth_epoch,
               u.intentos_mfa_fallidos, u.bloqueado_mfa_hasta,
+              u.disclaimer_normativo_aceptado_en, u.disclaimer_normativo_version,
               o.activa AS organizacion_activa, o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM usuarios u LEFT JOIN organizaciones o ON o.id = u.organizacion_id
        WHERE u.id = $1`,
@@ -1232,6 +1248,7 @@ async function perfil(req, res) {
     // existirian).
     const userRes = await query(
       `SELECT u.id, u.email, u.nombre_completo, u.rol, u.requiere_cambio_password, u.mfa_habilitado,
+              u.disclaimer_normativo_aceptado_en, u.disclaimer_normativo_version,
               o.id AS organizacion_id, o.nombre AS organizacion_nombre, o.logo_url AS organizacion_logo_url
        FROM usuarios u JOIN organizaciones o ON o.id = u.organizacion_id
        WHERE u.id = $1`,
@@ -1250,6 +1267,12 @@ async function perfil(req, res) {
         mfaHabilitado: fila.mfa_habilitado,
         organizacion: { id: fila.organizacion_id, nombre: fila.organizacion_nombre, logoUrl: fila.organizacion_logo_url || null },
         requiereCambioPassword: fila.requiere_cambio_password,
+        // Debe calcularse EXACTAMENTE igual que en completarLogin(),
+        // o el modal del disclaimer se comportaria distinto segun si
+        // la sesion se restauro via /auth/perfil (celular, background)
+        // o via login normal.
+        disclaimerNormativoAceptado: !!fila.disclaimer_normativo_aceptado_en
+          && fila.disclaimer_normativo_version === DISCLAIMER_NORMATIVO_VERSION_ACTUAL,
       },
     });
   } catch (err) {
@@ -1596,12 +1619,46 @@ async function revocarOtrasSesiones(req, res) {
   }
 }
 
+// ------------------------------------------------------------
+// POST /api/auth/aceptar-disclaimer-normativo
+// Registra en base de datos que este usuario ya vio y acepto el
+// disclaimer del panel de "Normativas" (ver migration_096). Se
+// guarda tambien la VERSION vigente al momento de aceptar, para
+// que un cambio de fondo en el texto pueda volver a pedirlo.
+// ------------------------------------------------------------
+async function aceptarDisclaimerNormativo(req, res) {
+  try {
+    await query(
+      `UPDATE usuarios SET disclaimer_normativo_aceptado_en = now(), disclaimer_normativo_version = $2
+       WHERE id = $1`,
+      [req.usuario.id, DISCLAIMER_NORMATIVO_VERSION_ACTUAL]
+    );
+
+    await registrarAuditoria({
+      organizacionId: req.usuario.organizacionId,
+      usuarioId: req.usuario.id,
+      accion: 'aceptar_disclaimer_normativo',
+      detalle: { version: DISCLAIMER_NORMATIVO_VERSION_ACTUAL },
+      req,
+    });
+
+    return res.json({
+      disclaimerNormativoAceptado: true,
+      version: DISCLAIMER_NORMATIVO_VERSION_ACTUAL,
+    });
+  } catch (err) {
+    console.error('Error en aceptarDisclaimerNormativo:', err);
+    return res.status(500).json({ error: 'Error interno al registrar la aceptación del disclaimer.' });
+  }
+}
+
 module.exports = {
   registrarOrganizacion, registrarUsuario, registrarUsuarioInterno, listarUsuarios,
   bootstrapSuperadmin, recuperarSuperadmin, login, refrescar, logout, perfil,
   resetearPassword, cambiarPassword, corregirNombreUsuario,
   iniciarConfiguracionMfa, confirmarMfa, deshabilitarMfa, verificarCodigoMfa,
   listarSesiones, revocarSesion, revocarOtrasSesiones,
+  aceptarDisclaimerNormativo,
 };
 
 // ------------------------------------------------------------

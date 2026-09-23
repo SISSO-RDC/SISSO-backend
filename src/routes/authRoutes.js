@@ -97,6 +97,7 @@ router.post('/login', limitadorLogin, validarLogin, contextoInterno, authControl
 router.post('/refrescar', verificarOrigenCookie, contextoInterno, authController.refrescar);
 router.post('/logout', verificarOrigenCookie, contextoInterno, authController.logout);
 router.get('/perfil', autenticar, authController.perfil);
+router.post('/aceptar-disclaimer-normativo', autenticar, authController.aceptarDisclaimerNormativo);
 router.get('/usuarios', autenticar, autorizar('admin'), authController.listarUsuarios);
 
 // Un admin resetea la contrasena de otro usuario de su misma
