@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-20.
+> Ultima generacion: 2026-09-23.
 
 ## `/api/auth`
 
@@ -283,6 +283,7 @@
 | PUT | `/api/organizacion/perfil-sectorial` | admin |
 | PUT | `/api/organizacion/logo` | admin |
 | GET | `/api/organizacion/suscripcion` | admin |
+| GET | `/api/organizacion/qr-reporte-peligro` | admin |
 
 ## `/api/catalogo-sectores`
 
@@ -599,7 +600,58 @@
 | GET | `/api/plataforma/acerca-de` | cualquier rol autenticado (sin restriccion de rol) |
 | POST | `/api/plataforma/sugerencias` | cualquier rol autenticado (sin restriccion de rol) |
 
+## `/api/reportes-peligro`
+
+**Clasificacion del dato:** operativo_individual (canal publico de reporte, reportante identificable solo si el mismo decide no ser anonimo)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/reportes-peligro/publico` | PUBLICA (sin autenticacion) -- revisar si es intencional |
+| GET | `/api/reportes-peligro/` | admin, sso |
+| GET | `/api/reportes-peligro/:id` | admin, sso |
+| PATCH | `/api/reportes-peligro/:id/triage` | admin, sso |
+| POST | `/api/reportes-peligro/:id/generar-capa` | admin, sso |
+| GET | `/api/reportes-peligro/evidencias/:evidenciaId/url` | admin, sso |
+
+## `/api/documentos-control`
+
+**Clasificacion del dato:** catalogo (documentos de gestion; acuses de lectura son operativo_individual)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/documentos-control/` | admin, sso |
+| GET | `/api/documentos-control/` | cualquier rol autenticado (sin restriccion de rol) |
+| GET | `/api/documentos-control/:id` | cualquier rol autenticado (sin restriccion de rol) |
+| GET | `/api/documentos-control/:id/url` | cualquier rol autenticado (sin restriccion de rol) |
+| POST | `/api/documentos-control/:id/acuse` | cualquier rol autenticado (sin restriccion de rol) |
+
+## `/api/obligaciones-legales`
+
+**Clasificacion del dato:** catalogo
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/obligaciones-legales/` | admin, sso |
+| GET | `/api/obligaciones-legales/` | admin, sso |
+| GET | `/api/obligaciones-legales/:id` | admin, sso |
+| PATCH | `/api/obligaciones-legales/:id/verificar` | admin, sso |
+| POST | `/api/obligaciones-legales/:id/cumplir` | admin, sso |
+| POST | `/api/obligaciones-legales/:id/generar-capa` | admin, sso |
+
+## `/api/auditorias`
+
+**Clasificacion del dato:** catalogo
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/auditorias/` | admin, sso |
+| GET | `/api/auditorias/` | admin, sso |
+| GET | `/api/auditorias/:id` | admin, sso |
+| PATCH | `/api/auditorias/:id/estado` | admin, sso |
+| POST | `/api/auditorias/:id/hallazgos` | admin, sso |
+| POST | `/api/auditorias/hallazgos/:hallazgoId/generar-capa` | admin, sso |
+
 
 ---
 
-**Resumen:** 240 endpoints documentados. 7 sin autenticacion (revisar cada una individualmente mas arriba). 63 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 264 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 67 requieren sesion valida pero no restringen por rol especifico.

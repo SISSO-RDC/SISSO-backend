@@ -14,5 +14,6 @@ router.put('/', autenticar, autorizar('admin'), validarActualizarOrganizacion, o
 router.put('/perfil-sectorial', autenticar, autorizar('admin'), validarAplicarConfiguracionSectorial, organizacionController.aplicarConfiguracionSectorial);
 router.put('/logo', autenticar, autorizar('admin'), validarActualizarLogoOrganizacion, organizacionController.actualizarLogo);
 router.get('/suscripcion', autenticar, autorizar('admin'), pagosController.obtenerEstadoSuscripcion);
+router.get('/qr-reporte-peligro', autenticar, autorizar('admin'), organizacionController.generarQrReportePeligro);
 
 module.exports = router;

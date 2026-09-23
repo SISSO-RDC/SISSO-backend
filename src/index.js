@@ -97,6 +97,16 @@ const solicitudesTitularRoutes = require('./routes/solicitudesTitularRoutes');
 const incidentesSeguridadRoutes = require('./routes/incidentesSeguridadRoutes');
 const puestoExposicionesRoutes = require('./routes/puestoExposicionesRoutes');
 const plataformaRoutes = require('./routes/plataformaRoutes');
+// CREADO Lote 1 (plan de cierre de brechas frente a plataformas EHS
+// globales, Sep 2026): canal publico de reporte de condiciones
+// inseguras/actos inseguros/casi accidentes por QR o enlace.
+const reportesPeligroRoutes = require('./routes/reportesPeligroRoutes');
+// CREADO Lote 2 (plan de cierre de brechas frente a plataformas EHS
+// globales, Sep 2026): control documental, matriz de obligaciones
+// legales y auditorias internas/externas.
+const documentosControlRoutes = require('./routes/documentosControlRoutes');
+const obligacionesLegalesRoutes = require('./routes/obligacionesLegalesRoutes');
+const auditoriasRoutes = require('./routes/auditoriasRoutes');
 const { VERSION_SERVIDOR } = require('./utils/versionServidor');
 const { configurarTrustProxy } = require('./utils/ipCliente');
 
@@ -262,6 +272,10 @@ app.use('/api/incidentes-seguridad', incidentesSeguridadRoutes);
 // CREADO en Auditoria N.13 (C-03).
 app.use('/api/puesto-exposiciones', puestoExposicionesRoutes);
 app.use('/api/plataforma', plataformaRoutes);
+app.use('/api/reportes-peligro', reportesPeligroRoutes);
+app.use('/api/documentos-control', documentosControlRoutes);
+app.use('/api/obligaciones-legales', obligacionesLegalesRoutes);
+app.use('/api/auditorias', auditoriasRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {

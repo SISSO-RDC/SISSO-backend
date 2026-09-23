@@ -234,6 +234,52 @@ const COLUMNAS = {
     ],
     noExpuestas: [],
   },
+  documentos_control: {
+    expuestas: [
+      'id', 'organizacion_id', 'numero_documento', 'titulo', 'categoria', 'version', 'reemplaza_a',
+      'estado', 'propietario_id', 'aprobador_id', 'fecha_aprobacion', 'fecha_proxima_revision',
+      'requiere_acuse', 'public_id', 'creado_por', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
+  documentos_control_acuses: {
+    expuestas: ['id', 'documento_id', 'organizacion_id', 'usuario_id', 'leido_en'],
+    noExpuestas: [],
+  },
+  obligaciones_legales: {
+    expuestas: [
+      'id', 'organizacion_id', 'titulo', 'descripcion', 'jurisdiccion', 'frecuencia', 'responsable_id',
+      'proxima_fecha_vencimiento', 'estado_cumplimiento', 'ultimo_cumplimiento_en', 'ultimo_cumplimiento_nota',
+      'documento_evidencia_id', 'estado_verificacion', 'fuente_norma', 'articulo_referencia',
+      'fecha_validacion', 'verificado_por', 'verificado_en', 'capa_id', 'creado_por', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
+  auditorias: {
+    expuestas: [
+      'id', 'organizacion_id', 'tipo', 'norma_referencia', 'alcance', 'auditor_nombre',
+      'fecha_programada', 'fecha_ejecucion', 'estado', 'creado_por', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
+  auditoria_hallazgos: {
+    expuestas: ['id', 'auditoria_id', 'organizacion_id', 'tipo', 'descripcion', 'capa_id', 'creado_en'],
+    noExpuestas: [],
+  },
+  reportes_peligro: {
+    expuestas: [
+      'id', 'organizacion_id', 'clasificacion', 'descripcion', 'area', 'ubicacion_texto',
+      'reportante_nombre', 'anonimo', 'estado', 'nota_triage', 'revisado_por', 'revisado_en',
+      'capa_id', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
+  reportes_peligro_evidencias: {
+    expuestas: [
+      'id', 'reporte_id', 'organizacion_id', 'tipo_archivo', 'public_id', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
   solicitudes_titular: {
     expuestas: [
       'id', 'organizacion_id', 'trabajador_id', 'tipo_solicitud', 'descripcion', 'solicitante_nombre',
