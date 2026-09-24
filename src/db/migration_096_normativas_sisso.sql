@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS normativas_sisso (
     ambito_sisso            TEXT,          -- que modulos/decisiones de SISSO se apoyan en esta norma
     contenido_estructurado  JSONB,         -- resumen tecnico estructurado (ver seed de SISAT), NUNCA el texto integro
     url_pdf                 VARCHAR(500),  -- lo completa el superadmin desde el panel
-    fuente_cita             VARCHAR(300) NOT NULL, -- de donde se tomo esta ficha (transparencia, no es "verificacion legal")
+    fuente_cita             VARCHAR(500) NOT NULL, -- de donde se tomo esta ficha (transparencia, no es "verificacion legal")
 
     activa                  BOOLEAN NOT NULL DEFAULT true,
     orden                   INTEGER NOT NULL DEFAULT 0,
