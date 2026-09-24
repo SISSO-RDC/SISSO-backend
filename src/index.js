@@ -107,6 +107,7 @@ const reportesPeligroRoutes = require('./routes/reportesPeligroRoutes');
 const documentosControlRoutes = require('./routes/documentosControlRoutes');
 const obligacionesLegalesRoutes = require('./routes/obligacionesLegalesRoutes');
 const auditoriasRoutes = require('./routes/auditoriasRoutes');
+const normativasRoutes = require('./routes/normativasRoutes');
 const { VERSION_SERVIDOR } = require('./utils/versionServidor');
 const { configurarTrustProxy } = require('./utils/ipCliente');
 
@@ -276,6 +277,7 @@ app.use('/api/reportes-peligro', reportesPeligroRoutes);
 app.use('/api/documentos-control', documentosControlRoutes);
 app.use('/api/obligaciones-legales', obligacionesLegalesRoutes);
 app.use('/api/auditorias', auditoriasRoutes);
+app.use('/api/normativas', normativasRoutes);
 
 // --- Manejo de rutas no encontradas ---
 app.use((req, res) => {

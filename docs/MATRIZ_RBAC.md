@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-23.
+> Ultima generacion: 2026-09-24.
 
 ## `/api/auth`
 
@@ -29,6 +29,7 @@
 | POST | `/api/auth/refrescar` | PUBLICA (sin autenticacion) -- revisar si es intencional |
 | POST | `/api/auth/logout` | PUBLICA (sin autenticacion) -- revisar si es intencional |
 | GET | `/api/auth/perfil` | cualquier rol autenticado (sin restriccion de rol) |
+| POST | `/api/auth/aceptar-disclaimer-normativo` | cualquier rol autenticado (sin restriccion de rol) |
 | GET | `/api/auth/usuarios` | admin |
 | PUT | `/api/auth/usuarios/:id/resetear-password` | admin |
 | PATCH | `/api/auth/usuarios/:id/nombre` | admin |
@@ -632,6 +633,7 @@
 | Metodo | Ruta | Rol(es) permitido(s) |
 |---|---|---|
 | POST | `/api/obligaciones-legales/` | admin, sso |
+| POST | `/api/obligaciones-legales/generar-sisat` | admin |
 | GET | `/api/obligaciones-legales/` | admin, sso |
 | GET | `/api/obligaciones-legales/:id` | admin, sso |
 | PATCH | `/api/obligaciones-legales/:id/verificar` | admin, sso |
@@ -651,7 +653,18 @@
 | POST | `/api/auditorias/:id/hallazgos` | admin, sso |
 | POST | `/api/auditorias/hallazgos/:hallazgoId/generar-capa` | admin, sso |
 
+## `/api/normativas`
+
+**Clasificacion del dato:** catalogo (normas sobre las que se sustenta SISSO -- panel de Normativas + integracion SISAT, ver migration_096)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/normativas/` | cualquier rol autenticado (sin restriccion de rol) |
+| GET | `/api/normativas/:id` | cualquier rol autenticado (sin restriccion de rol) |
+| POST | `/api/normativas/` | superadmin |
+| PUT | `/api/normativas/:id` | superadmin |
+
 
 ---
 
-**Resumen:** 264 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 67 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 270 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 70 requieren sesion valida pero no restringen por rol especifico.

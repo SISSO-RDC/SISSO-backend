@@ -259,4 +259,99 @@ async function generarCapaDesdeObligacion(req, res) {
   }
 }
 
-module.exports = { crear, listar, obtener, verificar, marcarCumplida, generarCapaDesdeObligacion };
+// ------------------------------------------------------------
+// POST /api/obligaciones-legales/generar-sisat
+// Genera en la matriz de obligaciones legales de la organizacion
+// los plazos de las Disposiciones Transitorias del Acuerdo
+// Ministerial MSP 00004-2026 (SISAT), a partir de una fecha de
+// publicacion en Registro Oficial que el ADMIN CONFIRMA
+// explicitamente (nunca se asume ni se inventa -- ver la nota en
+// migration_096_normativas_sisso.sql sobre por que esa fecha no
+// viene en el seed).
+//
+// Idempotente: usa plantilla_origen + el indice unico de
+// migration_096 (organizacion_id, plantilla_origen, titulo) -- si
+// se llama dos veces con la misma fecha, la segunda no duplica
+// filas (ON CONFLICT DO NOTHING). Si se llama con una fecha
+// DISTINTA a una corrida previa, tampoco se sobreescriben las
+// obligaciones ya generadas: el admin debe editarlas o borrarlas
+// a mano si la fecha confirmada cambia.
+//
+// El "responsable" de cada obligacion generada es el propio admin
+// que ejecuta el generador (puede reasignarse despues desde la UI,
+// igual que cualquier obligacion creada manualmente).
+// ------------------------------------------------------------
+const PLANTILLA_SISAT = 'SISAT-2026-transitorias';
+
+function sumarMeses(fechaIso, meses) {
+  const fecha = new Date(fechaIso);
+  fecha.setMonth(fecha.getMonth() + meses);
+  return fecha.toISOString().slice(0, 10);
+}
+
+async function generarPlantillaSisat(req, res) {
+  const orgId = req.usuario.organizacionId;
+  const { fechaPublicacionRo } = req.body;
+
+  if (!fechaPublicacionRo || Number.isNaN(Date.parse(fechaPublicacionRo))) {
+    return res.status(400).json({
+      error: 'fechaPublicacionRo es obligatoria (fecha real de publicación del Acuerdo Ministerial '
+        + 'MSP 00004-2026 en el Registro Oficial). SISSO no la asume automáticamente: confírmela antes de generar los plazos.',
+    });
+  }
+
+  // Plazos segun las Disposiciones Transitorias del propio SISAT.
+  // Las dos que son obligacion de la AUTORIDAD SANITARIA (no de la
+  // empresa) se dejan fuera adrede: no le corresponden a este tenant.
+  const PLANTILLA = [
+    { meses: 12, titulo: 'SISAT: registro y habilitación de profesionales (ACESS)',
+      descripcion: 'Los profesionales médicos, de enfermería y de psicología de los SISAT deben completar el proceso de registro y habilitación ante la Autoridad Sanitaria Nacional a través de la Agencia de Aseguramiento de la Calidad de los Servicios de Salud y Medicina Prepagada (ACESS) o su equivalente.' },
+    { meses: 24, titulo: 'SISAT: certificación BLS del personal médico y de enfermería',
+      descripcion: 'El profesional médico y de enfermería de los SISAT deben contar como mínimo con certificación en soporte vital básico (BLS) emitida por organismo autorizado, renovable cada 2 años.' },
+    { meses: 24, titulo: 'SISAT: permiso de funcionamiento del establecimiento de salud en el trabajo',
+      descripcion: 'Obtener el permiso de funcionamiento para el/los establecimiento(s) de salud en el trabajo, de acuerdo con la cartera de servicios y tipología que establezca la Autoridad Sanitaria Nacional.' },
+  ];
+
+  try {
+    const resultado = await withTransaction(async (client) => {
+      const filas = [];
+      for (const item of PLANTILLA) {
+        const vencimiento = sumarMeses(fechaPublicacionRo, item.meses);
+        const insertRes = await client.query(
+          `INSERT INTO obligaciones_legales
+            (organizacion_id, titulo, descripcion, jurisdiccion, frecuencia, responsable_id,
+             proxima_fecha_vencimiento, plantilla_origen,
+             fuente_norma, articulo_referencia, creado_por)
+           VALUES ($1,$2,$3,'Ecuador - nacional','unica',$4,$5,$6,$7,$8,$9)
+           ON CONFLICT (organizacion_id, plantilla_origen, titulo) DO NOTHING
+           RETURNING id, titulo, proxima_fecha_vencimiento`,
+          [
+            orgId, item.titulo, item.descripcion, req.usuario.id, vencimiento, PLANTILLA_SISAT,
+            'Acuerdo Ministerial MSP 00004-2026 (SISAT), Disposiciones Transitorias', 'Disposiciones Transitorias',
+            req.usuario.id,
+          ]
+        );
+        if (insertRes.rows.length > 0) filas.push(insertRes.rows[0]);
+      }
+
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'obligaciones_sisat_generadas',
+        entidad: 'obligaciones_legales', detalle: { fechaPublicacionRo, generadas: filas.length }, req, client,
+      });
+
+      return filas;
+    });
+
+    return res.status(201).json({
+      obligacionesGeneradas: resultado,
+      mensaje: resultado.length === 0
+        ? 'No se generó ninguna obligación nueva (ya existían de una corrida anterior con la misma plantilla).'
+        : `Se generaron ${resultado.length} obligación(es) legal(es) de SISAT.`,
+    });
+  } catch (err) {
+    console.error('Error en generarPlantillaSisat (obligaciones legales):', err);
+    return res.status(500).json({ error: 'Error interno al generar las obligaciones de SISAT.' });
+  }
+}
+
+module.exports = { crear, listar, obtener, verificar, marcarCumplida, generarCapaDesdeObligacion, generarPlantillaSisat };
