@@ -34,6 +34,7 @@
 const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { calcularCoberturaContenido } = require('../utils/coberturaSectorial');
+const { calcularCategoriaSisat } = require('../utils/categoriaSisat');
 
 // Columna de catalogo_sectores de la que sale cada tipo de
 // propuesta, y como extraer una clave estable (para el UNIQUE de
@@ -317,7 +318,7 @@ async function generarPropuestas(req, res) {
     const sectorRes = await query(
       `SELECT clave, activo, areas, riesgos, examenes_sugeridos,
               herramientas_ergonomicas, epp_sugerido, kpis_sugeridos, puestos_frecuentes,
-              estado_contenido, contenido_validado_por, contenido_validado_en
+              estado_contenido, contenido_validado_por, contenido_validado_en, nivel_riesgo_sisat
        FROM catalogo_sectores WHERE clave = $1`,
       [sectorClave]
     );
@@ -325,6 +326,20 @@ async function generarPropuestas(req, res) {
     if (!sector || !sector.activo) {
       return res.status(400).json({ error: 'El sector configurado ya no existe o no está activo en el catálogo.' });
     }
+
+    // Categorizacion SISAT (I-V) enganchada a este mismo motor: el numero
+    // real de trabajadores (tabla `trabajadores`, fuente de verdad
+    // operativa) manda sobre el declarado en "Mi Empresa"; solo se usa el
+    // declarado si todavia no hay ningun trabajador cargado en el sistema.
+    const conteoRes = await query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM trabajadores WHERE organizacion_id = $1 AND activo = true) AS reales,
+         (SELECT numero_trabajadores_declarado FROM organizaciones WHERE id = $1) AS declarado`,
+      [organizacionId]
+    );
+    const { reales, declarado } = conteoRes.rows[0];
+    const numeroTrabajadores = reales > 0 ? reales : declarado;
+    const categoriaSisat = calcularCategoriaSisat({ numeroTrabajadores, nivelRiesgo: sector.nivel_riesgo_sisat });
 
     const nuevas = [];
     let consideradas = 0;
@@ -354,6 +369,46 @@ async function generarPropuestas(req, res) {
                  (propuesta_id, organizacion_id, accion, datos, usuario_id)
                VALUES ($1, $2, 'generada', $3::jsonb, $4)`,
               [propuesta.id, organizacionId, JSON.stringify(item), req.usuario.id]
+            );
+          }
+        }
+      }
+
+      // Personal minimo de salud ocupacional exigido por SISAT (AM 00004-2026,
+      // Tabla 3) segun la categoria de la organizacion -- se propone como
+      // tipo 'puesto', reutilizando el MISMO materializador de puestos_trabajo
+      // ya existente (no hace falta una tabla ni una ruta de confirmacion
+      // nueva). NO se propone nada si la organizacion esta exceptuada (art. 25)
+      // o si el sector aun no tiene nivel_riesgo_sisat clasificado.
+      if (categoriaSisat.categoria) {
+        for (const { rol, regimen } of categoriaSisat.personalMinimo) {
+          consideradas += 1;
+          const datosPropuestos = {
+            nombre: rol,
+            area: 'Salud ocupacional (SISAT)',
+            origenSisat: true,
+            categoriaSisat: categoriaSisat.categoria,
+            regimenSisat: regimen,
+            fuente: 'Acuerdo Ministerial MSP 00004-2026 (SISAT), Tabla 3',
+          };
+
+          const insertRes = await client.query(
+            `INSERT INTO propuestas_configuracion_sectorial
+               (organizacion_id, tipo, clave_item, clave_sector, datos_propuestos, generado_por)
+             VALUES ($1, 'puesto', $2, NULL, $3::jsonb, $4)
+             ON CONFLICT (organizacion_id, tipo, clave_item) DO NOTHING
+             RETURNING id, tipo, clave_item, datos_propuestos, estado, generado_en`,
+            [organizacionId, rol, JSON.stringify(datosPropuestos), req.usuario.id]
+          );
+
+          if (insertRes.rows.length > 0) {
+            const propuesta = insertRes.rows[0];
+            nuevas.push(propuesta);
+            await client.query(
+              `INSERT INTO confirmaciones_configuracion_sectorial
+                 (propuesta_id, organizacion_id, accion, datos, usuario_id)
+               VALUES ($1, $2, 'generada', $3::jsonb, $4)`,
+              [propuesta.id, organizacionId, JSON.stringify(datosPropuestos), req.usuario.id]
             );
           }
         }
@@ -393,6 +448,19 @@ async function generarPropuestas(req, res) {
         mensaje: 'El contenido del catalogo de este sector es un borrador sin validar por un profesional de SSO/medicina ocupacional; revise cada propuesta antes de aceptarla.',
       });
     }
+    if (categoriaSisat.requiereClasificacionRiesgo) {
+      advertencias.push({
+        codigo: 'SECTOR_SIN_NIVEL_RIESGO_SISAT',
+        mensaje: `El sector "${sectorClave}" todavía no tiene clasificado su nivel de riesgo para SISAT `
+          + '(catalogo_sectores.nivel_riesgo_sisat). No se pudo calcular la categoría SISAT ni proponer '
+          + 'personal mínimo de salud ocupacional hasta que un superadmin lo confirme.',
+      });
+    } else if (categoriaSisat.exceptuada) {
+      advertencias.push({
+        codigo: 'ORGANIZACION_EXCEPTUADA_SISAT',
+        mensaje: categoriaSisat.motivo,
+      });
+    }
 
     return res.status(201).json({
       sectorClave,
@@ -401,6 +469,7 @@ async function generarPropuestas(req, res) {
       omitidas: consideradas - nuevas.length,
       propuestas: nuevas,
       cobertura,
+      categoriaSisat,
       advertencias,
     });
   } catch (err) {

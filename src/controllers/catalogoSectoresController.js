@@ -22,6 +22,9 @@ const COLUMNAS_EDITABLES = [
   'epp_sugerido', 'kpis_sugeridos', 'puestos_frecuentes', 'orden', 'activo',
   // N.18 (G18-04): estado explicito de validacion del contenido.
   'estado_contenido', 'contenido_validado_por', 'contenido_validado_en', 'notas_contenido',
+  // Categorizacion SISAT (migration_097): NUNCA se auto-clasifica -- ver el
+  // comentario largo de esa migracion sobre por que no se deriva de `riesgos`.
+  'nivel_riesgo_sisat',
 ];
 
 // Columnas de CONTENIDO ocupacional: si cambian, cualquier validacion previa
@@ -49,7 +52,8 @@ async function listar(req, res) {
       `SELECT id, clave, etiqueta, icono, color_acento, color_fondo, descripcion,
               riesgos, areas, examenes_sugeridos, herramientas_ergonomicas,
               epp_sugerido, kpis_sugeridos, puestos_frecuentes, activo, orden,
-              estado_contenido, contenido_validado_por, contenido_validado_en, notas_contenido
+              estado_contenido, contenido_validado_por, contenido_validado_en, notas_contenido,
+              nivel_riesgo_sisat
        FROM catalogo_sectores
        ${filtro}
        ORDER BY orden ASC, etiqueta ASC`
@@ -75,7 +79,8 @@ async function obtener(req, res) {
       `SELECT id, clave, etiqueta, icono, color_acento, color_fondo, descripcion,
               riesgos, areas, examenes_sugeridos, herramientas_ergonomicas,
               epp_sugerido, kpis_sugeridos, puestos_frecuentes, activo, orden,
-              estado_contenido, contenido_validado_por, contenido_validado_en, notas_contenido
+              estado_contenido, contenido_validado_por, contenido_validado_en, notas_contenido,
+              nivel_riesgo_sisat
        FROM catalogo_sectores WHERE clave = $1`,
       [req.params.clave]
     );
