@@ -251,7 +251,8 @@ const COLUMNAS = {
       'id', 'organizacion_id', 'titulo', 'descripcion', 'jurisdiccion', 'frecuencia', 'responsable_id',
       'proxima_fecha_vencimiento', 'estado_cumplimiento', 'ultimo_cumplimiento_en', 'ultimo_cumplimiento_nota',
       'documento_evidencia_id', 'estado_verificacion', 'fuente_norma', 'articulo_referencia',
-      'fecha_validacion', 'verificado_por', 'verificado_en', 'capa_id', 'creado_por', 'creado_en'
+      'fecha_validacion', 'verificado_por', 'verificado_en', 'capa_id', 'creado_por', 'creado_en',
+      'plantilla_origen'
     ],
     noExpuestas: [],
   },
