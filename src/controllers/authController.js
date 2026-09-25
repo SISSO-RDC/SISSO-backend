@@ -39,7 +39,7 @@ const { encriptar, desencriptar, esFormatoCifrado } = require('../utils/crypto')
 // se sube este numero y todo usuario con una version anterior (o
 // sin ninguna) vuelve a ver el disclaimer una vez, aunque ya lo
 // hubiera aceptado antes.
-const DISCLAIMER_NORMATIVO_VERSION_ACTUAL = '2026-09-sisat-v1';
+const DISCLAIMER_NORMATIVO_VERSION_ACTUAL = '2026-09-terminos-v2';
 
 // Tolerancia de +-1 paso (30s) para compensar pequenos desfaces de
 // reloj entre el celular del usuario y el servidor.
