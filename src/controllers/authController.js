@@ -88,7 +88,17 @@ const BLOQUEO_MFA_MINUTOS = 15;
 // sensibles (restricciones medicas en modo operativo, accidentes,
 // CAPA, matriz de riesgos, ausentismo, entre otros) que antes no
 // exigian el segundo factor.
-const ROLES_MFA_OBLIGATORIO = ['superadmin', 'admin', 'medico', 'sso', 'th'];
+//
+// SUSPENDIDO TEMPORALMENTE (24-sep-2026, a pedido del usuario,
+// "hasta segunda orden"): se deja la lista vacia para que NINGUN
+// rol sea forzado a configurar MFA al iniciar sesion. Esto NO
+// borra ni desactiva el MFA de quienes ya lo tienen configurado
+// (mfa_habilitado sigue pidiendose normal en el login para ellos,
+// ver mas abajo) -- solo deja de ser obligatorio para quienes
+// todavia no lo activaron. Para volver a exigirlo, restaurar la
+// linea comentada debajo.
+const ROLES_MFA_OBLIGATORIO = [];
+// const ROLES_MFA_OBLIGATORIO = ['superadmin', 'admin', 'medico', 'sso', 'th'];
 
 // ------------------------------------------------------------
 // CORREGIDO tras auditoria de seguridad (hallazgo GRAVE G4): el
