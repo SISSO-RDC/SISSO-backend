@@ -105,6 +105,12 @@ async function crear(req, res) {
 
     return res.status(201).json({ normativa: resultado.rows[0] });
   } catch (err) {
+    // 23505 = violacion de UNIQUE (ver migration_098_normativas_sisso_dedupe.sql,
+    // indice uq_normativas_sisso_dedupe): ya existe una norma con el mismo
+    // pais/tipo/titulo/numero_acto. Mensaje claro en vez de 500 generico.
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Ya existe una normativa con ese país, tipo, título y número de acto.' });
+    }
     console.error('Error en crear (normativas):', err);
     return res.status(500).json({ error: 'Error interno al crear la normativa.' });
   }
@@ -150,6 +156,9 @@ async function actualizar(req, res) {
 
     return res.json({ normativa: resultado.rows[0] });
   } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Ya existe una normativa con ese país, tipo, título y número de acto.' });
+    }
     console.error('Error en actualizar (normativas):', err);
     return res.status(500).json({ error: 'Error interno al actualizar la normativa.' });
   }
