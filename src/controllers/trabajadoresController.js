@@ -127,20 +127,36 @@ async function obtener(req, res) {
 // Crea un trabajador nuevo dentro de la organizacion del usuario.
 // ------------------------------------------------------------
 async function crear(req, res) {
-  const { nombreCompleto, documento, area, puesto, fechaEmo, fechaVencimiento, sexo, fechaNacimiento, tallaCm, pesoKg } = req.body;
+  const { nombreCompleto, documento, area, puesto, fechaEmo, fechaVencimiento, sexo, fechaNacimiento, tallaCm, pesoKg, puestoTrabajoId } = req.body;
 
   if (!nombreCompleto || !documento) {
     return res.status(400).json({ error: 'nombreCompleto y documento son obligatorios.' });
   }
 
   try {
-    // CORREGIDO en Auditoria N.09 (G-N09-08): verificacion del
-    // limite de trabajadores del plan, DENTRO de la misma
-    // transaccion que el INSERT (con FOR UPDATE sobre la fila de la
-    // organizacion) para que dos altas concurrentes no puedan
-    // saltarse el limite. Ver utils/planes.js.
+    // AGREGADO: puestoTrabajoId (opcional) vincula al trabajador con
+    // un puesto real del catalogo (puestos_trabajo) desde el alta,
+    // en vez de depender solo del texto libre `puesto`. Sin este
+    // vinculo, el modulo de Aptitud no puede derivar automaticamente
+    // las exposiciones ocupacionales del trabajador (ver
+    // aptitudController). Se valida que el puesto pertenezca a la
+    // misma organizacion antes de usarlo.
     const resultado = await withTransaction(async (client) => {
       await verificarLimitePlan(client, req.usuario.organizacionId, 'trabajadores', 1);
+
+      let puestoTrabajoIdValidado = null;
+      if (puestoTrabajoId) {
+        const puestoRes = await client.query(
+          'SELECT id FROM puestos_trabajo WHERE id = $1 AND organizacion_id = $2 AND activo = true',
+          [puestoTrabajoId, req.usuario.organizacionId]
+        );
+        if (puestoRes.rows.length === 0) {
+          const err = new Error('El puesto de trabajo indicado no existe o no pertenece a esta organizacion.');
+          err.codigo = 'PUESTO_TRABAJO_INVALIDO';
+          throw err;
+        }
+        puestoTrabajoIdValidado = puestoTrabajoId;
+      }
 
       const insertRes = await client.query(
       // La aptitud se crea siempre como 'pendiente' y NUNCA se recibe
@@ -155,10 +171,10 @@ async function crear(req, res) {
       // antes de poder registrar audiometrias o espirometrias).
       `INSERT INTO trabajadores
         (organizacion_id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, aptitud,
-         sexo, fecha_nacimiento, talla_cm, peso_kg)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendiente', $8, $9, $10, $11)
+         sexo, fecha_nacimiento, talla_cm, peso_kg, puesto_trabajo_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendiente', $8, $9, $10, $11, $12)
        RETURNING id, nombre_completo, documento, area, puesto, fecha_emo, fecha_vencimiento, activo,
-                 sexo, fecha_nacimiento, talla_cm, peso_kg`,
+                 sexo, fecha_nacimiento, talla_cm, peso_kg, puesto_trabajo_id`,
       [
         req.usuario.organizacionId,
         nombreCompleto,
@@ -171,6 +187,7 @@ async function crear(req, res) {
         fechaNacimiento || null,
         tallaCm || null,
         pesoKg || null,
+        puestoTrabajoIdValidado,
       ]
       );
 
@@ -192,11 +209,67 @@ async function crear(req, res) {
     if (err.codigo === 'LIMITE_PLAN_EXCEDIDO') {
       return res.status(403).json({ error: err.message, codigo: err.codigo });
     }
+    if (err.codigo === 'PUESTO_TRABAJO_INVALIDO') {
+      return res.status(400).json({ error: err.message, codigo: err.codigo });
+    }
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Ya existe un trabajador con ese documento en esta organizacion.' });
     }
     console.error('Error en crear trabajador:', err);
     return res.status(500).json({ error: 'Error interno al crear el trabajador.' });
+  }
+}
+
+// ------------------------------------------------------------
+// PATCH /api/trabajadores/:id/puesto
+// AGREGADO: hasta ahora no existia NINGUN endpoint para vincular (o
+// corregir) el puesto_trabajo_id de un trabajador ya creado -- se
+// podia crear el catalogo de puestos y se podia crear trabajadores,
+// pero nunca conectar ambos, y Aptitud depende de ese vinculo para
+// derivar las exposiciones ocupacionales automaticamente (devuelve
+// 409 "no tiene un puesto de trabajo asignado" si falta). Pasar
+// puestoTrabajoId: null desvincula.
+// ------------------------------------------------------------
+async function asignarPuesto(req, res) {
+  const { id } = req.params;
+  const { puestoTrabajoId } = req.body;
+  const orgId = req.usuario.organizacionId;
+
+  try {
+    if (puestoTrabajoId) {
+      const puestoRes = await query(
+        'SELECT id FROM puestos_trabajo WHERE id = $1 AND organizacion_id = $2 AND activo = true',
+        [puestoTrabajoId, orgId]
+      );
+      if (puestoRes.rows.length === 0) {
+        return res.status(400).json({ error: 'El puesto de trabajo indicado no existe o no pertenece a esta organizacion.' });
+      }
+    }
+
+    const resultado = await query(
+      `UPDATE trabajadores SET puesto_trabajo_id = $1
+       WHERE id = $2 AND organizacion_id = $3
+       RETURNING id, nombre_completo, puesto, puesto_trabajo_id`,
+      [puestoTrabajoId || null, id, orgId]
+    );
+    if (resultado.rows.length === 0) {
+      return res.status(404).json({ error: 'Trabajador no encontrado.' });
+    }
+
+    await registrarAuditoria({
+      organizacionId: orgId,
+      usuarioId: req.usuario.id,
+      accion: 'asignar_puesto_trabajador',
+      entidad: 'trabajador',
+      entidadId: id,
+      detalle: { puestoTrabajoId: puestoTrabajoId || null },
+      req,
+    });
+
+    return res.json({ trabajador: resultado.rows[0] });
+  } catch (err) {
+    console.error('Error en asignarPuesto (trabajadores):', err);
+    return res.status(500).json({ error: 'Error interno al asignar el puesto.' });
   }
 }
 
@@ -472,4 +545,4 @@ async function proximosExamenes(req, res) {
   }
 }
 
-module.exports = { listar, obtener, crear, importarMasivo, actualizarDatosAntropometricos, proximosExamenes };
+module.exports = { listar, obtener, crear, importarMasivo, actualizarDatosAntropometricos, proximosExamenes, asignarPuesto };

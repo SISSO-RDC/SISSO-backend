@@ -41,6 +41,12 @@ async function crear(req, res) {
 
     return res.status(201).json({ inspeccion: creadaRes.rows[0] });
   } catch (err) {
+    // CORREGIDO: una violacion del CHECK de tipo/estado (23514) es un
+    // error de entrada del usuario, no un fallo interno -- antes caia
+    // al 500 generico sin decir por que.
+    if (err.code === '23514') {
+      return res.status(400).json({ error: 'tipo invalido. Valores permitidos: planeada, no_planeada.' });
+    }
     console.error('Error en crear (inspecciones):', err);
     return res.status(500).json({ error: 'Error interno al crear la inspeccion.' });
   }

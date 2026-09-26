@@ -64,6 +64,7 @@
 | POST | `/api/trabajadores/` | admin, medico, th |
 | POST | `/api/trabajadores/importar` | admin, medico, th |
 | PUT | `/api/trabajadores/:id/datos-antropometricos` | admin, medico, th |
+| PATCH | `/api/trabajadores/:id/puesto` | admin, sso, th |
 
 ## `/api/superadmin`
 

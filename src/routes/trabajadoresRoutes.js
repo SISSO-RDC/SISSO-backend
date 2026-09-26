@@ -21,5 +21,9 @@ router.post('/importar', autenticar, autorizar('admin', 'medico', 'th'), trabaja
 // espirometria (sexo/edad/talla). Mismos roles que gestionan
 // personal (no es un dato clinico/diagnostico como "aptitud").
 router.put('/:id/datos-antropometricos', autenticar, autorizar('admin', 'medico', 'th'), validarActualizarDatosAntropometricos, trabajadoresController.actualizarDatosAntropometricos);
+// AGREGADO: vincular/desvincular un trabajador con un puesto real
+// del catalogo (puestos_trabajo). Antes no existia ninguna forma de
+// hacer esto tras el alta -- ver nota en el controlador.
+router.patch('/:id/puesto', autenticar, autorizar('admin', 'sso', 'th'), trabajadoresController.asignarPuesto);
 
 module.exports = router;

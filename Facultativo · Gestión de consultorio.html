@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Facultativo · Gestión de consultorio</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F3F7FA;--surf:#fff;--ink:#152B40;--mut:#63798C;--line:#DDE6ED;--cel:#2678B8;--celbg:#E4F1FB;--sol:#E8A317;--solbg:#FDF0D5;--ok:#1C8A5C;--okbg:#E4F5EC;--bad:#C33B32;--badbg:#FBE9E7;--sh:0 1px 2px rgba(21,43,64,.06),0 1px 12px rgba(21,43,64,.05);--rad:12px;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0D1721;--surf:#16232F;--ink:#E9F0F6;--mut:#93A7B9;--line:#28394A;--cel:#6FB6EC;--celbg:#1B3348;--sol:#F0BB4D;--solbg:#3A2E10;--ok:#57CB98;--okbg:#123324;--bad:#F08A80;--badbg:#3A1712;--sh:0 1px 2px rgba(0,0,0,.3),0 1px 14px rgba(0,0,0,.25)}}
+:root[data-theme="dark"]{--bg:#0D1721;--surf:#16232F;--ink:#E9F0F6;--mut:#93A7B9;--line:#28394A;--cel:#6FB6EC;--celbg:#1B3348;--sol:#F0BB4D;--solbg:#3A2E10;--ok:#57CB98;--okbg:#123324;--bad:#F08A80;--badbg:#3A1712;--sh:0 1px 2px rgba(0,0,0,.3),0 1px 14px rgba(0,0,0,.25)}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 Figtree,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+header{background:linear-gradient(155deg,#152B40,#1E3A55);color:#fff;padding:20px 20px 0;position:sticky;top:0;z-index:5;box-shadow:0 2px 16px rgba(0,0,0,.12)}
+.brand{display:flex;align-items:baseline;gap:12px;max-width:980px;margin:0 auto}
+h1{font:700 28px/1 Fraunces,Georgia,serif;margin:0;letter-spacing:-.01em;color:#fff}
+.brand span{color:#9FB6CB;font-size:13px;letter-spacing:.02em}
+nav{display:flex;gap:2px;max-width:980px;margin:16px auto 0;overflow-x:auto;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{background:none;border:0;color:#9FB6CB;font:500 14.5px Figtree,sans-serif;padding:10px 14px 12px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:color .15s}
+nav button:hover{color:#fff}
+nav button.on{color:#fff;border-color:var(--sol);font-weight:600}
+main{max-width:980px;margin:0 auto;padding:26px 16px 48px}
+h2{font:600 23px Fraunces,Georgia,serif;margin:0 0 16px;letter-spacing:-.01em}
+h3{font:600 16.5px Fraunces,Georgia,serif;margin:18px 0 10px;color:var(--ink)}
+.card{background:var(--surf);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--sh);padding:18px;margin-bottom:16px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+label{display:flex;flex-direction:column;font-size:12.5px;font-weight:600;color:var(--mut);gap:5px;flex:1 1 150px;letter-spacing:.01em}
+input,select,textarea{font:400 15px Figtree,inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:9px 11px;width:100%;transition:border-color .15s,background .15s}
+input:hover,select:hover,textarea:hover{border-color:var(--mut)}
+input:focus,select:focus,textarea:focus{background:var(--surf)}
+textarea{min-height:90px;resize:vertical;font-family:Figtree,inherit}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--cel);outline-offset:2px}
+.btn{background:var(--cel);color:#fff;border:0;border-radius:7px;padding:10px 18px;font:600 14.5px Figtree,sans-serif;cursor:pointer;box-shadow:0 1px 2px rgba(21,43,64,.15);transition:filter .15s,transform .1s}
+.btn:hover{filter:brightness(1.08)}.btn:active{transform:translateY(1px)}
+.btn.g{background:none;color:var(--cel);border:1px solid var(--cel);box-shadow:none}
+.btn.g:hover{background:var(--celbg)}
+.tw{overflow-x:auto;margin:0 -18px;padding:0 18px}table{width:100%;border-collapse:collapse;font-size:14.5px}
+th{text-align:left;font-weight:700;color:var(--mut);font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tbody tr{transition:background .12s}tbody tr:hover{background:var(--bg)}
+.chip{display:inline-block;background:var(--celbg);color:var(--cel);border-radius:99px;padding:3px 11px;font-size:12.5px;font-weight:700;letter-spacing:.01em}
+.chip.sol{background:var(--solbg);color:#8A6416}
+.st-Atendido{color:var(--ok);font-weight:600}.st-Ausente,.st-Cancelado{color:var(--bad);font-weight:600}
+.err{color:var(--bad);font-size:13.5px;min-height:18px;margin:10px 0 0;font-weight:600}
+.empty{color:var(--mut);padding:22px 4px;text-align:center;font-size:14.5px}
+.dni{font-variant-numeric:tabular-nums;font-weight:700;letter-spacing:.02em}
+.evo{border-left:3px solid var(--sol);padding:6px 0 6px 14px;margin:14px 0;font-size:14.5px}
+.evo small{color:var(--mut)}
+.link{background:none;border:0;color:var(--cel);cursor:pointer;font:600 inherit;padding:0;text-decoration:underline;text-underline-offset:2px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.stats div{background:var(--surf);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--sh);padding:14px 16px}
+.stats b{display:block;font:700 27px Fraunces,Georgia,serif;color:var(--cel)}
+.stats span{color:var(--mut);font-size:12.5px;font-weight:600;letter-spacing:.01em}
+footer{max-width:980px;margin:8px auto 0;padding:18px 16px 34px;color:var(--mut);font-size:12.5px;border-top:1px solid var(--line);line-height:1.6}
+summary{cursor:pointer;font-weight:700;color:var(--cel);font-size:15px}
+fieldset{border:1px solid var(--line);border-radius:7px;margin:0;padding:8px 12px 10px;flex:1 1 220px;min-width:0}legend{font-size:12.5px;font-weight:600;color:var(--mut);padding:0 4px}
+.rad{flex-direction:row;align-items:center;gap:7px;font-size:14.5px;font-weight:400;color:var(--ink);display:flex}.rad input{width:auto}
+.req{color:var(--mut);font-size:13.5px;margin:0 0 14px}
+.warn{color:#8A6416;background:var(--solbg);border-radius:99px;padding:3px 11px;font-size:12.5px;font-weight:700}
+.mut{color:var(--mut);font-size:13.5px}
+a{color:var(--cel)}[hidden]{display:none!important}
+nav button:last-child{margin-left:auto;color:var(--sol)}nav button.on:last-child{color:#fff}
+details.card summary{margin:-2px 0 0}details.card[open] summary{margin-bottom:14px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>Facultativo</h1><span>Consultorio · Argentina</span></div>
+  <nav id="nav"></nav>
+</header>
+<main id="app"></main>
+<footer>Prototipo de demostración con datos ficticios. Una versión real debe cumplir la Ley 26.529 (historia clínica), la Ley 25.326 (protección de datos personales) y la Ley 27.553 (recetas electrónicas y teleasistencia).</footer>
+<script>
+const TD=["DNI","CI","Pasaporte","Libreta Cívica","Libreta de Enrolamiento"],TE=["Ecografía","Radiografía","Tomografía","Resonancia (RMN)","Laboratorio","Otro"],
+VIT=[["tas","TA sistólica (mmHg)"],["tad","TA diastólica (mmHg)"],["fc","Frec. cardíaca (lpm)"],["fr","Frec. resp. (rpm)"],["tm","Temperatura (°C)"],["pe","Peso (kg)"],["tl","Talla (m)"]],
+TABS_ADMIN=[["hoy","Hoy"],["pac","Pacientes"],["tur","Turnos"],["hc","Historia clínica"],["cob","Coberturas"],["equ","Equipo"],["caja","Caja"],["est","Estadísticas"],["perf","Mi consultorio"],["por","Reserva en línea"]],
+TABS_MED=[["hoy","Hoy"],["pac","Pacientes"],["tur","Turnos"],["hc","Historia clínica"],["est","Estadísticas"]],
+ESTADOS=["Pendiente","Atendido","Ausente","Cancelado"],CERT=["Reposo laboral","Aptitud física / deportiva","Asistencia a consulta","Constancia de atención","Otro"],FORMAS=["Efectivo","Transferencia","Tarjeta de débito","Tarjeta de crédito","Cobertura (a facturar)","Seña (Mercado Pago)"],TREC=["Receta simple","Receta repetitiva (tratamiento crónico)"],TCONS=["Procedimiento o tratamiento","Telemedicina","Tratamiento de datos personales (Ley 25.326)","Otro"],FILES={};
+const OSS=`601104|Asociacion Gualeguaychu de Obras Sociales|
+600309|Asociacion de Obras Sociales de Bella Vista|
+600408|Asociacion de Obras Sociales de Comodoro Rivadavia|
+600903|Asociacion de Obras Sociales de Esperanza|ADOS ESPERANZA
+601203|Asociacion de Obras Sociales de Gualeguay|
+601302|Asociacion de Obras Sociales de Mar del Plata|ADOS MAR DEL PLATA
+602305|Asociacion de Obras Sociales de Rosario|ADOS ROSARIO
+602404|Asociacion de Obras Sociales de Rufino|
+602602|Asociacion de Obras Sociales de San Jorge|
+603100|Asociacion de Obras Sociales de Trelew|
+510006|Direccion General de Asistencia M#Dica Social Universitaria - San Juan|
+500807|Instituto Nacional de Servicios Sociales para Jubilados y Pensionados|
+902001|O.S.P. Buenos Aires (Ioma)|IOMA
+903001|O.S.P. Catamarca (Osep)|OSEP
+916001|O.S.P. Chaco (Insssep)|INSSSEP
+917001|O.S.P. Chubut (Seros)|SEROS
+901001|O.S.P. Ciudad Aut. de Buenos Aires (Obsba)|ObSBA
+904001|O.S.P. Cordoba (Apross)|APROSS
+905001|O.S.P. Corrientes (Ioscor)|IOSCOR
+906001|O.S.P. Entre Rios (Iosper)|IOSPER
+918002|O.S.P. Formosa (Amp)|AMP
+918001|O.S.P. Formosa (Impf)|IMPF
+907001|O.S.P. Jujuy (Isj)|ISJ
+909001|O.S.P. Mendoza (Osep)|OSEP
+920001|O.S.P. Misiones (Ips)|IPS MISIONES
+921001|O.S.P. Neuquen (Issn)|ISSN
+922001|O.S.P. Rio Negro (Ipross)|IPROSS
+910001|O.S.P. Salta (Ips)|IPS SALTA
+911001|O.S.P. San Juan (Dos)|DOS
+912001|O.S.P. San Luis (Dosep)|DOSEP
+923001|O.S.P. Santa Cruz (Css)|CSS
+913001|O.S.P. Santa Fe (Iapos)|IAPOS
+914001|O.S.P. Santiago del Estero (Iosep)|IOSEP
+924001|O.S.P. Tierra del Fuego(Ipauss)|IPAUSS
+915001|O.S.P. Tucuman (Ipsst)|IPSST
+919001|O.S.P. la Pampa (Sempre)|SEMPRE
+908001|O.S.P. la Rioja (Apos)|APOS
+400909|Obra Social Accion Social de Empresarios|ASE
+800501|Obra Social Aceros Parana|
+401803|Obra Social Asociacion Mutual del Personal de Philips Argentina (Ampar)|AMPAR
+402608|Obra Social Asociacion de Servicios Sociales para Empresarios y Personal de Direccion de Empresas del Comercio, Servicios, Produccion, Industria y Civil (Asspe)|ASSPE
+402301|Obra Social Asociacion del Personal Superior de la Organizacion Techint|APSOT
+402103|Obra Social Asociacion del Personal de Direccion de la Industria Siderurgica|APDIS
+400503|Obra Social Asociacion del Personal de Direccion y Jerarquico de la Industria del Cigarrillo|APDJIC
+800105|Obra Social Atanor S.A|
+126304|Obra Social Bancaria Argentina|OSBA
+303307|Obra Social Cabot Argentina|
+400701|Obra Social Camara de la Industria Curtidora Argentina|OSCICA
+300704|Obra Social Ceras Johnson|JOHNSON
+302304|Obra Social Compania Minera Aguilar S.A|
+121804|Obra Social Conductores de Taxis de Cordoba|OSTC
+400305|Obra Social Cooperativa Ltda. de Asistencia Medica ,Farmaceutica,Credito, y Consumo del Personal Superior de la Industria del Caucho y Otras Actividades Industriales|CAMPSIC
+302601|Obra Social Cooperativa de Asistencia Mutua y Turismo del Personal de las Sociedades Pirelli Ltda.|COMPIR
+106609|Obra Social Electricistas Navales|OSEN
+100908|Obra Social Empleados de Agencias de Informes|OSEADI
+125301|Obra Social Federal de la Federacion Nacional de Trabajadores de Obras Sanitarias|OSFFENTOS
+112509|Obra Social Modelos Argentinos|OSMA
+301509|Obra Social Mutualidad Empleados Firestone|
+402202|Obra Social Mutualidad Industrial Textil Argentina|OSMITA
+800303|Obra Social Papel Misionero S.A.I.F. y C.|
+128300|Obra Social Peones de Taxis de Rosario|O.S.PE.TAX.R
+127703|Obra Social Personal Estaciones de Servicio,Garages,Playas y Lavaderos de la Provincia del Chaco|OSPESCHA
+116709|Obra Social Portuarios de Puerto San Martin y Bella Vista|
+302809|Obra Social Refinerias de Maiz S.A.I.C.F.|OSRM
+303109|Obra Social Superco|
+114307|Obra Social Trabajadores Pasteleros, Confiteros, Pizzeros , Heladeros y Alfajoreros de la Republica Argentina|OSTPCHPYARA
+125707|Obra Social Union Personal de la Union del Personal Civil de la Nacion|OSPCN
+402509|Obra Social Ypf|OSYPF
+100205|Obra Social de Actores|OSA
+100809|Obra Social de Aeronavegantes|OSA
+118309|Obra Social de Agentes de Propaganda Medica de Cordoba|
+118408|Obra Social de Agentes de Propaganda Medica de Entre Rios|OSAPMER
+118507|Obra Social de Agentes de Propaganda Medica de Rosario|
+118200|Obra Social de Agentes de Propaganda Medica de la Republica Argentina|OSAPM
+101109|Obra Social de Alfajoreros, Reposteros, Pizzeros y Heladeros|OSARPYH
+125905|Obra Social de Arbitros Deportivos de la Republica Argentina|OSADRA
+124001|Obra Social de Boxeadores Agremiados de la Republica Argentina|OSBARA
+116105|Obra Social de Capataces Estibadores Portuarios|OSCEP
+111506|Obra Social de Capitanes Baqueanos Fluviales de la Marina Mercante|OSCAPBAQFLU
+111407|Obra Social de Capitanes de Ultramar y Oficiales de la Marina Mercante|OSCOMM
+104108|Obra Social de Ceramistas|OSCE
+105804|Obra Social de Choferes de Camiones|OSCHOCA
+104801|Obra Social de Colocadores de Azulejos, Mosaicos, Graniteros, Lustradores y Porcelaneros|OSCAMGLYP
+113809|Obra Social de Comisarios Navales|
+103204|Obra Social de Conductores Camioneros y Personal del Transporte Automotor de Cargas|
+105002|Obra Social de Conductores Navales|OSCONARA
+126809|Obra Social de Conductores de Remises y Autos al Instante y Afines|OSCRAIA
+121606|Obra Social de Conductores de Transporte Colectivo de Pasajeros|
+402707|Obra Social de Direccion Osdo|
+402806|Obra Social de Direccion de la Actividad Aerocomercial Privada|
+402905|Obra Social de Dirección Witcel|
+106302|Obra Social de Docentes Particulares|OSDOP
+400800|Obra Social de Ejecutivos y del Personal de Direccion de Empresas|OSDE
+121101|Obra Social de Empleados Textiles y Afines|OSETYA
+106104|Obra Social de Empleados de Despachantes de Aduana|OSEDA
+118002|Obra Social de Empleados de Prensa de Cordoba|OSEPC
+122401|Obra Social de Empleados de la Industria del Vidrio|OSEIV
+111605|Obra Social de Empleados de la Marina Mercante|OSEMM
+120603|Obra Social de Empleados del Tabaco de la Republica Argentina|OSETRA
+401704|Obra Social de Empresarios, Profesionales y Monotributistas|OSDEPYM
+111704|Obra Social de Encargados Apuntadores Maritimos|OSEAM
+128508|Obra Social de Farmaceuticos y Bioquimicos|OSFYB
+303901|Obra Social de Ford Agentina S.C.A|
+108209|Obra Social de Fotografos|OSFOT
+108605|Obra Social de Futbolistas|FAA
+109202|Obra Social de Guincheros y Maquinistas de Gruas Moviles|
+110107|Obra Social de Jardineros, Parquistas, Viveristas y Floricultores de la Republica Argentina|OSJPVYF
+113304|Obra Social de Jefes y Oficiales Maquinistas Navales|OSJOMN
+113205|Obra Social de Jefes y Oficiales Navales de Radiocomunicaciones|OSJONR
+110602|Obra Social de Locutores|OSDEL
+127802|Obra Social de Luz y Fuerza de la Patagonia|OSLYF PATAGONIA
+127208|Obra Social de Mandos Medios de Telecomunicaciones en la Republica Argentina y Mercosur|OSMMEDT
+111308|Obra Social de Maquinistas de Teatro y Television|
+112806|Obra Social de Musicos|OSDEM
+106708|Obra Social de Obreros Empacadores de Fruta de Rio Negro y Neuquen|
+127406|Obra Social de Obreros y Empleados Tintoreros Sombrereros y Lavaderos de la Republica Argentina|OSOETSYLARA
+114901|Obra Social de Oficiales Peluqueros y Peinadores de Rosario|OSOFPP DE ROSARIO
+104603|Obra Social de Operadores Cinematograficos|OSOC
+114000|Obra Social de Panaderos, Pasteleros y Factureros de Entre Rios|OSSPYFER
+114505|Obra Social de Patrones de Cabotaje de Rios y Puertos|
+123701|Obra Social de Peones de Taxis de la Capital Federal|OSPETAX
+115300|Obra Social de Petroleros|OSPE
+127901|Obra Social de Petroleros Privados|OS.PE.PRI
+115508|Obra Social de Petroleros de Cordoba|O.S.PE.COR
+116204|Obra Social de Portuarios Argentinos|OSPA
+118804|Obra Social de Recibidores de Granos y Anexos|OSRGA
+119203|Obra Social de Relojeros y Joyeros|OSRJA
+119906|Obra Social de Serenos de Buques|
+123107|Obra Social de Talleristas A Domicilio|OSTAD
+108704|Obra Social de Tecnicos de Futbol|OSTECF
+100304|Obra Social de Tecnicos de Vuelo de Lineas Aereas|OSTVLA
+127307|Obra Social de Trabajadores Viales y Afines de la Republica Argentina|
+127000|Obra Social de Trabajadores de Estaciones de Servicio|OSTES
+123602|Obra Social de Trabajadores de Perkins Argentina S.A.I.C|OSTP
+115102|Obra Social de Trabajadores de Prensa de Buenos Aires|OSTPBA
+124506|Obra Social de Trabajadores de la Industria del Gas|OSTIG
+120801|Obra Social de Trabajadores de las Comunicaciones|OSTRAC
+128607|Obra Social de Trabajadores del Petroleo y Gas Privado del Chubut|
+121903|Obra Social de Vareadores|
+123909|Obra Social de Vendedores Ambulantes de la Republica Argentina|OSVARA
+122104|Obra Social de Viajantes Vendedores de la Republica Argentina. (Andar)|OSVVRA
+304003|Obra Social de Volkswagen Argentina S.A.|
+125004|Obra Social de Yacimientos Carboniferos|
+112400|Obra Social de la Actividad Minera|O.S.A.M.
+126502|Obra Social de la Confederacion de Obreros y Empleados Municipales Argentina (Oscoema)|OSCOEMA
+110701|Obra Social de la Federacion Argentina de Trabajadores de Luz y Fuerza|OSFATLYF
+125509|Obra Social de la Federacion Argentina del Trabajador de las Universidades Nacionales|OSFATUN
+126007|Obra Social de la Federacion Gremial de la Industria de la Carne y Sus Derivados|
+114208|Obra Social de la Industria de Pastas Alimenticias|OSIPA
+121507|Obra Social de la Industria del Transporte Automotor de Cordoba|OSITAC
+112103|Obra Social de la Union Obrera Metalurgica de la Republica Argentina|OSUOMRA
+128102|Obra Social de la Union de Trabajadores del Instituto Nacional de Servicios Sociales para Jubilados y Pensionados de la Republica Argentina|OSUTI
+510204|Obra Social de la Universidad Nacional del Litoral|
+127505|Obra Social de las Asociaciones de Empleados de Farmacia|OSADEF
+105507|Obra Social de los Cortadores de la Indumentaria|OSUCI
+126205|Obra Social de los Empleados de Comercio y Actividades Civiles|OSECAC
+126908|Obra Social de los Medicos de la Ciudad de Buenos Aires|OSMEDICA
+125103|Obra Social de los Profesionales Universitarios del Agua y la Energia Electrica|OSPUAYE
+112202|Obra Social de los Supervisores de la Industria Metalmecanica de la Republica Argentina|OSSIMRA
+128904|Obra Social de los Trabajadores Argentinos de Centros de Contactos|O.S.T.A.C.C,
+110800|Obra Social de los Trabajadores de las Empresas de Electricidad|OSTEE
+105309|Obra Social del Personal Administrativo y Tecnico de la Construccion y Afines|OSPATCA
+128805|Obra Social del Personal Aduanero de la Republica Argentina|OSPAD
+100502|Obra Social del Personal Aeronautico|OSPA
+103600|Obra Social del Personal Auxiliar de Casas Particulares|OSPACP
+104405|Obra Social del Personal Cinematografico de Mar del Plata|OSPERCIN
+400602|Obra Social del Personal Directivo de la Industria de la Construccion|OSDIC
+109004|Obra Social del Personal Grafico|OSPG
+110305|Obra Social del Personal Ladrillero|OSPL
+111803|Obra Social del Personal Maritimo|OSPM
+109608|Obra Social del Personal Mensualizado del Jockey Club de Buenos Aires y los Hipodromos de Palermo y San Isidro|
+112707|Obra Social del Personal Mosaista|OSPM
+700108|Obra Social del Personal Municipal de Avellaneda|
+700801|Obra Social del Personal Municipal de la Matanza|
+113403|Obra Social del Personal Naval|OSPENA
+119302|Obra Social del Personal Rural y Estibadores de la Republica Argentina|OSPRERA
+303406|Obra Social del Personal Shell-Capsa|
+112004|Obra Social del Personal Superior Mercedes Benz Argentina|OSPS MERCEDES
+100403|Obra Social del Personal Superior y Profesional de Empresas Aerocomerciales|OSPEA
+100700|Obra Social del Personal Tecnico Aeronautico|OSPTA
+100601|Obra Social del Personal de Aeronavegacion de Entes Privados|OSPADEP
+101000|Obra Social del Personal de Aguas Gaseosas y Afines|OSPAGA
+102904|Obra Social del Personal de Barracas de Lanas, Cueros y Anexos|
+103402|Obra Social del Personal de Carga y Descarga|OSPCYD
+104009|Obra Social del Personal de Cementerios de la Republica Argentina.|OSPCRA
+109301|Obra Social del Personal de Consignatarios del Mercado Nacional de Hacienda de Liniers|OSPEMER
+401100|Obra Social del Personal de Direccion Alfredo Fortabat|
+401902|Obra Social del Personal de Direccion de Perfumeria E.W. Hope|WHOPE
+120405|Obra Social del Personal de Direccion de la Empresa Subterraneos de Buenos Aires|OSPDESBA
+400206|Obra Social del Personal de Direccion de la Industria Automotriz Argentina|OSPREME
+400404|Obra Social del Personal de Direccion de la Industria Cervecera y Maltera|SERVESALUD
+401209|Obra Social del Personal de Direccion de la Industria Metalurgica y Demas Actividades Empresarias|OSIM
+401605|Obra Social del Personal de Direccion de la Industria Privada del Petroleo|OSDIPP
+402004|Obra Social del Personal de Direccion de la Sanidad Luis Pasteur|OSLPASTEUR
+401001|Obra Social del Personal de Direccion de las Empresas Que Actuan en Frutos del Pais|FRUTOS
+400107|Obra Social del Personal de Direccion de las Empresas de la Alimentacion y Demas Actividades Empresarias|OPDEA
+106203|Obra Social del Personal de Distribuidoras Cinematograficas|OSPEDICI
+128706|Obra Social del Personal de Dragado y Balizamiento|OSPEDYB
+106500|Obra Social del Personal de Edificios de Renta y Horizontal de la Ciudad Autonoma de Buenos Aires y Gran Buenos Aires|OSPERYH
+106401|Obra Social del Personal de Edificios de Renta y Horizontal de la Republica Argentina|OSPERYHRA
+900102|Obra Social del Personal de Empresas Fiat y Empresas Peugeot Citroen Argentina|OSPEF Y EPCA
+106005|Obra Social del Personal de Entidades Deportivas y Civiles|OSPEDYC
+106906|Obra Social del Personal de Escribanias de la Provincia de Buenos Aires|OSPEPBA
+107008|Obra Social del Personal de Escribanos|OSPE
+107206|Obra Social del Personal de Estaciones de Servicio, Garages, Playas de Estacionamiento y Lavaderos Automaticos|OSPESGYPE
+122906|Obra Social del Personal de Estaciones de Servicio, Garages, Playas y Lavaderos Automaticos de la Provincia de Santa Fe|OSPESGA
+115805|Obra Social del Personal de Fabricas de Pintura|UPFPARA
+107404|Obra Social del Personal de Farmacia|OSPF
+109707|Obra Social del Personal de Imprenta, Diarios y Afines|OSPIDA
+118705|Obra Social del Personal de Industrias Quimicas y Petroquimicas|OSPIQYP
+126601|Obra Social del Personal de Industrias Quimicas y Petroquimicas de Zarate Campana|OPZC
+119609|Obra Social del Personal de Instalaciones Sanitarias|OSPIS
+110008|Obra Social del Personal de Jaboneros|OSPEJ
+110909|Obra Social del Personal de Luz y Fuerza de Cordoba|OSLYF
+111209|Obra Social del Personal de Maestranza|OSPM
+108506|Obra Social del Personal de Manipuleo, Empaque y Expedicion de Fruta Fresca y Hortalizas de Cuyo|OSFYHC
+112301|Obra Social del Personal de Micros y Omnibus de Mendoza|OSPEMOM
+113908|Obra Social del Personal de Panaderias|OSPEP
+303703|Obra Social del Personal de Pbbpolisur Sa de Bahia Blanca|
+114703|Obra Social del Personal de Peluquerias, Esteticas y Afines|OSPPEA
+117405|Obra Social del Personal de Prensa de Bahia Blanca|
+117702|Obra Social del Personal de Prensa de Mar del Plata|OSPREN
+117801|Obra Social del Personal de Prensa de Mendoza|
+123404|Obra Social del Personal de Prensa de Rosario|OSPRO
+123503|Obra Social del Personal de Prensa de Tucuman|OSPRENTUC
+117603|Obra Social del Personal de Prensa de la Provincia de Chaco|OSPPCHA
+117207|Obra Social del Personal de Prensa de la Republica Argentina|OSPPRA
+118903|Obra Social del Personal de Recoleccion y Barrido de Rosario|
+119005|Obra Social del Personal de Refinerias de Maiz|
+119708|Obra Social del Personal de Seguridad Comercial, Industrial E Investigaciones Privadas|OSPSIP
+123305|Obra Social del Personal de Sociedades de Autores y Afines|OSPESA
+120306|Obra Social del Personal de Supervision de la Empresa Subterraneos de Buenos Aires|OSPSESBA
+127109|Obra Social del Personal de Telecomunicaciones Sindicato Buenos Aires|OSPETELCO
+120900|Obra Social del Personal de Television|OSPTV
+122807|Obra Social del Personal de Vigilancia y Seguridad Comercial, Industrial E Investigaciones Privadas de Cordoba|OSPEVIC
+126700|Obra Social del Personal de la Actividad Azucarera Tucumana|
+104306|Obra Social del Personal de la Actividad Cervecera y Afines|OSPACA
+108407|Obra Social del Personal de la Actividad Fruticola|OSPAF
+115003|Obra Social del Personal de la Actividad Perfumista|OSPAP
+122302|Obra Social del Personal de la Actividad Vial|OSPA-VIAL
+122609|Obra Social del Personal de la Actividad Vitivinicola|OSPAV
+121705|Obra Social del Personal de la Actividad del Turf|OSPAT
+104207|Obra Social del Personal de la Ceramica, Sanitarios, Porcelana de Mesa y Afines|OSPCSPMYA
+105408|Obra Social del Personal de la Construccion|OSPECON
+200400|Obra Social del Personal de la Empresa Nacional de Correos y Telegrafos S.A. y de las Comunicaciones de la Repulica Argentina|OSPEC
+106807|Obra Social del Personal de la Ense¥Anza Privada|OSPEP
+128003|Obra Social del Personal de la Federacion de Sindicatos de la Industria Quimicas y Petroquimicas de la Republica Argentina|
+102706|Obra Social del Personal de la Industria Azucarera|OSPIA
+103006|Obra Social del Personal de la Industria Botonera|OSPIB
+104504|Obra Social del Personal de la Industria Cinematografica|OSPIC
+107909|Obra Social del Personal de la Industria Fideera|OSPIF
+108001|Obra Social del Personal de la Industria Forestal de Santiago del Estero|OSPIFSE
+110404|Obra Social del Personal de la Industria Ladrillera A Maquina|OSPILM
+110503|Obra Social del Personal de la Industria Lechera|OSPIL
+111001|Obra Social del Personal de la Industria Maderera|OSPIM
+112608|Obra Social del Personal de la Industria Molinera|OSPIM
+113700|Obra Social del Personal de la Industria Naval|OSPIN
+115607|Obra Social del Personal de la Industria Petroquimica|OSPIP
+121002|Obra Social del Personal de la Industria Textil|OSPIT
+101208|Obra Social del Personal de la Industria de la Alimentacion|OSPIA
+103105|Obra Social del Personal de la Industria del Calzado|OSPICAL
+103709|Obra Social del Personal de la Industria del Caucho|OSPIC
+103907|Obra Social del Personal de la Industria del Caucho de Santa Fe|OSPIC SANTA FE
+105705|Obra Social del Personal de la Industria del Chacinado y Afines|OSPICHA
+105606|Obra Social del Personal de la Industria del Cuero y Afines|OSPICA
+107800|Obra Social del Personal de la Industria del Fibrocemento|OSPIF
+108100|Obra Social del Personal de la Industria del Fosforo, Encendido y Afines|OSPIF
+109400|Obra Social del Personal de la Industria del Hielo y Mercados Particulares|OSPIHMP
+113601|Obra Social del Personal de la Industria del Neumatico|OSPIN
+115201|Obra Social del Personal de la Industria del Pescado de Mar del Plata|OSPIP
+116006|Obra Social del Personal de la Industria del Plastico|OSPIP
+120504|Obra Social del Personal de la Industria del Tabaco|OSPIT
+121309|Obra Social del Personal de la Industria del Tractor|OSPIT
+122005|Obra Social del Personal de la Industria del Vestido|OSPIV
+122500|Obra Social del Personal de la Industria del Vidrio|OSPIV
+118606|Obra Social del Personal de la Publicidad|OSPP
+119500|Obra Social del Personal de la Sanidad Argentina|OSPSA
+510105|Obra Social del Personal de la Universidad Nacional de la Patagonia San Juan Bosco|
+510303|Obra Social del Personal de la Universidad Nacional del Centro de De la Provincia de Buenos Aires|
+120702|Obra Social del Personal de las Telecomunicaciones de la Republica Argentina|OSTEL
+109509|Obra Social del Personal de los Hipodromos de Buenos Aires y San Isidro|OSPHGBAYSI
+101604|Obra Social del Personal del Automovil Club Argentino|OSPACA
+101901|Obra Social del Personal del Azucar del Ingenio Ledesma|OSPAIL
+102300|Obra Social del Personal del Azucar del Ingenio San Martin|OSPA
+101802|Obra Social del Personal del Azucar del Ingenio la Esperanza|OSPA
+103808|Obra Social del Personal del Caucho|OSPECA
+107107|Obra Social del Personal del Espectaculo Publico|OSPEP
+110206|Obra Social del Personal del Jockey Club de Rosario|
+114109|Obra Social del Personal del Papel, Carton y Quimicos|OSPPCYQ
+108803|Obra Social del Personal del Turismo, Hotelero y Gastronomico de la Union de Trabajadores del Turismo Hoteleros y Gastronomicos de la Republica Argentina|OSUTHGRA
+115409|Obra Social del Petroleo y Gas Privado|OSPEGAP
+128409|Obra Social del Sindicato Obreros y Empleados de Empresas de Limpieza,Servicios y Afines de Cordoba|OSSOELSAC
+128201|Obra Social del Sindicato Unico de Recolectores de Residuos y Barrido de Cordoba|OSSURRBAC
+111902|Obra Social del Sindicato de Mecanicos y Afines del Transporte Automotor|OSMATA
+302106|Obra Social para Directivos, Tecnicos y Empleados de John Deere Argentina|DITEM
+115706|Obra Social para Pilotos de Lineas Aereas Comerciales y Regulares|OSPLA
+701002|Obra Social para el Personal Municipal de Tres de Febrero|
+401308|Obra Social para el Personal de Direccion de la Industria Maderera|OSMAD
+402400|Obra Social para el Personal de Direccion de la Industria Vitivinicola y Afines|OSEDEIV
+123008|Obra Social para el Personal de Estaciones de Servicio, Garages, Playas de Estacionamiento, Lavaderos Automaticos y Gomerias de la Republica Argentina|OSPES
+127604|Obra Social para el Personal de Obras y Servicios Sanitarios|OSOSS
+100106|Obra Social para el Personal de la Industria Aceitera, Desmotadora y Afines|OSIAD
+126106|Obra Social para los Trabajadores de la Educacion Privada|OSTEP
+997001|Programa Federal Incluir Salud (Pfis)|PFIS`,fr=r=>r.replace(/^(\d)(\d{4})(\d)$/,"$1-$2-$3"),BASE=OSS.split("\n").map(l=>{const a=l.split("|");return{n:a[1],r:fr(a[0]),s:a[2]}});
+let cf="",S,tab="hoy",selPac="",filtro="",done=null,selPro="",selMes="",ses=null,lerr="";
+try{const r=localStorage.getItem("facultativo-ses");if(r)ses=JSON.parse(r)}catch(e){}
+const ALL=()=>BASE.concat(S.cus),cobF=n=>ALL().find(c=>c.n.toLowerCase()==n.toLowerCase()),$=i=>document.getElementById(i),v=i=>$(i).value.trim(),r=n=>(document.querySelector(`input[name=${n}]:checked`)||{}).value,
+iso=d=>d.toISOString().slice(0,10),esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),
+fdate=s=>s?s.split("-").reverse().join("/"):"",pac=id=>S.pac.find(p=>p.id==id),nom=p=>p?`${esc(p.ap)}, ${esc(p.no)}`:"(eliminado)",
+edad=s=>{const n=new Date(),b=new Date(s);let a=n.getFullYear()-b.getFullYear();if(n<new Date(n.getFullYear(),b.getMonth(),b.getDate()))a--;return a},
+docFmt=p=>p.td=="DNI"&&/^\d{7,8}$/.test(p.nd)?p.nd.replace(/\B(?=(\d{3})+(?!\d))/g,"."):esc(p.nd),
+docOk=(t,n)=>/^(CI|Pasaporte)$/.test(t)?/^[A-Za-z0-9]{6,12}$/.test(n):/^\d{7,8}$/.test(n),
+cobChip=p=>p.cob?`<span class="chip">${esc(p.cob)}</span>${p.plan?" Plan "+esc(p.plan):""}<br><small>${(cobF(p.cob)||{}).r?"RNOS "+cobF(p.cob).r+" · ":""}Afiliado ${esc(p.afi)}</small>`:`<span class="chip sol">Particular</span>`;
+function seed(){const h=iso(new Date());return{n:20,sin:{},
+pro:[{id:1,no:"Ana",ap:"Duarte",esp:"Clínica médica",mt:"MN",mn:"54321",user:"aduarte",pass:"1234"},{id:2,no:"Martín",ap:"Sosa",esp:"Traumatología",mt:"MP",mn:"22110",user:"msosa",pass:"1234"}],cert:[],pag:[],cons:[],rec:[],fees:{"Particular":40000},
+info:{nombre:"Facultativo",dir:"Av. Corrientes 1234, CABA",hor:"Lun a vie de 9 a 18 h",tel:"+54 11 4000-0000"},
+cus:["OSDE","Swiss Medical","Galeno","Medifé","Sancor Salud","PAMI (INSSJP)","IOMA"].map(n=>({n,r:"",s:"Prepaga u otra"})),
+pac:[{id:1,no:"Lucía",ap:"Fernández",td:"DNI",nd:"30456789",sx:"Femenino",nac:"1985-03-14",tp:"+549",tn:"1155550142",em:"lucia@mail.com",cob:"OSDE",plan:"310",afi:"12345678901",ant:{}},
+{id:2,no:"Ricardo",ap:"Gómez",td:"DNI",nd:"18234567",sx:"Masculino",nac:"1962-09-02",tp:"+549",tn:"3515550177",em:"ricardo@mail.com",cob:"PAMI (INSSJP)",plan:"",afi:"15182345670",ant:{per:"Hipertensión arterial.",fam:"Padre con ACV.",rel:"Latigazo cervical con hernia C5-C6 posterolateral hace 10 años (accidente automovilístico). Sin cirugía; inmovilización 1 año."}},
+{id:3,no:"Camila",ap:"Ibarra",td:"Pasaporte",nd:"AB123456",sx:"Otro",nac:"2001-11-27",tp:"+598",tn:"9155501190",em:"camila@mail.com",cob:"",plan:"",afi:"",ant:{}}],
+tur:[{id:1,pid:1,prid:1,f:h,h:"09:00",mo:"Control anual",mod:"Presencial",es:"Pendiente"},{id:2,pid:2,prid:2,f:h,h:"09:30",mo:"Dolor cervical",mod:"Presencial",es:"Pendiente"},{id:3,pid:3,prid:1,f:h,h:"10:15",mo:"Primera consulta",mod:"Telemedicina",sala:"Facultativo-demo3",es:"Pendiente"}],
+est:[{id:4,pid:2,tp:"Resonancia (RMN)",f:"2024-06-10",d:"Columna cervical",fn:"rmn-cervical-2024.pdf"}],evo:[]}}
+function load(){try{const x=localStorage.getItem("facultativo-v5");if(x)return JSON.parse(x)}catch(e){}return seed()}
+function save(){try{localStorage.setItem("facultativo-v2",JSON.stringify(S))}catch(e){}}
+S=load();
+const go=t=>{if(ses&&ses.rol!="admin"&&["cob","equ","caja","perf"].includes(t))t="hoy";tab=t;draw()},openHc=id=>{selPac=id;go("hc")};
+function misPac(){return ses&&ses.rol=="medico"?S.pac.filter(p=>S.tur.some(t=>t.pid==p.id&&t.prid==ses.proId)):S.pac}
+function login(){const u=v("lg_u").toLowerCase(),p=v("lg_p");
+if(u=="secretaria"&&p=="admin123")ses={rol:"admin",nombre:"Secretaría / Administración"};
+else{const pr=S.pro.find(x=>x.user&&x.user.toLowerCase()==u&&x.pass==p);if(pr)ses={rol:"medico",proId:pr.id,nombre:nomPro(pr)};else{lerr="Usuario o contraseña incorrectos.";draw();return}}
+lerr="";try{localStorage.setItem("facultativo-ses",JSON.stringify(ses))}catch(e){}selPro=ses.rol=="medico"?ses.proId:"";tab="hoy";draw()}
+function logout(){ses=null;try{localStorage.removeItem("facultativo-ses")}catch(e){}selPro="";tab="hoy";draw()}
+function vLogin(){return `<div class="card" style="max-width:380px;margin:50px auto"><h2 style="margin-top:0">Ingresar</h2>
+<label>Usuario<input id="lg_u" autocomplete="username" placeholder="aduarte o secretaria"></label>
+<label style="margin-top:10px">Contraseña<input id="lg_p" type="password" autocomplete="current-password" onkeydown="if(event.key=='Enter')login()"></label>
+<p class="err">${esc(lerr)}</p><button class="btn" style="width:100%" onclick="login()">Ingresar</button>
+<p class="mut" style="margin-top:14px;text-align:center">Demo: <b>secretaria / admin123</b> (ve todo) · <b>aduarte / 1234</b> o <b>msosa / 1234</b> (médico, ve solo lo suyo)</p></div>
+<p style="text-align:center"><button class="link" onclick="tab='por';draw()">¿Sos paciente? Reservar turno sin cuenta</button></p>`}
+function pro(id){return S.pro.find(x=>x.id==id)}
+function fee(n){const k=n||"Particular";return S.fees[k]!=null?S.fees[k]:0}
+function setFee(n,x){S.fees[n||"Particular"]=+x||0;save();draw()}
+function money(n){return "$ "+Number(n||0).toLocaleString("es-AR")}
+function hashCode(s){let h=0;for(let i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i);h|=0}return Math.abs(h).toString(36).toUpperCase().padStart(8,"0").slice(0,8)}
+function nomPro(p){return p?`Dr./Dra. ${esc(p.no)} ${esc(p.ap)}`:"—"}
+function matr(p){return p?`${p.mt} ${p.mn}`:""}
+const proOpts=s=>S.pro.map(p=>`<option value="${p.id}"${p.id==s?" selected":""}>${nomPro(p)} · ${esc(p.esp)}</option>`).join("");
+function draw(){
+if(!ses&&tab!="por"){$("nav").innerHTML="";$("app").innerHTML=vLogin();return}
+if(!ses){$("nav").innerHTML=`<button onclick="tab='hoy';draw()">← Volver</button>`;$("app").innerHTML=vPor();return}
+const tabs=ses.rol=="admin"?TABS_ADMIN:TABS_MED;
+$("nav").innerHTML=tabs.map(t=>`<button class="${t[0]==tab?"on":""}" onclick="go('${t[0]}')">${t[1]}</button>`).join("")+`<button onclick="logout()">Salir · ${esc(ses.nombre)}</button>`;
+$("app").innerHTML=({hoy:vHoy,pac:vPac,tur:vTur,hc:vHc,cob:vCob,equ:vEqu,caja:vCaja,est:vEst,perf:vPerf,por:vPor})[tab]()}
+const pacOpts=(s,list)=>(list||S.pac).map(p=>`<option value="${p.id}"${p.id==s?" selected":""}>${nom(p)} · ${esc(p.td)} ${docFmt(p)}</option>`).join(""),
+cobOpts=()=>S.cob.map(c=>`<option>${esc(c.n)}</option>`).join("");
+function estCount(pid){return S.est.filter(e=>e.pid==pid).length}
+function rowT(x,d){const p=pac(x.pid),n=p?estCount(p.id):0,dr=pro(x.prid);
+return `<tr>${d?`<td>${fdate(x.f)}</td>`:""}<td>${x.h}</td><td>${p?`<button class="link" onclick="openHc(${p.id})">${nom(p)}</button><br><small class="dni">${esc(p.td)} ${docFmt(p)}</small>`:"—"}</td><td>${dr?nomPro(dr)+`<br><small>${esc(dr.esp)}</small>`:"—"}</td><td>${p?cobChip(p):""}</td>
+<td>${esc(x.mo)}<br>${x.mod=="Telemedicina"?`<span class="chip sol">Telemedicina</span> <a href="https://meet.jit.si/${esc(x.sala)}" target="_blank" rel="noopener">Videoconsulta</a>`:`<span class="chip">Presencial</span>`}${x.senaMonto?`<br><span class="chip">Seña ${money(x.senaMonto)}</span>`:""}</td>
+<td>${n?`${n} estudio${n>1?"s":""}`:S.sin[x.pid]?"<small>Sin estudios</small>":'<span class="warn">Faltan estudios</span>'}</td>
+<td><select aria-label="Estado" class="st-${x.es}" onchange="setEs(${x.id},this.value)">${ESTADOS.map(e=>`<option${e==x.es?" selected":""}>${e}</option>`).join("")}</select></td></tr>`}
+const HEAD=d=>`<tr>${d?"<th>Fecha</th>":""}<th>Hora</th><th>Paciente</th><th>Profesional</th><th>Cobertura</th><th>Motivo y modalidad</th><th>Estudios previos</th><th>Estado</th></tr>`;
+function setEs(id,x){S.tur.find(t=>t.id==id).es=x;save();draw()}
+function vHoy(){const h=iso(new Date());let t=S.tur.filter(x=>x.f==h).sort((a,b)=>a.h<b.h?-1:1);if(selPro)t=t.filter(x=>x.prid==selPro);
+return `<div class="stats"><div><b>${t.length}</b><span>turnos hoy</span></div><div><b>${t.filter(x=>x.mod=="Telemedicina").length}</b><span>telemedicina</span></div><div><b>${t.filter(x=>x.es=="Atendido").length}</b><span>atendidos</span></div><div><b>${S.pac.length}</b><span>pacientes</span></div></div>
+<h2>Agenda de hoy · ${fdate(h)}</h2>${ses.rol=="admin"?`<div class="card"><label>Profesional<select onchange="selPro=this.value;draw()"><option value="">Todos</option>${proOpts(selPro)}</select></label></div>`:""}
+<div class="card tw">${t.length?`<table>${HEAD()}${t.map(x=>rowT(x)).join("")}</table>`:'<div class="empty">No hay turnos para hoy con ese filtro.</div>'}</div>`}
+function pacFields(){return `<p class="req">Los campos con <b>*</b> son obligatorios.</p><div class="row">
+<label>Nombre *<input id="no" autocomplete="off"></label><label>Apellido *<input id="ap" autocomplete="off"></label>
+<label>Tipo de documento *<select id="td">${TD.map(t=>`<option>${t}</option>`).join("")}</select></label><label>Nro. de documento *<input id="nd" autocomplete="off" placeholder="Sin puntos"></label>
+<fieldset><legend>Sexo *</legend>${[["Masculino","♂ M"],["Femenino","♀ F"],["Otro","⚧ X"]].map(s=>`<label class="rad"><input type="radio" name="sx" value="${s[0]}">${s[1]} · ${s[0]}</label>`).join("")}</fieldset>
+<label>Fecha de nacimiento *<input id="nac" type="date" max="${iso(new Date())}"></label>
+<label style="flex:0 1 120px">Código de país *<input id="tp" value="+549"></label><label>Celular (10 dígitos) *<input id="tn" inputmode="numeric" maxlength="10" placeholder="1168488526"></label>
+<label>E-mail *<input id="em" type="email"></label>
+<fieldset><legend>Cobertura médica *</legend><label class="rad"><input type="radio" name="cb" value="no" checked onchange="cobT()">Sin cobertura / Particular</label><label class="rad"><input type="radio" name="cb" value="si" onchange="cobT()">Agregar cobertura</label></fieldset></div>
+<div class="row" id="cbx" hidden style="margin-top:10px"><label>Obra social o prepaga * (nombre, sigla o RNOS)<input id="co" list="cl" autocomplete="off"></label><datalist id="cl">${ALL().map(c=>`<option value="${esc(c.n)}">${esc(c.r||c.s)}</option>`).join("")}</datalist><label>Plan<input id="pl" placeholder="310, Plata, Oro…"></label><label>Nro. de afiliado * (aprox. 11 dígitos)<input id="af" inputmode="numeric"></label></div>`}
+function cobT(){$("cbx").hidden=r("cb")!="si"}
+function readPac(){const nd=v("nd").replace(/[.\s-]/g,""),td=v("td"),tn=v("tn").replace(/\D/g,""),si=r("cb")=="si";let e="";
+if(!v("no")||!v("ap"))e="Completá nombre y apellido.";
+else if(!docOk(td,nd))e=/^(CI|Pasaporte)$/.test(td)?`El número de ${td} debe tener entre 6 y 12 letras o números.`:`El número de ${td} debe tener 7 u 8 dígitos.`;
+else if(!r("sx"))e="Elegí el sexo.";else if(!v("nac"))e="Elegí la fecha de nacimiento en el calendario.";
+else if(!/^\+\d{1,4}$/.test(v("tp")))e="El código de país debe verse así: +549.";
+else if(!/^\d{10}$/.test(tn))e="El celular debe tener 10 dígitos, sin 0 ni 15. Ej: 1168488526.";
+else if(!/^\S+@\S+\.\S+$/.test(v("em")))e="Ingresá un e-mail válido.";
+else if(si&&!cobF(v("co")))e="Esa cobertura no figura en la lista. Agregala en la pestaña Coberturas.";
+else if(si&&!/^\d{6,14}$/.test(v("af").replace(/\D/g,"")))e="El nro. de afiliado debe tener solo dígitos (aprox. 11).";
+if(e)return{e};const ex=S.pac.find(p=>p.td==td&&p.nd==nd);
+return{ex,p:{id:S.n++,no:v("no"),ap:v("ap"),td,nd,sx:r("sx"),nac:v("nac"),tp:v("tp"),tn,em:v("em"),cob:si?cobF(v("co")).n:"",plan:si?v("pl"):"",afi:si?v("af").replace(/\D/g,""):"",ant:{}}}}
+const err=m=>{$("err").textContent=m};
+function addPac(){const x=readPac();if(x.e)return err(x.e);if(x.ex)return err("Ya existe un paciente con ese documento.");S.pac.push(x.p);save();draw()}
+function vPac(){const q=filtro.toLowerCase().replace(/\./g,""),base=misPac(),l=base.filter(p=>!q||`${p.ap} ${p.no}`.toLowerCase().includes(q)||p.nd.toLowerCase().includes(q));
+return `<h2>Pacientes</h2>${ses.rol=="medico"?`<p class="mut">Mostrando solo tus pacientes (con turno asignado a vos).</p>`:""}<details class="card"><summary>Nuevo paciente</summary>${pacFields()}<p class="err" id="err"></p><button class="btn" onclick="addPac()">Añadir paciente</button></details>
+<div class="card"><label>Buscar por nro. de documento o apellido<input id="q" value="${esc(filtro)}" oninput="filtro=this.value;draw();const i=$('q');i.focus();i.setSelectionRange(99,99)"></label></div>
+<div class="card tw">${l.length?`<table><tr><th>Documento</th><th>Paciente</th><th>Edad</th><th>Cobertura</th><th>Celular</th><th></th></tr>${l.map(p=>`<tr><td class="dni">${esc(p.td)}<br>${docFmt(p)}</td><td>${nom(p)}<br><small>${esc(p.sx)}</small></td><td>${edad(p.nac)}</td><td>${cobChip(p)}</td><td>${esc(p.tp)} ${esc(p.tn)}<br><small>${esc(p.em)}</small></td><td><button class="link" onclick="openHc(${p.id})">Historia</button></td></tr>`).join("")}</table>`:'<div class="empty">Sin resultados.</div>'}</div>`}
+function turFields(){const t=new Date();t.setDate(t.getDate()+1);
+const pf=ses.rol=="medico"?`<input type="hidden" id="trp" value="${ses.proId}"><label style="flex-basis:220px">Profesional<input value="${esc(ses.nombre)}" disabled></label>`:`<label style="flex-basis:220px">Profesional<select id="trp">${proOpts()}</select></label>`;
+return `${pf}<label>Fecha<input id="tf" type="date" value="${iso(t)}"></label><label>Hora<input id="th" type="time" value="09:00"></label>
+<label>Modalidad<select id="tm"><option>Presencial</option><option>Telemedicina</option></select></label><label style="flex-basis:220px">Motivo<input id="tmo"></label>`}
+function mkTur(pid){if(!v("tf")||!v("th"))return err("Elegí fecha y hora.");
+if(S.tur.some(x=>x.f==v("tf")&&x.h==v("th")&&x.es!="Cancelado"))return err("Ya hay un turno en ese horario. Elegí otro.");
+const id=S.n++,t={id,pid,prid:+v("trp"),f:v("tf"),h:v("th"),mo:v("tmo")||"Consulta",mod:v("tm"),es:"Pendiente"};if(t.mod=="Telemedicina")t.sala="Facultativo-"+id+Math.random().toString(36).slice(2,7);S.tur.push(t);save();return t}
+function addTur(){const t=mkTur(+v("tp_"));if(t)draw()}
+function vTur(){let l=[...S.tur].sort((a,b)=>a.f+a.h<b.f+b.h?-1:1);if(selPro)l=l.filter(x=>x.prid==selPro);
+return `<h2>Turnos</h2>${S.pac.length?`<div class="card"><div class="row"><label style="flex-basis:260px">Paciente<select id="tp_">${pacOpts()}</select></label>${turFields()}<button class="btn" onclick="addTur()">Dar turno</button></div><p class="err" id="err"></p></div>`:'<div class="card empty">Primero cargá un paciente.</div>'}
+${ses.rol=="admin"?`<div class="card"><label>Filtrar por profesional<select onchange="selPro=this.value;draw()"><option value="">Todos</option>${proOpts(selPro)}</select></label></div>`:""}
+<div class="card tw">${l.length?`<table>${HEAD(1)}${l.map(x=>rowT(x,1)).join("")}</table>`:'<div class="empty">Todavía no hay turnos con ese filtro.</div>'}</div>`}
+function estList(pid){const l=S.est.filter(e=>e.pid==pid).sort((a,b)=>a.f<b.f?1:-1);
+return l.length?`<div class="tw"><table><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Archivo</th></tr>${l.map(e=>`<tr><td>${fdate(e.f)}</td><td>${esc(e.tp)}</td><td>${esc(e.d)}</td><td>${FILES[e.id]?`<a href="${FILES[e.id]}" target="_blank" rel="noopener">${esc(e.fn)}</a>`:`<small>${esc(e.fn)}</small>`}</td></tr>`).join("")}</table></div>`:'<div class="empty">Sin estudios cargados.</div>'}
+function estBlock(pid){return `<div class="row"><label>Tipo de estudio<select id="et">${TE.map(t=>`<option>${t}</option>`).join("")}</select></label><label>Fecha del estudio<input id="ef" type="date" max="${iso(new Date())}"></label>
+<label style="flex-basis:200px">Zona o motivo<input id="ed" placeholder="Columna cervical"></label><label style="flex-basis:220px">Archivo (PDF o imagen)<input id="efi" type="file" accept="image/*,.pdf"></label><button class="btn g" onclick="addEst(${pid})">Adjuntar estudio</button></div><p class="err" id="err2"></p>${estList(pid)}`}
+function addEst(pid){const f=$("efi").files[0];if(!f||!v("ef")){$("err2").textContent="Elegí el archivo y la fecha del estudio.";return}
+const id=S.n++;FILES[id]=URL.createObjectURL(f);S.est.push({id,pid,tp:v("et"),f:v("ef"),d:v("ed")||"—",fn:f.name});save();draw()}
+function vHc(){const base=misPac();if(!base.length)return `<h2>Historia clínica</h2><div class="card empty">${ses.rol=="medico"?"Todavía no tenés pacientes con turno asignado.":"Primero cargá un paciente."}</div>`;
+if(!base.some(x=>x.id==selPac))selPac=base[0].id;const p=pac(selPac),a=p.ant||{},ev=(S.evo||[]).filter(e=>e.pid==selPac).sort((x,y)=>x.f<y.f?1:-1);
+return `<h2>Historia clínica</h2><div class="card"><label>Paciente<select onchange="selPac=this.value;draw()">${pacOpts(selPac,base)}</select></label>
+<p style="margin:12px 0 0"><b>${nom(p)}</b> · ${esc(p.td)} ${docFmt(p)} · ${edad(p.nac)} años · ${esc(p.sx)}</p></div>
+<details class="card" open><summary>Antecedentes</summary><label>Personales<textarea id="a1">${esc(a.per)}</textarea></label><label style="margin-top:10px">Familiares<textarea id="a2">${esc(a.fam)}</textarea></label>
+<label style="margin-top:10px">Relacionados con la enfermedad actual<textarea id="a3" placeholder="Ej: latigazo cervical con hernia C5-C6 posterolateral hace 10 años; sin cirugía, inmovilización 1 año">${esc(a.rel)}</textarea></label><button class="btn g" style="margin-top:10px" onclick="saveAnt()">Guardar antecedentes</button></details>
+<details class="card" open><summary>Estudios previos (${estCount(p.id)})</summary>${estBlock(p.id)}</details>
+<details class="card"><summary>Nueva consulta</summary>
+<label>Motivo de consulta<textarea id="c_mo"></textarea></label>
+<label style="margin-top:10px">Evolución<textarea id="c_evo"></textarea></label>
+<label style="margin-top:10px">Examen físico<textarea id="c_ex"></textarea></label>
+<h3>Signos vitales</h3><fieldset><legend>¿Se registran signos vitales?</legend>
+<label class="rad"><input type="radio" name="vsi" value="si" onchange="vsiT()">Sí</label>
+<label class="rad"><input type="radio" name="vsi" value="no" checked onchange="vsiT()">No</label></fieldset>
+<div class="row" id="vsi_box" hidden style="margin-top:10px">${VIT.map(k=>`<label style="flex-basis:130px">${k[1]}<input id="v_${k[0]}"></label>`).join("")}</div>
+<label style="margin-top:10px">Estudios complementarios<textarea id="c_ec" placeholder="Estudios que trae el paciente de afuera: ecografías, laboratorio, radiografías…"></textarea></label>
+<h3>Diagnóstico principal</h3><div class="row"><label>Tipo de Dx<select id="c_tdx"><option>Presuntivo</option><option>Definitivo</option></select></label>
+<label style="flex:0 1 120px">CIE-10<input id="c_cie" placeholder="M50.1"></label><label style="flex-basis:220px">Descripción (CIE-10)<input id="c_dd"></label></div>
+<label style="margin-top:10px">Si no está en el CIE-10, escribilo acá<textarea id="c_dxl" placeholder="Ej: Síndrome miofascial / Pubalgia / Síndrome facetario / Síndrome de columna fallida"></textarea></label>
+<label style="margin-top:10px">Otros diagnósticos<textarea id="c_ot"></textarea></label>
+<label style="margin-top:10px">Problemas activos y plan de seguimiento<textarea id="c_pl"></textarea></label>
+<label style="margin-top:10px">Tratamiento farmacológico e indicaciones<textarea id="c_tt"></textarea></label>
+<label style="margin-top:10px">Próxima cita<input id="c_px" placeholder="Ej: Control en 30 días, o una fecha"></label>
+<p class="err" id="err"></p><button class="btn" onclick="addCons()">Guardar consulta</button></details>
+<details class="card"><summary>Certificados médicos</summary><div class="row">
+<label style="flex-basis:220px">Tipo<select id="ce_tp" onchange="ceT()">${CERT.map(t=>`<option>${t}</option>`).join("")}</select></label>
+<label id="ce_dl" style="flex-basis:110px">Días de reposo<input id="ce_di" type="number" min="1" value="3"></label>
+<label style="flex-basis:220px">Profesional emisor<select id="ce_pr">${proOpts()}</select></label></div>
+<label style="margin-top:10px">Texto adicional (opcional)<textarea id="ce_tx"></textarea></label>
+<p class="err" id="err3"></p><button class="btn g" style="margin-top:8px" onclick="addCert(${p.id})">Generar certificado</button>
+${certList(p.id)}</details>
+<details class="card"><summary>Consentimientos informados</summary><div class="row">
+<label style="flex-basis:220px">Tipo<select id="co_tp">${TCONS.map(t=>`<option>${t}</option>`).join("")}</select></label>
+<label style="flex-basis:220px">Profesional que informa<select id="co_pr">${proOpts()}</select></label></div>
+<label style="margin-top:10px">Detalle (procedimiento, riesgos, alternativas)<textarea id="co_tx" placeholder="Describí el procedimiento o tratamiento, sus riesgos y alternativas"></textarea></label>
+<label class="rad" style="margin-top:10px"><input type="checkbox" id="co_ck">El/la paciente fue informado/a y acepta</label>
+<label style="margin-top:8px">Firma del paciente (nombre y apellido)<input id="co_fi" placeholder="${nom(p).replace(/<[^>]+>/g,"")}"></label>
+<p class="err" id="err4"></p><button class="btn g" style="margin-top:8px" onclick="addCons_(${p.id})">Guardar consentimiento</button>
+${consList(p.id)}</details>
+<details class="card"><summary>Recetas electrónicas</summary><div class="row">
+<label style="flex-basis:200px">Tipo<select id="rc_tp">${TREC.map(t=>`<option>${t}</option>`).join("")}</select></label>
+<label style="flex-basis:220px">Profesional prescriptor<select id="rc_pr">${proOpts()}</select></label></div>
+<div class="row" style="margin-top:10px"><label style="flex-basis:240px">Medicamento y presentación *<input id="rc_me" placeholder="Ibuprofeno 600 mg comprimidos"></label>
+<label style="flex-basis:160px">Cantidad *<input id="rc_ca" placeholder="1 caja x 20"></label><label style="flex-basis:200px">Dosis / posología *<input id="rc_do" placeholder="1 c/8 h por 5 días"></label></div>
+<label style="margin-top:10px">Indicaciones adicionales<textarea id="rc_in"></textarea></label>
+<p class="err" id="err5"></p><button class="btn g" style="margin-top:8px" onclick="addRec(${p.id})">Emitir receta</button>
+<p class="mut" style="margin-top:8px">La firma electrónica que genera esta receta es un código de verificación interno del prototipo, no una firma digital con validez legal. Para que tenga validez ante farmacias según la Ley 27.553, hace falta emitirla con un certificado digital de un prestador habilitado.</p>
+${recList(p.id)}</details>
+<div class="card"><h3 style="margin-top:0">Consultas anteriores</h3>${ev.length?ev.map(evoHtml).join(""):'<div class="empty">Sin consultas registradas.</div>'}</div>`}
+function evoHtml(e){const vi=VIT.filter(k=>e.vit&&e.vit[k[0]]).map(k=>`${k[1].split(" (")[0]}: ${esc(e.vit[k[0]])}`),pe=e.vit&&+e.vit.pe,tl=e.vit&&+e.vit.tl;if(pe&&tl)vi.push("IMC: "+(pe/(tl*tl)).toFixed(1));
+return `<div class="evo"><small>${fdate(e.f)}</small> <b>${esc(e.mo)}</b>${e.evo?`<br><b>Evolución:</b> ${esc(e.evo)}`:""}${e.ex?`<br><b>Examen físico:</b> ${esc(e.ex)}`:""}${vi.length?`<br><b>Signos vitales:</b> ${vi.join(" · ")}`:""}${e.ec?`<br><b>Estudios complementarios:</b> ${esc(e.ec)}`:""}
+<br><b>Dx principal (${esc(e.tdx)}):</b> ${e.cie?esc(e.cie)+" — ":""}${esc(e.dd)}${e.dxl?`<br><b>Dx (sin CIE-10):</b> ${esc(e.dxl)}`:""}${e.ot?`<br><b>Otros diagnósticos:</b> ${esc(e.ot)}`:""}${e.pl?`<br><b>Problemas activos y plan:</b> ${esc(e.pl)}`:""}${e.tt?`<br><b>Tratamiento:</b> ${esc(e.tt).replace(/\n/g,"<br>")}`:""}${e.px?`<br><b>Próxima cita:</b> ${esc(e.px)}`:""}</div>`}
+function saveAnt(){const p=pac(selPac);p.ant={per:v("a1"),fam:v("a2"),rel:v("a3")};save();draw()}
+function ceT(){$("ce_dl").hidden=v("ce_tp")!="Reposo laboral"}
+function certBody(c,p){const n=nom(p),d=`${esc(p.td)} ${docFmt(p)}`;
+if(c.tipo=="Reposo laboral")return `Certifico que ${n} (${d}) se encuentra bajo mi atención médica y requiere reposo por ${c.dias||"—"} día(s) a partir de la fecha.${c.tx?" "+esc(c.tx):""}`;
+if(c.tipo=="Aptitud física / deportiva")return `Certifico que ${n} (${d}) fue evaluado/a clínicamente y se encuentra en condiciones de aptitud física para la práctica de actividad física y/o deportiva.${c.tx?" "+esc(c.tx):""}`;
+if(c.tipo=="Asistencia a consulta")return `Certifico que ${n} (${d}) asistió a consulta médica en el día de la fecha.${c.tx?" "+esc(c.tx):""}`;
+if(c.tipo=="Constancia de atención")return `Certifico que ${n} (${d}) se encuentra bajo tratamiento y atención médica.${c.tx?" "+esc(c.tx):""}`;
+return esc(c.tx)||"—"}
+function certList(pid){const l=S.cert.filter(c=>c.pid==pid).sort((a,b)=>a.f<b.f?1:-1);
+return l.length?l.map(c=>`<div class="evo"><small>${fdate(c.f)} · ${esc(matr(pro(c.prid)))}</small><br><b>${esc(c.tipo)}</b><br>${certBody(c,pac(pid))}<br><button class="link" style="margin-top:6px" onclick="printCert(${c.id})">Imprimir</button></div>`).join(""):'<div class="empty">Sin certificados emitidos.</div>'}
+function addCert(pid){if(!S.pro.length)return $("err3").textContent="Cargá al menos un profesional en la pestaña Equipo.";
+const tipo=v("ce_tp"),dias=v("ce_di");if(tipo=="Reposo laboral"&&(!dias||+dias<1)){$("err3").textContent="Indicá los días de reposo.";return}
+S.cert.push({id:S.n++,pid,prid:+v("ce_pr"),f:iso(new Date()),tipo,dias,tx:v("ce_tx")});save();draw()}
+function printCert(id){const c=S.cert.find(x=>x.id==id),p=pac(c.pid),dr=pro(c.prid),w=window.open("","_blank");
+w.document.write(`<!DOCTYPE html><html lang="es-AR"><head><meta charset="utf-8"><title>Certificado médico</title>
+<style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;color:#14293D;line-height:1.7}
+h1{font-size:20px;border-bottom:2px solid #14293D;padding-bottom:10px}.h{color:#5B6E80;font-size:13px}
+.b{margin:26px 0;font-size:16px}.f{margin-top:60px}.f div{border-top:1px solid #14293D;width:240px;padding-top:6px;font-size:13px}
+button{font:600 14px sans-serif;padding:8px 16px;margin-top:30px;cursor:pointer}</style></head><body>
+<h1>Facultativo · Certificado médico</h1><p class="h">${esc(c.tipo)} · ${fdate(c.f)}</p>
+<p class="b">${certBody(c,p)}</p><p>Se extiende el presente a pedido del interesado, para los fines que estime corresponder.</p>
+<div class="f"><div>${esc(nomPro(dr))}<br>${esc(matr(dr))} · ${esc(dr?dr.esp:"")}</div></div>
+<button onclick="window.print()">Imprimir</button></body></html>`);w.document.close()}
+function consList(pid){const l=S.cons.filter(c=>c.pid==pid).sort((a,b)=>a.f<b.f?1:-1);
+return l.length?l.map(c=>`<div class="evo"><small>${fdate(c.f)} · ${esc(nomPro(pro(c.prid)))}</small><br><b>${esc(c.tipo)}</b>${c.tx?`<br>${esc(c.tx)}`:""}<br><span class="chip">Firmado por ${esc(c.firma)}</span></div>`).join(""):'<div class="empty">Sin consentimientos registrados.</div>'}
+function addCons_(pid){if(!v("co_tx"))return $("err4").textContent="Describí el procedimiento o tratamiento.";
+if(!$("co_ck").checked)return $("err4").textContent="Marcá que el paciente fue informado y acepta.";
+if(!v("co_fi"))return $("err4").textContent="Falta la firma (nombre y apellido) del paciente.";
+S.cons.push({id:S.n++,pid,prid:+v("co_pr"),f:iso(new Date()),tipo:v("co_tp"),tx:v("co_tx"),firma:v("co_fi")});save();draw()}
+function recList(pid){const l=S.rec.filter(c=>c.pid==pid).sort((a,b)=>a.f<b.f?1:-1);
+return l.length?l.map(c=>`<div class="evo"><small>${fdate(c.f)} · ${esc(nomPro(pro(c.prid)))} · ${esc(matr(pro(c.prid)))}</small><br><b>${esc(c.me)}</b> — ${esc(c.ca)}<br>${esc(c.do)}${c.in?`<br>${esc(c.in)}`:""}<br><span class="chip sol">Código ${c.cod}</span> <button class="link" style="margin-left:8px" onclick="printRec(${c.id})">Imprimir</button></div>`).join(""):'<div class="empty">Sin recetas emitidas.</div>'}
+function addRec(pid){if(!v("rc_me")||!v("rc_ca")||!v("rc_do"))return $("err5").textContent="Completá medicamento, cantidad y dosis.";
+const id=S.n++,f=iso(new Date()),cod=hashCode(pid+v("rc_me")+f+id);
+S.rec.push({id,pid,prid:+v("rc_pr"),f,tipo:v("rc_tp"),me:v("rc_me"),ca:v("rc_ca"),do:v("rc_do"),in:v("rc_in"),cod});save();draw()}
+function printRec(id){const c=S.rec.find(x=>x.id==id),p=pac(c.pid),dr=pro(c.prid),w=window.open("","_blank");
+w.document.write(`<!DOCTYPE html><html lang="es-AR"><head><meta charset="utf-8"><title>Receta electrónica</title>
+<style>body{font-family:Georgia,serif;max-width:640px;margin:40px auto;color:#14293D;line-height:1.7}
+h1{font-size:20px;border-bottom:2px solid #14293D;padding-bottom:10px}.h{color:#5B6E80;font-size:13px}
+.b{margin:22px 0;font-size:16px}.f{margin-top:50px}.f div{border-top:1px solid #14293D;width:260px;padding-top:6px;font-size:13px}
+.cod{font-family:monospace;background:#F3F7FA;padding:4px 8px;border-radius:4px}
+.warn{font-size:12px;color:#8A6416;margin-top:30px}button{font:600 14px sans-serif;padding:8px 16px;margin-top:20px;cursor:pointer}</style></head><body>
+<h1>Facultativo · ${esc(c.tipo)}</h1><p class="h">${fdate(c.f)} · Paciente: ${nom(p)} · ${esc(p.td)} ${docFmt(p)}</p>
+<p class="b"><b>${esc(c.me)}</b><br>Cantidad: ${esc(c.ca)}<br>Dosis: ${esc(c.do)}${c.in?`<br>Indicaciones: ${esc(c.in)}`:""}</p>
+<p>Código de verificación: <span class="cod">${c.cod}</span></p>
+<div class="f"><div>${esc(nomPro(dr))}<br>${esc(matr(dr))} · ${esc(dr?dr.esp:"")}</div></div>
+<p class="warn">Documento generado por un prototipo. No constituye una receta con firma digital válida ante farmacias (Ley 27.553).</p>
+<button onclick="window.print()">Imprimir</button></body></html>`);w.document.close()}
+function vEqu(){return `<h2>Equipo</h2><details class="card"><summary>Nuevo profesional</summary><div class="row">
+<label>Nombre *<input id="pn"></label><label>Apellido *<input id="pa"></label><label style="flex-basis:200px">Especialidad *<input id="pe" placeholder="Clínica médica, Traumatología…"></label>
+<label style="flex:0 1 110px">Matrícula *<select id="pmt"><option>MN</option><option>MP</option></select></label><label>Nro. de matrícula *<input id="pmn" inputmode="numeric"></label></div>
+<p class="err" id="err"></p><button class="btn" onclick="addPro()">Añadir profesional</button></details>
+<div class="card tw">${S.pro.length?`<table><tr><th>Profesional</th><th>Especialidad</th><th>Matrícula</th><th>Turnos</th></tr>${S.pro.map(p=>`<tr><td><b>${nomPro(p)}</b></td><td>${esc(p.esp)}</td><td class="dni">${esc(matr(p))}</td><td>${S.tur.filter(t=>t.prid==p.id).length}</td></tr>`).join("")}</table>`:'<div class="empty">Todavía no hay profesionales cargados.</div>'}</div>`}
+function addPro(){if(!v("pn")||!v("pa"))return err("Completá nombre y apellido.");if(!v("pe"))return err("Completá la especialidad.");if(!/^\d{3,7}$/.test(v("pmn")))return err("La matrícula debe tener solo números.");
+S.pro.push({id:S.n++,no:v("pn"),ap:v("pa"),esp:v("pe"),mt:v("pmt"),mn:v("pmn")});save();draw()}
+function vsiT(){$("vsi_box").hidden=r("vsi")!="si"}
+function addCons(){if(!v("c_mo")&&!v("c_dd")&&!v("c_dxl"))return err("Completá al menos el motivo o el diagnóstico.");
+const vit={};if(r("vsi")=="si")VIT.forEach(k=>vit[k[0]]=v("v_"+k[0]));
+S.evo.push({id:S.n++,pid:+selPac,f:iso(new Date()),mo:v("c_mo")||"Consulta",evo:v("c_evo"),ex:v("c_ex"),vit,ec:v("c_ec"),cie:v("c_cie"),dd:v("c_dd"),tdx:v("c_tdx"),dxl:v("c_dxl"),ot:v("c_ot"),pl:v("c_pl"),tt:v("c_tt"),px:v("c_px")});save();draw()}
+function vCob(){const q=cf.toLowerCase(),l=ALL().filter(c=>!q||`${c.n} ${c.s} ${c.r}`.toLowerCase().includes(q));
+return `<h2>Obras sociales y prepagas</h2><div class="card"><div class="row"><label>Nombre<input id="cn"></label><label>Código RNOS (opcional)<input id="cr" placeholder="1-2570-7"></label><button class="btn" onclick="addCob()">Agregar cobertura</button></div><p class="err" id="err"></p><small class="mut">Si un seguro nuevo no figura en la base, agregalo acá.</small></div>
+<div class="card"><label>Buscar por nombre, sigla o RNOS<input id="cq" value="${esc(cf)}" oninput="cf=this.value;draw();const i=$('cq');i.focus();i.setSelectionRange(99,99)"></label></div>
+<div class="card"><div class="row"><label style="flex-basis:220px">Valor de consulta particular<input type="number" min="0" step="500" value="${fee()}" onchange="setFee('',this.value)"></label></div><small class="mut">Se usa cuando el paciente no tiene cobertura.</small></div>
+<div class="card tw"><table><tr><th>RNOS</th><th>Entidad</th><th>Pacientes</th><th>Coseguro / valor consulta</th></tr>${l.slice(0,150).map(c=>`<tr><td class="dni">${c.r||"—"}</td><td><b>${esc(c.n)}</b>${c.s?` <small>${esc(c.s)}</small>`:""}</td><td>${S.pac.filter(p=>p.cob==c.n).length}</td><td><input type="number" min="0" step="500" style="max-width:130px" value="${fee(c.n)}" onchange="setFee('${esc(c.n).replace(/'/g,"\\'")}',this.value)"></td></tr>`).join("")}</table>${l.length>150?`<p class="mut">Mostrando 150 de ${l.length}. Usá el buscador.</p>`:""}</div>
+<p class="mut">Base: ${BASE.length} obras sociales del registro de la SSSalud, indexadas por código RNOS. Prepagas y seguros nuevos se agregan a mano.</p>`}
+function addCob(){const n=v("cn"),c=v("cr");if(!n)return err("Escribí el nombre de la cobertura.");if(c&&!/^\d-?\d{4}-?\d$/.test(c))return err("El RNOS debe verse así: 1-2570-7.");if(cobF(n))return err("Esa cobertura ya está en la lista.");S.cus.push({n,r:c?fr(c.replace(/-/g,"")):"",s:"Agregada"});save();draw()}
+function vPor(){if(done){const p=pac(done.pid),t=S.tur.find(x=>x.id==done.tid),sug=Math.round(fee(p.cob)*.3/500)*500||5000;
+return `<h2>Reserva en línea</h2><div class="card"><b>Turno reservado</b><p>${nom(p)} · ${fdate(t.f)} a las ${t.h} · ${nomPro(pro(t.prid))} · ${t.mod}${t.mod=="Telemedicina"?` · <a href="https://meet.jit.si/${esc(t.sala)}" target="_blank" rel="noopener">Sala de videoconsulta</a>`:""}</p></div>
+<div class="card">${t.senaMonto?`<b>Seña pagada</b><p class="mut">${money(t.senaMonto)} vía Mercado Pago. Se descuenta del valor de la consulta.</p>`:`<h3 style="margin-top:0">Pagá una seña para confirmar el turno</h3><p class="mut">Los consultorios que piden seña reducen mucho el ausentismo. Se descuenta del valor de la consulta.</p>
+<div class="row"><label style="flex-basis:160px">Monto de la seña<input id="sn_m" type="number" min="0" step="500" value="${sug}"></label><button class="btn" style="align-self:end" onclick="pagarSena(${t.id})">Pagar con Mercado Pago</button></div>
+<p class="mut" style="margin-top:8px">En este prototipo el pago es simulado. Una versión real necesita el checkout de Mercado Pago con credenciales del consultorio.</p>`}</div>
+<div class="card"><h3 style="margin-top:0">Cargá tus estudios previos antes de la consulta</h3><p class="mut">Ecografías, radiografías, tomografías o resonancias, aunque tengan años. El profesional los compara con los nuevos.</p>${estBlock(p.id)}
+${estCount(p.id)||S.sin[p.id]?"":`<button class="btn g" style="margin-top:12px" onclick="S.sin[${p.id}]=1;save();draw()">No tengo estudios previos</button>`}</div><button class="btn" onclick="done=null;draw()">Nueva reserva</button>`}
+return `<h2>Reserva en línea</h2><p class="mut">Vista del paciente. También la puede completar la secretaría.</p><div class="card"><h3 style="margin-top:0">1. Tus datos</h3>${pacFields()}</div><div class="card"><h3 style="margin-top:0">2. Tu turno</h3><div class="row">${turFields()}</div><label class="rad" style="margin-top:12px"><input type="checkbox" id="ack">Me comprometo a cargar mis estudios previos (ecografías, radiografías, tomografías, resonancias) antes de la consulta. *</label><p class="err" id="err"></p><button class="btn" onclick="reservar()">Reservar turno</button></div>`}
+function reservar(){const x=readPac();if(x.e)return err(x.e);if(!$("ack").checked)return err("Confirmá que vas a cargar tus estudios previos.");const t=mkTur(x.ex?x.ex.id:x.p.id);if(!t)return;if(!x.ex){S.pac.push(x.p);save()}done={pid:t.pid,tid:t.id};draw()}
+function pagarSena(tid){const t=S.tur.find(x=>x.id==tid),m=+v("sn_m")||0;t.senaMonto=m;S.pag.push({id:S.n++,tid,pid:t.pid,prid:t.prid,monto:m,forma:"Seña (Mercado Pago)",f:iso(new Date())});save();draw()}
+function vCaja(){const hoy=iso(new Date()),mes=hoy.slice(0,7);
+const pend=S.tur.filter(x=>x.es=="Atendido"&&!S.pag.some(g=>g.tid==x.id));
+const pagM=S.pag.filter(g=>g.f.slice(0,7)==mes),totM=pagM.reduce((a,g)=>a+g.monto,0),totH=pagM.filter(g=>g.f==hoy).reduce((a,g)=>a+g.monto,0);
+const porForma=FORMAS.map(fm=>[fm,pagM.filter(g=>g.forma==fm).reduce((a,g)=>a+g.monto,0)]).filter(x=>x[1]>0);
+return `<div class="stats"><div><b>${money(totH)}</b><span>cobrado hoy</span></div><div><b>${money(totM)}</b><span>cobrado este mes</span></div><div><b>${pend.length}</b><span>consultas por cobrar</span></div></div>
+<h2>Por cobrar</h2><div class="card tw">${pend.length?`<table><tr><th>Fecha</th><th>Paciente</th><th>Cobertura</th><th>Monto</th><th>Forma de pago</th><th></th></tr>${pend.map(x=>{const p=pac(x.pid);return `<tr><td>${fdate(x.f)}</td><td>${p?nom(p):"—"}</td><td>${p?cobChip(p):""}</td><td><input id="pm_${x.id}" type="number" min="0" step="500" style="max-width:120px" value="${Math.max(0,(p?fee(p.cob):0)-(x.senaMonto||0))}">${x.senaMonto?`<br><small class="mut">Ya pagó seña de ${money(x.senaMonto)}</small>`:""}</td><td><select id="pf_${x.id}">${FORMAS.map(f=>`<option${p&&p.cob&&f=="Cobertura (a facturar)"?" selected":""}>${f}</option>`).join("")}</select></td><td><button class="btn g" onclick="registrarPago(${x.id})">Registrar cobro</button></td></tr>`}).join("")}</table>`:'<div class="empty">No hay consultas atendidas pendientes de cobro.</div>'}</div>
+${porForma.length?`<h2>Del mes por forma de pago</h2><div class="card tw"><table><tr><th>Forma de pago</th><th>Total</th></tr>${porForma.map(x=>`<tr><td>${x[0]}</td><td>${money(x[1])}</td></tr>`).join("")}</table></div>`:""}
+<h2>Últimos cobros</h2><div class="card tw">${S.pag.length?`<table><tr><th>Fecha</th><th>Paciente</th><th>Forma de pago</th><th>Monto</th></tr>${[...S.pag].sort((a,b)=>a.f<b.f?1:-1).slice(0,20).map(g=>`<tr><td>${fdate(g.f)}</td><td>${nom(pac(g.pid))}</td><td>${esc(g.forma)}</td><td>${money(g.monto)}</td></tr>`).join("")}</table>`:'<div class="empty">Todavía no se registraron cobros.</div>'}</div>`}
+function registrarPago(tid){const m=+v("pm_"+tid),f=document.getElementById("pf_"+tid).value,x=S.tur.find(t=>t.id==tid);
+S.pag.push({id:S.n++,tid,pid:x.pid,prid:x.prid,monto:m,forma:f,f:iso(new Date())});save();draw()}
+function vPerf(){const i=S.info;return `<h2>Mi consultorio</h2><p class="mut">Así te van a encontrar y reservar turno los pacientes.</p>
+<details class="card" open><summary>Datos del consultorio</summary><div class="row" style="margin-top:10px">
+<label style="flex-basis:260px">Nombre<input id="in_no" value="${esc(i.nombre)}"></label><label style="flex-basis:260px">Dirección<input id="in_di" value="${esc(i.dir)}"></label>
+<label style="flex-basis:220px">Horario de atención<input id="in_ho" value="${esc(i.hor)}"></label><label style="flex-basis:200px">Teléfono<input id="in_te" value="${esc(i.tel)}"></label></div>
+<button class="btn g" style="margin-top:10px" onclick="saveInfo()">Guardar</button></details>
+<div class="card"><h3 style="margin-top:0">${esc(i.nombre)}</h3><p class="mut">${esc(i.dir)} · ${esc(i.hor)} · ${esc(i.tel)}</p>
+<h3>Nuestro equipo</h3>${S.pro.length?S.pro.map(p=>`<p style="margin:6px 0"><b>${nomPro(p)}</b> — ${esc(p.esp)} <small class="mut">(${esc(matr(p))})</small></p>`).join(""):'<p class="empty">Todavía no cargaste profesionales en Equipo.</p>'}
+<button class="btn" style="margin-top:14px" onclick="go('por')">Reservar turno</button></div>`}
+function saveInfo(){S.info={nombre:v("in_no")||"Facultativo",dir:v("in_di"),hor:v("in_ho"),tel:v("in_te")};save();draw()}
+function vEst(){const m=selMes||iso(new Date()).slice(0,7),tm=S.tur.filter(x=>x.f.slice(0,7)==m);
+const tot=tm.length,aus=tm.filter(x=>x.es=="Ausente").length,pctAus=tot?Math.round(aus/tot*100):0,ing=S.pag.filter(g=>g.f.slice(0,7)==m).reduce((a,g)=>a+g.monto,0);
+const porPro=S.pro.map(p=>{const t=tm.filter(x=>x.prid==p.id),a=t.filter(x=>x.es=="Ausente").length;return{p,t:t.length,a,pct:t.length?Math.round(a/t.length*100):0}});
+const meses=[...Array(6)].map((_,i)=>{const d=new Date();d.setMonth(d.getMonth()-(5-i));return iso(d).slice(0,7)});
+const ingM=meses.map(mm=>S.pag.filter(g=>g.f.slice(0,7)==mm).reduce((a,g)=>a+g.monto,0)),max=Math.max(1,...ingM);
+return `<h2>Estadísticas</h2><div class="card"><label style="flex-basis:180px">Mes<input type="month" value="${m}" onchange="selMes=this.value;draw()"></label></div>
+<div class="stats"><div><b>${tot}</b><span>turnos del mes</span></div><div><b>${pctAus}%</b><span>ausentismo (${aus} de ${tot})</span></div><div><b>${money(ing)}</b><span>ingresos del mes</span></div></div>
+<h2>Ausentismo por profesional</h2><div class="card tw">${porPro.length?`<table><tr><th>Profesional</th><th>Turnos</th><th>Ausentes</th><th>% ausentismo</th></tr>${porPro.map(x=>`<tr><td>${nomPro(x.p)}</td><td>${x.t}</td><td>${x.a}</td><td>${x.pct}%</td></tr>`).join("")}</table>`:'<div class="empty">Cargá profesionales en Equipo para ver este detalle.</div>'}</div>
+<h2>Ingresos · últimos 6 meses</h2><div class="card">${meses.map((mm,i)=>`<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><span class="mut" style="width:56px;font-size:12.5px">${mm.slice(5)}/${mm.slice(2,4)}</span><div style="flex:1;background:var(--bg);border-radius:5px;overflow:hidden"><div style="width:${ingM[i]/max*100}%;background:var(--cel);height:16px;border-radius:5px"></div></div><span style="width:110px;text-align:right;font-size:13px;font-weight:600">${money(ingM[i])}</span></div>`).join("")}</div>`}
+draw();
+</script>
+</body>
+</html>
