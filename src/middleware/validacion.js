@@ -58,6 +58,7 @@ const validarCrearTrabajador = [
   body('fechaNacimiento').optional({ values: 'falsy' }).isISO8601().withMessage('fechaNacimiento debe ser una fecha valida (YYYY-MM-DD).'),
   body('tallaCm').optional({ values: 'falsy' }).isInt({ min: 100, max: 250 }).withMessage('tallaCm debe estar entre 100 y 250.'),
   body('pesoKg').optional({ values: 'falsy' }).isFloat({ min: 20, max: 300 }).withMessage('pesoKg debe estar entre 20 y 300.'),
+  body('puestoTrabajoId').optional({ values: 'falsy' }).isUUID().withMessage('puestoTrabajoId debe ser un UUID valido.'),
   // Nota: NO se valida ni acepta "aptitud" aqui deliberadamente.
   // La aptitud solo puede registrarse via POST
   // /api/aptitud/trabajadores/:id/registrar (modulo medico), que
