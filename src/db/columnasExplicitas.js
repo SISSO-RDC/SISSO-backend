@@ -281,6 +281,54 @@ const COLUMNAS = {
     ],
     noExpuestas: [],
   },
+  contratistas: {
+    expuestas: [
+      'id', 'organizacion_id', 'razon_social', 'ruc', 'representante_legal', 'telefono_contacto',
+      'correo_contacto', 'actividad', 'estado', 'creado_por', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
+  contratistas_documentos: {
+    expuestas: [
+      'id', 'contratista_id', 'organizacion_id', 'tipo', 'numero_documento', 'fecha_emision',
+      'fecha_vencimiento', 'public_id', 'creado_por', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
+  contratistas_trabajadores: {
+    expuestas: ['id', 'contratista_id', 'organizacion_id', 'nombre_completo', 'cedula', 'cargo', 'estado', 'creado_en'],
+    noExpuestas: [],
+  },
+  competencias_catalogo: {
+    expuestas: ['id', 'organizacion_id', 'nombre', 'descripcion', 'vigencia_meses', 'creado_en'],
+    noExpuestas: [],
+  },
+  competencias_asignadas: {
+    expuestas: [
+      'id', 'organizacion_id', 'competencia_id', 'trabajador_id', 'contratista_trabajador_id',
+      'fecha_obtencion', 'fecha_vencimiento', 'public_id', 'creado_por', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
+  permisos_trabajo: {
+    expuestas: [
+      'id', 'organizacion_id', 'tipo', 'area', 'descripcion_tarea', 'contratista_id', 'solicitante_id',
+      'autorizado_por', 'fecha_inicio_prevista', 'fecha_fin_prevista', 'estado', 'condiciones_verificadas',
+      'notas_cierre', 'cerrado_por', 'cerrado_en', 'creado_por', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
+  permisos_trabajo_pasos: {
+    expuestas: ['id', 'permiso_id', 'organizacion_id', 'orden', 'paso_tarea', 'peligro_identificado', 'medida_control', 'epp_requerido'],
+    noExpuestas: [],
+  },
+  permisos_trabajo_firmas: {
+    expuestas: [
+      'id', 'permiso_id', 'organizacion_id', 'trabajador_id', 'contratista_trabajador_id',
+      'rol_firma', 'firma_public_id', 'firmado_en'
+    ],
+    noExpuestas: [],
+  },
   solicitudes_titular: {
     expuestas: [
       'id', 'organizacion_id', 'trabajador_id', 'tipo_solicitud', 'descripcion', 'solicitante_nombre',
