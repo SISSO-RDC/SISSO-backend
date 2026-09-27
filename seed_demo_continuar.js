@@ -170,10 +170,6 @@ async function main() {
           justificacionClinica: 'Evaluacion preocupacional sin hallazgos relevantes. Trabajador apto para el puesto evaluado.',
           restricciones: null,
           vigenciaHasta: fechaHace(-300),
-          // Dato DEMO sintetico: el puesto no tiene puesto_exposiciones cargado
-          // (es un catalogo generado, no una matriz real), asi que se usa el
-          // bypass explicito que el propio backend ofrece para este caso.
-          confirmarEvaluacionIncompleta: true,
         });
         okAptitud++;
       } catch (e) {

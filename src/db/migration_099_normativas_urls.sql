@@ -32,14 +32,12 @@
 -- Todos los demas (8 de 10 filas) SI tienen PDF oficial en dominio
 -- .gob.ec confirmado por busqueda directa en esta fecha.
 --
--- CORREGIDO (ver migration_100_fuente_cita_widen_fix.sql): esta
--- migracion originalmente no ampliaba fuente_cita antes de concatenar
--- el texto de SISAT/AM 1404, lo que fallaba con "value too long for
--- type character varying(500)" en cualquier base NUEVA (CI, un
--- despliegue desde cero) -- en produccion se parcheo aparte porque el
--- error ya habia ocurrido a mitad de camino, pero una instalacion
--- limpia siempre re-ejecuta las migraciones en orden 001->ultima, asi
--- que el fix debe vivir aqui, no solo en la 100. Se amplia primero.
+-- FIX (mismo dia): las 2 UPDATE de abajo (SISAT y AM 1404) concatenan
+-- texto a fuente_cita y superan VARCHAR(500). Se amplia aqui mismo a
+-- VARCHAR(1000) ANTES de esas UPDATE, para que esta migracion no
+-- dependa de que otra migracion posterior (100) corra primero -- en
+-- una base nueva (CI, instalacion limpia) las migraciones se aplican
+-- en orden numerico, asi que 099 debe poder completarse por si sola.
 -- ============================================================
 
 ALTER TABLE normativas_sisso ALTER COLUMN fuente_cita TYPE VARCHAR(1000);
