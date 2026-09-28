@@ -281,6 +281,29 @@ const COLUMNAS = {
     ],
     noExpuestas: [],
   },
+  quimicos_inventario: {
+    expuestas: [
+      'id', 'organizacion_id', 'nombre_comercial', 'nombre_quimico', 'numero_cas', 'fabricante', 'area',
+      'cantidad_almacenada', 'unidad_medida', 'clasificacion_ghs', 'frases_h', 'sds_version',
+      'sds_fecha_emision', 'sds_idioma', 'sds_public_id', 'estado', 'creado_por', 'creado_en', 'actualizado_en'
+    ],
+    noExpuestas: [],
+  },
+  emergencias_planes: {
+    expuestas: ['id', 'organizacion_id', 'nombre', 'escenario', 'area_cobertura', 'version', 'vigente', 'public_id', 'creado_por', 'creado_en'],
+    noExpuestas: [],
+  },
+  emergencias_simulacros: {
+    expuestas: ['id', 'plan_id', 'organizacion_id', 'fecha_realizado', 'asistentes', 'duracion_minutos', 'hallazgos', 'capa_id', 'creado_por', 'creado_en'],
+    noExpuestas: [],
+  },
+  emergencias_equipos: {
+    expuestas: [
+      'id', 'organizacion_id', 'tipo', 'codigo_identificacion', 'ubicacion', 'estado',
+      'fecha_ultima_inspeccion', 'fecha_proxima_inspeccion', 'creado_por', 'creado_en'
+    ],
+    noExpuestas: [],
+  },
   contratistas: {
     expuestas: [
       'id', 'organizacion_id', 'razon_social', 'ruc', 'representante_legal', 'telefono_contacto',

@@ -11,7 +11,10 @@
 const { query, withTransaction } = require('../db/pool');
 const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { analizarDataUri } = require('../utils/validarArchivo');
+const { subirEvidenciaConCompensacion } = require('../servicios/cloudinaryService');
 
+const CARPETA_DOCUMENTOS_CONTRATISTA = 'sisso/documentos-contratistas';
 const TIPOS_DOCUMENTO_VALIDOS = [
   'poliza_responsabilidad_civil', 'poliza_riesgos_trabajo', 'permiso_municipal',
   'certificado_seguridad_industrial', 'rup', 'ruc', 'otro',
@@ -164,24 +167,31 @@ async function cambiarEstado(req, res) {
 // ------------------------------------------------------------
 async function agregarDocumento(req, res) {
   const orgId = req.usuario.organizacionId;
-  const { tipo, numeroDocumento, fechaEmision, fechaVencimiento, publicId } = req.body;
+  const { tipo, numeroDocumento, fechaEmision, fechaVencimiento, archivoBase64 } = req.body;
 
   if (!TIPOS_DOCUMENTO_VALIDOS.includes(tipo)) {
     return res.status(400).json({ error: `tipo invalido. Valores permitidos: ${TIPOS_DOCUMENTO_VALIDOS.join(', ')}.` });
+  }
+
+  let archivoValidado = null;
+  if (archivoBase64) {
+    const chkArchivo = analizarDataUri(archivoBase64, 'documento_control');
+    if (!chkArchivo.ok) return res.status(400).json({ error: `archivoBase64 invalido: ${chkArchivo.motivo}` });
+    archivoValidado = archivoBase64;
   }
 
   try {
     const contratistaRes = await query(`SELECT id FROM contratistas WHERE id = $1 AND organizacion_id = $2`, [req.params.id, orgId]);
     if (contratistaRes.rows.length === 0) return res.status(404).json({ error: 'Contratista no encontrado.' });
 
-    const resultado = await withTransaction(async (client) => {
+    const insertarDocumento = async (client, publicId) => {
       const insertRes = await client.query(
         `INSERT INTO contratistas_documentos
           (contratista_id, organizacion_id, tipo, numero_documento, fecha_emision, fecha_vencimiento, public_id, creado_por)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
          RETURNING id, tipo, fecha_vencimiento, creado_en`,
         [req.params.id, orgId, tipo, numeroDocumento || null, fechaEmision || null, fechaVencimiento || null,
-          publicId || null, req.usuario.id]
+          publicId, req.usuario.id]
       );
 
       await registrarAuditoria({
@@ -189,7 +199,18 @@ async function agregarDocumento(req, res) {
         entidad: 'contratistas_documentos', entidadId: insertRes.rows[0].id, detalle: { tipo }, req, client,
       });
       return insertRes;
-    });
+    };
+
+    let resultado;
+    if (archivoValidado) {
+      const { resultado: r } = await subirEvidenciaConCompensacion(
+        archivoValidado, orgId, CARPETA_DOCUMENTOS_CONTRATISTA, { politica: 'documento_control' },
+        (subidaInfo) => withTransaction((client) => insertarDocumento(client, subidaInfo.publicId))
+      );
+      resultado = r;
+    } else {
+      resultado = await withTransaction((client) => insertarDocumento(client, null));
+    }
 
     return res.status(201).json({ documento: resultado.rows[0] });
   } catch (err) {

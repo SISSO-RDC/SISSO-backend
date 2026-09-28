@@ -8,6 +8,10 @@
 const { query, withTransaction } = require('../db/pool');
 const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { analizarDataUri } = require('../utils/validarArchivo');
+const { subirEvidenciaConCompensacion } = require('../servicios/cloudinaryService');
+
+const CARPETA_CERTIFICADOS_COMPETENCIA = 'sisso/certificados-competencias';
 
 // ------------------------------------------------------------
 // POST /api/competencias/catalogo
@@ -59,12 +63,19 @@ async function listarCatalogo(req, res) {
 // ------------------------------------------------------------
 async function asignar(req, res) {
   const orgId = req.usuario.organizacionId;
-  const { competenciaId, trabajadorId, contratistaTrabajadorId, fechaObtencion, publicId } = req.body;
+  const { competenciaId, trabajadorId, contratistaTrabajadorId, fechaObtencion, archivoBase64 } = req.body;
 
   if (!competenciaId) return res.status(400).json({ error: 'competenciaId es obligatorio.' });
   if (!fechaObtencion) return res.status(400).json({ error: 'fechaObtencion es obligatoria.' });
   if (Boolean(trabajadorId) === Boolean(contratistaTrabajadorId)) {
     return res.status(400).json({ error: 'Debe indicar exactamente uno: trabajadorId o contratistaTrabajadorId (no ambos, no ninguno).' });
+  }
+
+  let archivoValidado = null;
+  if (archivoBase64) {
+    const chkArchivo = analizarDataUri(archivoBase64, 'certificado');
+    if (!chkArchivo.ok) return res.status(400).json({ error: `archivoBase64 invalido: ${chkArchivo.motivo}` });
+    archivoValidado = archivoBase64;
   }
 
   try {
@@ -79,14 +90,14 @@ async function asignar(req, res) {
       ? new Date(new Date(fechaObtencion).setMonth(new Date(fechaObtencion).getMonth() + vigenciaMeses)).toISOString().slice(0, 10)
       : null;
 
-    const resultado = await withTransaction(async (client) => {
+    const insertarAsignacion = async (client, publicId) => {
       const insertRes = await client.query(
         `INSERT INTO competencias_asignadas
           (organizacion_id, competencia_id, trabajador_id, contratista_trabajador_id, fecha_obtencion, fecha_vencimiento, public_id, creado_por)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
          RETURNING id, fecha_obtencion, fecha_vencimiento, creado_en`,
         [orgId, competenciaId, trabajadorId || null, contratistaTrabajadorId || null,
-          fechaObtencion, fechaVencimiento, publicId || null, req.usuario.id]
+          fechaObtencion, fechaVencimiento, publicId, req.usuario.id]
       );
 
       await registrarAuditoria({
@@ -96,7 +107,18 @@ async function asignar(req, res) {
         req, client,
       });
       return insertRes;
-    });
+    };
+
+    let resultado;
+    if (archivoValidado) {
+      const { resultado: r } = await subirEvidenciaConCompensacion(
+        archivoValidado, orgId, CARPETA_CERTIFICADOS_COMPETENCIA, { politica: 'certificado' },
+        (subidaInfo) => withTransaction((client) => insertarAsignacion(client, subidaInfo.publicId))
+      );
+      resultado = r;
+    } else {
+      resultado = await withTransaction((client) => insertarAsignacion(client, null));
+    }
 
     return res.status(201).json({ asignacion: resultado.rows[0] });
   } catch (err) {

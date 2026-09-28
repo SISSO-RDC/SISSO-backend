@@ -17,6 +17,10 @@
 const { query, withTransaction } = require('../db/pool');
 const { columnas } = require('../db/columnasExplicitas');
 const { registrarAuditoria } = require('../utils/auditoria');
+const { analizarDataUri } = require('../utils/validarArchivo');
+const { subirEvidenciaConCompensacion } = require('../servicios/cloudinaryService');
+
+const CARPETA_FIRMAS_PERMISO = 'sisso/firmas-permisos-trabajo';
 
 const TIPOS_VALIDOS = ['trabajo_caliente', 'trabajo_altura', 'espacio_confinado', 'electrico_loto', 'excavacion', 'izaje_cargas', 'otro'];
 
@@ -242,7 +246,7 @@ function cancelar(req, res) {
 // ------------------------------------------------------------
 async function firmar(req, res) {
   const orgId = req.usuario.organizacionId;
-  const { trabajadorId, contratistaTrabajadorId, rolFirma, firmaPublicId } = req.body;
+  const { trabajadorId, contratistaTrabajadorId, rolFirma, firmaBase64 } = req.body;
 
   if (Boolean(trabajadorId) === Boolean(contratistaTrabajadorId)) {
     return res.status(400).json({ error: 'Debe indicar exactamente uno: trabajadorId o contratistaTrabajadorId.' });
@@ -250,19 +254,26 @@ async function firmar(req, res) {
   if (rolFirma && !['ejecutante', 'supervisor', 'vigia'].includes(rolFirma)) {
     return res.status(400).json({ error: 'rolFirma invalido. Valores permitidos: ejecutante, supervisor, vigia.' });
   }
+  if (!firmaBase64) return res.status(400).json({ error: 'firmaBase64 es obligatoria.' });
+
+  const chkFirma = analizarDataUri(firmaBase64, 'firma');
+  if (!chkFirma.ok) return res.status(400).json({ error: `firmaBase64 invalida: ${chkFirma.motivo}` });
 
   try {
     const permisoRes = await query(`SELECT id FROM permisos_trabajo WHERE id = $1 AND organizacion_id = $2`, [req.params.id, orgId]);
     if (permisoRes.rows.length === 0) return res.status(404).json({ error: 'Permiso de trabajo no encontrado.' });
 
-    const insertRes = await query(
-      `INSERT INTO permisos_trabajo_firmas (permiso_id, organizacion_id, trabajador_id, contratista_trabajador_id, rol_firma, firma_public_id)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, rol_firma, firmado_en`,
-      [req.params.id, orgId, trabajadorId || null, contratistaTrabajadorId || null, rolFirma || 'ejecutante', firmaPublicId || null]
+    const { resultado } = await subirEvidenciaConCompensacion(
+      firmaBase64, orgId, CARPETA_FIRMAS_PERMISO, { politica: 'firma' },
+      (subidaInfo) => query(
+        `INSERT INTO permisos_trabajo_firmas (permiso_id, organizacion_id, trabajador_id, contratista_trabajador_id, rol_firma, firma_public_id)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         RETURNING id, rol_firma, firmado_en`,
+        [req.params.id, orgId, trabajadorId || null, contratistaTrabajadorId || null, rolFirma || 'ejecutante', subidaInfo.publicId]
+      )
     );
 
-    return res.status(201).json({ firma: insertRes.rows[0] });
+    return res.status(201).json({ firma: resultado.rows[0] });
   } catch (err) {
     console.error('Error en firmar (permisos de trabajo):', err);
     return res.status(500).json({ error: 'Error interno al registrar la firma.' });

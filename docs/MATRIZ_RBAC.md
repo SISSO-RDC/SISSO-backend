@@ -654,6 +654,33 @@
 | PATCH | `/api/permisos-trabajo/:id/cancelar` | admin, sso |
 | POST | `/api/permisos-trabajo/:id/firmas` | admin, sso |
 
+## `/api/quimicos`
+
+**Clasificacion del dato:** catalogo (inventario y SDS/FDS por sede/area, no clinico)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/quimicos/` | admin, sso |
+| GET | `/api/quimicos/` | admin, sso |
+| GET | `/api/quimicos/:id` | admin, sso |
+| PATCH | `/api/quimicos/:id/sds` | admin, sso |
+| PATCH | `/api/quimicos/:id/estado` | admin, sso |
+
+## `/api/emergencias`
+
+**Clasificacion del dato:** catalogo (planes, simulacros y equipos criticos) + operativo_individual (hallazgos de simulacro)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/emergencias/planes` | admin, sso |
+| GET | `/api/emergencias/planes` | admin, sso |
+| GET | `/api/emergencias/planes/:id` | admin, sso |
+| POST | `/api/emergencias/planes/:id/simulacros` | admin, sso |
+| POST | `/api/emergencias/simulacros/:simulacroId/generar-capa` | admin, sso |
+| POST | `/api/emergencias/equipos` | admin, sso |
+| GET | `/api/emergencias/equipos` | admin, sso |
+| PATCH | `/api/emergencias/equipos/:id/inspeccion` | admin, sso |
+
 ## `/api/documentos-control`
 
 **Clasificacion del dato:** catalogo (documentos de gestion; acuses de lectura son operativo_individual)
@@ -707,4 +734,4 @@
 
 ---
 
-**Resumen:** 289 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 70 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 302 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 70 requieren sesion valida pero no restringen por rol especifico.
