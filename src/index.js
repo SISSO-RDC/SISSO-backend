@@ -101,6 +101,11 @@ const plataformaRoutes = require('./routes/plataformaRoutes');
 // globales, Sep 2026): canal publico de reporte de condiciones
 // inseguras/actos inseguros/casi accidentes por QR o enlace.
 const reportesPeligroRoutes = require('./routes/reportesPeligroRoutes');
+const contratistasRoutes = require('./routes/contratistasRoutes');
+const competenciasRoutes = require('./routes/competenciasRoutes');
+const permisosTrabajoRoutes = require('./routes/permisosTrabajoRoutes');
+const quimicosRoutes = require('./routes/quimicosRoutes');
+const emergenciasRoutes = require('./routes/emergenciasRoutes');
 // CREADO Lote 2 (plan de cierre de brechas frente a plataformas EHS
 // globales, Sep 2026): control documental, matriz de obligaciones
 // legales y auditorias internas/externas.
@@ -274,6 +279,11 @@ app.use('/api/incidentes-seguridad', incidentesSeguridadRoutes);
 app.use('/api/puesto-exposiciones', puestoExposicionesRoutes);
 app.use('/api/plataforma', plataformaRoutes);
 app.use('/api/reportes-peligro', reportesPeligroRoutes);
+app.use('/api/contratistas', contratistasRoutes);
+app.use('/api/competencias', competenciasRoutes);
+app.use('/api/permisos-trabajo', permisosTrabajoRoutes);
+app.use('/api/quimicos', quimicosRoutes);
+app.use('/api/emergencias', emergenciasRoutes);
 app.use('/api/documentos-control', documentosControlRoutes);
 app.use('/api/obligaciones-legales', obligacionesLegalesRoutes);
 app.use('/api/auditorias', auditoriasRoutes);

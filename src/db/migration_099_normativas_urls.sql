@@ -31,7 +31,16 @@
 --
 -- Todos los demas (8 de 10 filas) SI tienen PDF oficial en dominio
 -- .gob.ec confirmado por busqueda directa en esta fecha.
+--
+-- FIX (mismo dia): las 2 UPDATE de abajo (SISAT y AM 1404) concatenan
+-- texto a fuente_cita y superan VARCHAR(500). Se amplia aqui mismo a
+-- VARCHAR(1000) ANTES de esas UPDATE, para que esta migracion no
+-- dependa de que otra migracion posterior (100) corra primero -- en
+-- una base nueva (CI, instalacion limpia) las migraciones se aplican
+-- en orden numerico, asi que 099 debe poder completarse por si sola.
 -- ============================================================
+
+ALTER TABLE normativas_sisso ALTER COLUMN fuente_cita TYPE VARCHAR(1000);
 
 UPDATE normativas_sisso SET url_pdf = 'https://www.defensa.gob.ec/wp-content/uploads/downloads/2021/02/Constitucion-de-la-Republica-del-Ecuador_act_ene-2021.pdf'
 WHERE titulo = 'Constitución de la República del Ecuador (arts. 3, 32, 33, 154, 226, 326, 361)';

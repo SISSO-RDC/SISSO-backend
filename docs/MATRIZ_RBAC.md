@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-24.
+> Ultima generacion: 2026-09-27.
 
 ## `/api/auth`
 
@@ -615,6 +615,72 @@
 | POST | `/api/reportes-peligro/:id/generar-capa` | admin, sso |
 | GET | `/api/reportes-peligro/evidencias/:evidenciaId/url` | admin, sso |
 
+## `/api/contratistas`
+
+**Clasificacion del dato:** operativo_individual (empresa contratista y su personal externo, no clinico -- separado deliberadamente de `trabajadores`)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/contratistas/` | admin, sso |
+| GET | `/api/contratistas/` | admin, sso |
+| GET | `/api/contratistas/:id` | admin, sso |
+| PATCH | `/api/contratistas/:id/estado` | admin, sso |
+| POST | `/api/contratistas/:id/documentos` | admin, sso |
+| POST | `/api/contratistas/:id/trabajadores` | admin, sso |
+
+## `/api/competencias`
+
+**Clasificacion del dato:** catalogo (competencias exigibles) + operativo_individual (asignaciones a trabajador propio o de contratista)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/competencias/catalogo` | admin, sso |
+| GET | `/api/competencias/catalogo` | admin, sso |
+| POST | `/api/competencias/asignar` | admin, sso |
+| GET | `/api/competencias/asignadas` | admin, sso |
+
+## `/api/permisos-trabajo`
+
+**Clasificacion del dato:** operativo_individual (control de tareas criticas: JSA/AST, estados, firmas -- no clinico)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/permisos-trabajo/` | admin, sso |
+| GET | `/api/permisos-trabajo/` | admin, sso |
+| GET | `/api/permisos-trabajo/:id` | admin, sso |
+| PATCH | `/api/permisos-trabajo/:id/aprobar` | admin, sso |
+| PATCH | `/api/permisos-trabajo/:id/iniciar-ejecucion` | admin, sso |
+| PATCH | `/api/permisos-trabajo/:id/cerrar` | admin, sso |
+| PATCH | `/api/permisos-trabajo/:id/cancelar` | admin, sso |
+| POST | `/api/permisos-trabajo/:id/firmas` | admin, sso |
+
+## `/api/quimicos`
+
+**Clasificacion del dato:** catalogo (inventario y SDS/FDS por sede/area, no clinico)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/quimicos/` | admin, sso |
+| GET | `/api/quimicos/` | admin, sso |
+| GET | `/api/quimicos/:id` | admin, sso |
+| PATCH | `/api/quimicos/:id/sds` | admin, sso |
+| PATCH | `/api/quimicos/:id/estado` | admin, sso |
+
+## `/api/emergencias`
+
+**Clasificacion del dato:** catalogo (planes, simulacros y equipos criticos) + operativo_individual (hallazgos de simulacro)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| POST | `/api/emergencias/planes` | admin, sso |
+| GET | `/api/emergencias/planes` | admin, sso |
+| GET | `/api/emergencias/planes/:id` | admin, sso |
+| POST | `/api/emergencias/planes/:id/simulacros` | admin, sso |
+| POST | `/api/emergencias/simulacros/:simulacroId/generar-capa` | admin, sso |
+| POST | `/api/emergencias/equipos` | admin, sso |
+| GET | `/api/emergencias/equipos` | admin, sso |
+| PATCH | `/api/emergencias/equipos/:id/inspeccion` | admin, sso |
+
 ## `/api/documentos-control`
 
 **Clasificacion del dato:** catalogo (documentos de gestion; acuses de lectura son operativo_individual)
@@ -668,4 +734,4 @@
 
 ---
 
-**Resumen:** 270 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 70 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 302 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 70 requieren sesion valida pero no restringen por rol especifico.

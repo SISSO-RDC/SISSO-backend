@@ -103,6 +103,11 @@ const CLASIFICACION_RECURSOS = {
   'catalogo-paises': 'catalogo (perfil normativo por pais, Fase 4 del plan de fusion con SISSO Demo -- Lote C)',
   'normativas': 'catalogo (normas sobre las que se sustenta SISSO -- panel de Normativas + integracion SISAT, ver migration_096)',
   'configuracion-sectorial': 'gestion (motor base de propuestas/confirmaciones sectoriales, Auditoria N.16 Seccion 4/16 -> N.17 P1; autorizacion fina por tipo de propuesta dentro del controlador)',
+  'contratistas': 'operativo_individual (empresa contratista y su personal externo, no clinico -- separado deliberadamente de `trabajadores`)',
+  'competencias': 'catalogo (competencias exigibles) + operativo_individual (asignaciones a trabajador propio o de contratista)',
+  'permisos-trabajo': 'operativo_individual (control de tareas criticas: JSA/AST, estados, firmas -- no clinico)',
+  'quimicos': 'catalogo (inventario y SDS/FDS por sede/area, no clinico)',
+  'emergencias': 'catalogo (planes, simulacros y equipos criticos) + operativo_individual (hallazgos de simulacro)',
   'ejemplo': 'N/A (ruta de ejemplo/diagnostico, no expone datos de negocio)',
   'plataforma': 'N/A (informacion publica de la app y canal de sugerencias, sin datos de negocio)',
 };
