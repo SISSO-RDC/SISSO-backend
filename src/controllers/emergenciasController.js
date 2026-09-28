@@ -204,12 +204,19 @@ async function crearEquipo(req, res) {
   if (!ubicacion || !ubicacion.trim()) return res.status(400).json({ error: 'ubicacion es obligatoria.' });
 
   try {
-    const insertRes = await query(
-      `INSERT INTO emergencias_equipos (organizacion_id, tipo, codigo_identificacion, ubicacion, fecha_ultima_inspeccion, fecha_proxima_inspeccion, creado_por)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       RETURNING id, tipo, ubicacion, estado, creado_en`,
-      [orgId, tipo, codigoIdentificacion || null, ubicacion.trim(), fechaUltimaInspeccion || null, fechaProximaInspeccion || null, req.usuario.id]
-    );
+    const insertRes = await withTransaction(async (client) => {
+      const r = await client.query(
+        `INSERT INTO emergencias_equipos (organizacion_id, tipo, codigo_identificacion, ubicacion, fecha_ultima_inspeccion, fecha_proxima_inspeccion, creado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
+         RETURNING id, tipo, ubicacion, estado, creado_en`,
+        [orgId, tipo, codigoIdentificacion || null, ubicacion.trim(), fechaUltimaInspeccion || null, fechaProximaInspeccion || null, req.usuario.id]
+      );
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'equipo_emergencia_creado',
+        entidad: 'emergencias_equipos', entidadId: r.rows[0].id, detalle: { tipo, ubicacion: ubicacion.trim() }, req, client,
+      });
+      return r;
+    });
     return res.status(201).json({ equipo: insertRes.rows[0] });
   } catch (err) {
     console.error('Error en crearEquipo (emergencias):', err);
@@ -254,13 +261,21 @@ async function registrarInspeccionEquipo(req, res) {
   }
 
   try {
-    const updateRes = await query(
-      `UPDATE emergencias_equipos
-       SET fecha_ultima_inspeccion = $1, fecha_proxima_inspeccion = $2, estado = COALESCE($3, estado)
-       WHERE id = $4 AND organizacion_id = $5
-       RETURNING id, estado, fecha_ultima_inspeccion, fecha_proxima_inspeccion`,
-      [fechaInspeccion, fechaProximaInspeccion || null, estado || null, req.params.id, orgId]
-    );
+    const updateRes = await withTransaction(async (client) => {
+      const r = await client.query(
+        `UPDATE emergencias_equipos
+         SET fecha_ultima_inspeccion = $1, fecha_proxima_inspeccion = $2, estado = COALESCE($3, estado)
+         WHERE id = $4 AND organizacion_id = $5
+         RETURNING id, estado, fecha_ultima_inspeccion, fecha_proxima_inspeccion`,
+        [fechaInspeccion, fechaProximaInspeccion || null, estado || null, req.params.id, orgId]
+      );
+      if (r.rows.length === 0) return r;
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'equipo_emergencia_inspeccionado',
+        entidad: 'emergencias_equipos', entidadId: req.params.id, detalle: { fechaInspeccion, estado: r.rows[0].estado }, req, client,
+      });
+      return r;
+    });
     if (updateRes.rows.length === 0) return res.status(404).json({ error: 'Equipo de emergencia no encontrado.' });
     return res.json({ equipo: updateRes.rows[0] });
   } catch (err) {

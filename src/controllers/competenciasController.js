@@ -26,11 +26,18 @@ async function crearEnCatalogo(req, res) {
   }
 
   try {
-    const insertRes = await query(
-      `INSERT INTO competencias_catalogo (organizacion_id, nombre, descripcion, vigencia_meses)
-       VALUES ($1,$2,$3,$4) RETURNING id, nombre, vigencia_meses, creado_en`,
-      [orgId, nombre.trim(), descripcion || null, vigenciaMeses || null]
-    );
+    const insertRes = await withTransaction(async (client) => {
+      const r = await client.query(
+        `INSERT INTO competencias_catalogo (organizacion_id, nombre, descripcion, vigencia_meses)
+         VALUES ($1,$2,$3,$4) RETURNING id, nombre, vigencia_meses, creado_en`,
+        [orgId, nombre.trim(), descripcion || null, vigenciaMeses || null]
+      );
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'competencia_catalogo_creada',
+        entidad: 'competencias_catalogo', entidadId: r.rows[0].id, detalle: { nombre: nombre.trim() }, req, client,
+      });
+      return r;
+    });
     return res.status(201).json({ competencia: insertRes.rows[0] });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Ya existe una competencia con ese nombre en el catalogo.' });

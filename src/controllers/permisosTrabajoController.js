@@ -265,12 +265,20 @@ async function firmar(req, res) {
 
     const { resultado } = await subirEvidenciaConCompensacion(
       firmaBase64, orgId, CARPETA_FIRMAS_PERMISO, { politica: 'firma' },
-      (subidaInfo) => query(
-        `INSERT INTO permisos_trabajo_firmas (permiso_id, organizacion_id, trabajador_id, contratista_trabajador_id, rol_firma, firma_public_id)
-         VALUES ($1,$2,$3,$4,$5,$6)
-         RETURNING id, rol_firma, firmado_en`,
-        [req.params.id, orgId, trabajadorId || null, contratistaTrabajadorId || null, rolFirma || 'ejecutante', subidaInfo.publicId]
-      )
+      (subidaInfo) => withTransaction(async (client) => {
+        const r = await client.query(
+          `INSERT INTO permisos_trabajo_firmas (permiso_id, organizacion_id, trabajador_id, contratista_trabajador_id, rol_firma, firma_public_id)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           RETURNING id, rol_firma, firmado_en`,
+          [req.params.id, orgId, trabajadorId || null, contratistaTrabajadorId || null, rolFirma || 'ejecutante', subidaInfo.publicId]
+        );
+        await registrarAuditoria({
+          organizacionId: orgId, usuarioId: req.usuario.id, accion: 'permiso_trabajo_firmado',
+          entidad: 'permisos_trabajo_firmas', entidadId: r.rows[0].id,
+          detalle: { permisoId: req.params.id, rolFirma: rolFirma || 'ejecutante' }, req, client,
+        });
+        return r;
+      })
     );
 
     return res.status(201).json({ firma: resultado.rows[0] });

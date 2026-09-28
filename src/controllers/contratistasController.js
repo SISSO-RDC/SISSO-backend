@@ -233,12 +233,19 @@ async function agregarTrabajador(req, res) {
     const contratistaRes = await query(`SELECT id FROM contratistas WHERE id = $1 AND organizacion_id = $2`, [req.params.id, orgId]);
     if (contratistaRes.rows.length === 0) return res.status(404).json({ error: 'Contratista no encontrado.' });
 
-    const insertRes = await query(
-      `INSERT INTO contratistas_trabajadores (contratista_id, organizacion_id, nombre_completo, cedula, cargo)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, nombre_completo, cedula, cargo, estado, creado_en`,
-      [req.params.id, orgId, nombreCompleto.trim(), cedula.trim(), cargo || null]
-    );
+    const insertRes = await withTransaction(async (client) => {
+      const r = await client.query(
+        `INSERT INTO contratistas_trabajadores (contratista_id, organizacion_id, nombre_completo, cedula, cargo)
+         VALUES ($1,$2,$3,$4,$5)
+         RETURNING id, nombre_completo, cedula, cargo, estado, creado_en`,
+        [req.params.id, orgId, nombreCompleto.trim(), cedula.trim(), cargo || null]
+      );
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'contratista_trabajador_agregado',
+        entidad: 'contratistas_trabajadores', entidadId: r.rows[0].id, detalle: { contratistaId: req.params.id }, req, client,
+      });
+      return r;
+    });
 
     return res.status(201).json({ trabajador: insertRes.rows[0] });
   } catch (err) {

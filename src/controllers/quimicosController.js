@@ -174,10 +174,18 @@ async function cambiarEstado(req, res) {
   }
 
   try {
-    const updateRes = await query(
-      `UPDATE quimicos_inventario SET estado = $1, actualizado_en = now() WHERE id = $2 AND organizacion_id = $3 RETURNING id, estado`,
-      [estado, req.params.id, orgId]
-    );
+    const updateRes = await withTransaction(async (client) => {
+      const r = await client.query(
+        `UPDATE quimicos_inventario SET estado = $1, actualizado_en = now() WHERE id = $2 AND organizacion_id = $3 RETURNING id, estado`,
+        [estado, req.params.id, orgId]
+      );
+      if (r.rows.length === 0) return r;
+      await registrarAuditoria({
+        organizacionId: orgId, usuarioId: req.usuario.id, accion: 'quimico_estado_cambiado',
+        entidad: 'quimicos_inventario', entidadId: req.params.id, detalle: { estado }, req, client,
+      });
+      return r;
+    });
     if (updateRes.rows.length === 0) return res.status(404).json({ error: 'Quimico no encontrado.' });
     return res.json({ quimico: updateRes.rows[0] });
   } catch (err) {
