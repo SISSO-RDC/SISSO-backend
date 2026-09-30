@@ -25,8 +25,8 @@ const { autenticar, autorizar } = require('../middleware/auth');
 // administrativa, no de lectura clinica.
 router.post('/evaluaciones', autenticar, autorizar('admin', 'sso'), controller.crearEvaluacion);
 router.get('/evaluaciones/resumen-agregado', autenticar, autorizar('admin', 'sso', 'medico'), controller.obtenerResumenAgregado);
-router.get('/evaluaciones', autenticar, autorizar('sso', 'medico'), controller.listarEvaluaciones);
-router.get('/evaluaciones/:id', autenticar, autorizar('sso', 'medico'), controller.obtenerEvaluacion);
+router.get('/evaluaciones', autenticar, autorizar('admin', 'sso', 'medico'), controller.listarEvaluaciones);
+router.get('/evaluaciones/:id', autenticar, autorizar('admin', 'sso', 'medico'), controller.obtenerEvaluacion);
 router.put('/evaluaciones/:id', autenticar, autorizar('admin', 'sso'), controller.actualizarEvaluacion);
 router.post('/evaluaciones/:id/generar-capa', autenticar, autorizar('admin', 'sso'), controller.generarCapaDesdeEvaluacion);
 

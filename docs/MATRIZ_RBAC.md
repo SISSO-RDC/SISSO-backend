@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-27.
+> Ultima generacion: 2026-09-29.
 
 ## `/api/auth`
 
@@ -512,8 +512,8 @@
 |---|---|---|
 | POST | `/api/riesgo-psicosocial/evaluaciones` | admin, sso |
 | GET | `/api/riesgo-psicosocial/evaluaciones/resumen-agregado` | admin, sso, medico |
-| GET | `/api/riesgo-psicosocial/evaluaciones` | sso, medico |
-| GET | `/api/riesgo-psicosocial/evaluaciones/:id` | sso, medico |
+| GET | `/api/riesgo-psicosocial/evaluaciones` | admin, sso, medico |
+| GET | `/api/riesgo-psicosocial/evaluaciones/:id` | admin, sso, medico |
 | PUT | `/api/riesgo-psicosocial/evaluaciones/:id` | admin, sso |
 | POST | `/api/riesgo-psicosocial/evaluaciones/:id/generar-capa` | admin, sso |
 
