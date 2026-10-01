@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-09-27.
+> Ultima generacion: 2026-10-01.
 
 ## `/api/auth`
 
