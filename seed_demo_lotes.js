@@ -140,27 +140,38 @@ async function main() {
   const contratistasCreados = [];
   for (const c of CONTRATISTAS_DEMO) {
     try {
-      const r = await api(token, 'POST', '/contratistas', {
-        razonSocial: c.razonSocial, ruc: c.ruc, actividad: c.actividad,
-        representanteLegal: 'Representante Legal Demo', telefonoContacto: '099' + rndInt(1000000, 9999999),
-        correoContacto: `contacto@${c.razonSocial.split(' ')[0].toLowerCase()}.demo.com`,
-      });
-      contratistasCreados.push(r.contratista);
-      anotar('contratistas', true, `${c.razonSocial} creado`);
+      let contratista;
+      try {
+        const r = await api(token, 'POST', '/contratistas', {
+          razonSocial: c.razonSocial, ruc: c.ruc, actividad: c.actividad,
+          representanteLegal: 'Representante Legal Demo', telefonoContacto: '099' + rndInt(1000000, 9999999),
+          correoContacto: `contacto@${c.razonSocial.split(' ')[0].toLowerCase()}.demo.com`,
+        });
+        contratista = r.contratista;
+        anotar('contratistas', true, `${c.razonSocial} creado`);
+      } catch (e) {
+        if (e.status !== 409) throw e;
+        // Ya existe (corrida anterior) -- recuperar su id por RUC para poder seguir con documentos/trabajadores.
+        const existentes = await api(token, 'GET', '/contratistas', undefined);
+        contratista = (existentes.contratistas || []).find((x) => x.ruc === c.ruc);
+        anotar('contratistas', true, `${c.razonSocial} ya existía de una corrida anterior (reutilizado)`);
+        if (!contratista) { anotar('contratistas', false, `${c.razonSocial}: existe por RUC pero no se encontró en el listado`); continue; }
+      }
+      contratistasCreados.push(contratista);
 
       // Un documento vigente y uno vencido (a proposito) por contratista.
-      await api(token, 'POST', `/contratistas/${r.contratista.id}/documentos`, {
+      await api(token, 'POST', `/contratistas/${contratista.id}/documentos`, {
         tipo: 'poliza_responsabilidad_civil', numeroDocumento: `POL-${rndInt(1000, 9999)}`,
         fechaEmision: fechaHace(200), fechaVencimiento: fechaEnDias(rndInt(20, 200)), archivoBase64: PDF_DEMO_B64,
       });
-      await api(token, 'POST', `/contratistas/${r.contratista.id}/documentos`, {
+      await api(token, 'POST', `/contratistas/${contratista.id}/documentos`, {
         tipo: 'certificado_seguridad_industrial', numeroDocumento: `CSI-${rndInt(1000, 9999)}`,
         fechaEmision: fechaHace(400), fechaVencimiento: fechaHace(rndInt(1, 30)), archivoBase64: PDF_DEMO_B64,
       });
       anotar('contratistas', true, `${c.razonSocial}: 2 documentos (1 vigente, 1 vencido)`);
 
       for (let i = 0; i < 2; i++) {
-        await api(token, 'POST', `/contratistas/${r.contratista.id}/trabajadores`, {
+        await api(token, 'POST', `/contratistas/${contratista.id}/trabajadores`, {
           nombreCompleto: `Trabajador Externo ${c.razonSocial.split(' ')[0]} ${i + 1}`,
           cedula: cedulaFalsa(), cargo: i === 0 ? 'Tecnico' : 'Ayudante',
         });
@@ -185,7 +196,13 @@ async function main() {
       const r = await api(token, 'POST', '/competencias/catalogo', c);
       competenciasCreadas.push(r.competencia);
       anotar('competencias', true, `catalogo: ${c.nombre}`);
-    } catch (e) { anotar('competencias', false, `catalogo ${c.nombre}: ${e.message}`); }
+    } catch (e) {
+      if (e.status !== 409) { anotar('competencias', false, `catalogo ${c.nombre}: ${e.message}`); continue; }
+      const existentes = await api(token, 'GET', '/competencias/catalogo', undefined);
+      const existente = (existentes.competencias || []).find((x) => x.nombre === c.nombre);
+      if (existente) { competenciasCreadas.push(existente); anotar('competencias', true, `catalogo: ${c.nombre} ya existía (reutilizado)`); }
+      else anotar('competencias', false, `catalogo ${c.nombre}: existe pero no se encontró en el listado`);
+    }
   }
   if (competenciasCreadas.length) {
     let asignadas = 0;
@@ -319,9 +336,9 @@ async function main() {
     anotar('obligaciones_legales', false, `generar-sisat: ${e.message} (revisa si el superadmin ya clasifico el nivel_riesgo_sisat de esta organizacion)`);
   }
   const OBLIGACIONES_MANUALES = [
-    { titulo: 'Reglamento Interno de Seguridad y Salud', descripcion: 'Elaborar y registrar el reglamento interno de SST ante el Ministerio del Trabajo.', jurisdiccion: 'Nacional', frecuencia: 'bianual' },
+    { titulo: 'Reglamento Interno de Seguridad y Salud', descripcion: 'Elaborar y registrar el reglamento interno de SST ante el Ministerio del Trabajo.', jurisdiccion: 'Nacional', frecuencia: 'anual' },
     { titulo: 'Programa de vigilancia de la salud', descripcion: 'Mantener vigente el programa anual de vigilancia de la salud ocupacional.', jurisdiccion: 'Nacional', frecuencia: 'anual' },
-    { titulo: 'Registro de accidentes e incidentes', descripcion: 'Reportar accidentes de trabajo al IESS dentro del plazo legal.', jurisdiccion: 'Nacional', frecuencia: 'por_evento' },
+    { titulo: 'Registro de accidentes e incidentes', descripcion: 'Reportar accidentes de trabajo al IESS dentro del plazo legal.', jurisdiccion: 'Nacional', frecuencia: 'unica' },
   ];
   for (const o of OBLIGACIONES_MANUALES) {
     try {
