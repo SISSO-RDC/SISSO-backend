@@ -323,7 +323,7 @@ async function generarPlantillaSisat(req, res) {
              proxima_fecha_vencimiento, plantilla_origen,
              fuente_norma, articulo_referencia, creado_por)
            VALUES ($1,$2,$3,'Ecuador - nacional','unica',$4,$5,$6,$7,$8,$9)
-           ON CONFLICT (organizacion_id, plantilla_origen, titulo) WHERE plantilla_origen IS NOT NULL DO NOTHING
+           ON CONFLICT (organizacion_id, plantilla_origen, titulo) DO NOTHING
            RETURNING id, titulo, proxima_fecha_vencimiento`,
           [
             orgId, item.titulo, item.descripcion, req.usuario.id, vencimiento, PLANTILLA_SISAT,
