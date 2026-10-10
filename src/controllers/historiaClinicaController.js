@@ -15,6 +15,7 @@ const { generarPdfPreocupacional, generarPdfRetiro, generarPdfPeriodica, generar
 const { generarPdfCertificado } = require('../historiaClinica/pdfCertificado');
 const { obtenerLogoBuffer } = require('../utils/logoPdf');
 const { obtenerFirmaParaPdf } = require('../utils/firmaPdf');
+const { aplicarFirmaElectronicaSiCorresponde, pdfkitDocToBuffer } = require('../utils/aplicarFirmaElectronicaSiCorresponde');
 const catalogos = require('../historiaClinica/catalogosRiesgo');
 
 const CARPETA_FIRMAS = 'sisso/firmas-historia-clinica';
@@ -966,10 +967,14 @@ async function descargarPdf(req, res) {
       ? generarPdfReintegro(e, e.organizacion_nombre, logoBuffer, firmaMedico)
       : generarPdfPreocupacional(e, e.organizacion_nombre, logoBuffer, firmaMedico);
 
+    const pdfSinFirmar = await pdfkitDocToBuffer(doc);
+    const pdfFinal = await aplicarFirmaElectronicaSiCorresponde(pdfSinFirmar, e.medico_id, req.usuario.organizacionId, {
+      documentoTipo: `historia_clinica_${e.tipo_evaluacion}`, documentoId: e.id, req,
+    });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="historia-clinica-${e.tipo_evaluacion}-${e.trabajador_documento}.pdf"`);
-    doc.pipe(res);
-    doc.end();
+    res.send(pdfFinal);
   } catch (err) {
     console.error('Error en descargarPdf (historia clinica):', err);
     return res.status(500).json({ error: 'Error interno al generar el PDF.' });
@@ -1032,10 +1037,14 @@ async function descargarCertificado(req, res) {
 
     const doc = generarPdfCertificado(e, e.organizacion_nombre, logoBuffer, firmaMedico);
 
+    const pdfSinFirmar = await pdfkitDocToBuffer(doc);
+    const pdfFinal = await aplicarFirmaElectronicaSiCorresponde(pdfSinFirmar, e.medico_id, req.usuario.organizacionId, {
+      documentoTipo: 'certificado_salud_trabajo', documentoId: e.id, req,
+    });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="certificado-salud-trabajo-${e.trabajador_documento}.pdf"`);
-    doc.pipe(res);
-    doc.end();
+    res.send(pdfFinal);
   } catch (err) {
     console.error('Error en descargarCertificado:', err);
     return res.status(500).json({ error: 'Error interno al generar el certificado.' });

@@ -41,6 +41,13 @@ const POLITICAS = {
   // controlado versionado no deberia entrar como foto de una
   // pantalla o de una hoja impresa.
   documento_control: { tipos: ['application/pdf'], maxBytes: 20 * MB },
+  // CREADO (firma electronica criptografica, Oct 2026): archivo .p12
+  // (PKCS#12) con el certificado + llave privada de un profesional.
+  // Los navegadores son inconsistentes con el MIME de un .p12 --
+  // aceptamos los 2 valores reales que se observan en la practica.
+  // La validacion de fondo (que de verdad sea un .p12 valido) la hace
+  // node-forge al intentar abrirlo con la passphrase, no este chequeo.
+  certificado_p12: { tipos: ['application/x-pkcs12', 'application/octet-stream'], maxBytes: 20 * MB },
 };
 
 class ArchivoInvalidoError extends Error {
@@ -78,6 +85,15 @@ function coincideConTipo(buf, mime) {
     case 'video/quicktime':
       // Contenedor ISO-BMFF: "ftyp" en el offset 4.
       return empiezaCon(buf, [0x66, 0x74, 0x79, 0x70], 4);
+    case 'application/x-pkcs12':
+    case 'application/octet-stream':
+      // Un .p12 es ASN.1 DER: su primer byte SIEMPRE es el tag SEQUENCE
+      // (0x30) seguido de la codificacion de longitud -- es una
+      // verificacion debil a proposito (application/octet-stream es un
+      // tipo generico que tambien usan otros archivos), porque la
+      // validacion de fondo real ocurre despues, al intentar ABRIR el
+      // archivo con node-forge usando la passphrase declarada.
+      return empiezaCon(buf, [0x30]);
     default:
       return false;
   }

@@ -200,7 +200,8 @@ jobs:
       - name: SCA - npm audit de dependencias de produccion
         run: |
           npm audit --omit=dev --json > /tmp/npm-audit-prod.json || true
-          npm audit --omit=dev --audit-level=high
+                    npm audit --omit=dev --json > /tmp/npm-audit-prod.json || true
+          node scripts/ci_sca_audit.js
 
       - name: SBOM CycloneDX de dependencias de produccion
         run: npm sbom --sbom-format cyclonedx --omit dev > /tmp/sbom-cyclonedx.json

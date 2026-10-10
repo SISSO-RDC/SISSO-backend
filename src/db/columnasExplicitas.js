@@ -281,6 +281,14 @@ const COLUMNAS = {
     ],
     noExpuestas: [],
   },
+  firmas_electronicas_usuario: {
+    expuestas: ['id', 'usuario_id', 'organizacion_id', 'titular_cn', 'emisor_cn', 'numero_serie', 'fecha_emision', 'fecha_vencimiento', 'activo', 'creado_por', 'creado_en', 'actualizado_en'],
+    noExpuestas: ['certificado_p12_cifrado', 'passphrase_cifrada'],
+  },
+  firmas_electronicas_usos: {
+    expuestas: ['id', 'firma_electronica_id', 'organizacion_id', 'documento_tipo', 'documento_id', 'exitoso', 'error_detalle', 'creado_en'],
+    noExpuestas: [],
+  },
   quimicos_inventario: {
     expuestas: [
       'id', 'organizacion_id', 'nombre_comercial', 'nombre_quimico', 'numero_cas', 'fabricante', 'area',

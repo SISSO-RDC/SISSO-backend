@@ -106,6 +106,7 @@ const competenciasRoutes = require('./routes/competenciasRoutes');
 const permisosTrabajoRoutes = require('./routes/permisosTrabajoRoutes');
 const quimicosRoutes = require('./routes/quimicosRoutes');
 const emergenciasRoutes = require('./routes/emergenciasRoutes');
+const firmaElectronicaRoutes = require('./routes/firmaElectronicaRoutes');
 // CREADO Lote 2 (plan de cierre de brechas frente a plataformas EHS
 // globales, Sep 2026): control documental, matriz de obligaciones
 // legales y auditorias internas/externas.
@@ -284,6 +285,7 @@ app.use('/api/competencias', competenciasRoutes);
 app.use('/api/permisos-trabajo', permisosTrabajoRoutes);
 app.use('/api/quimicos', quimicosRoutes);
 app.use('/api/emergencias', emergenciasRoutes);
+app.use('/api/firma-electronica', firmaElectronicaRoutes);
 app.use('/api/documentos-control', documentosControlRoutes);
 app.use('/api/obligaciones-legales', obligacionesLegalesRoutes);
 app.use('/api/auditorias', auditoriasRoutes);

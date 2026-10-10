@@ -18,28 +18,38 @@ const crypto = require('crypto');
 
 const ALGORITMO = 'aes-256-gcm';
 
-function obtenerClave() {
-  const clave = process.env.MFA_ENCRYPTION_KEY;
+// CREADO (firma electronica criptografica, Oct 2026): encriptar/desencriptar
+// ahora aceptan QUE variable de entorno usar como clave, en vez de asumir
+// siempre MFA_ENCRYPTION_KEY. Esto permite que un secreto nuevo e
+// igual de sensible (el .p12 + passphrase de la firma electronica de un
+// profesional) se cifre con SU PROPIA clave (FIRMA_ELECTRONICA_ENCRYPTION_KEY),
+// separada de la de MFA -- si una de las dos claves se filtra alguna vez,
+// la otra categoria de secretos sigue protegida. El parametro es opcional
+// y por defecto sigue siendo MFA_ENCRYPTION_KEY: ningun llamado existente
+// (los de MFA) cambia de comportamiento.
+function obtenerClave(nombreVariableEntorno = 'MFA_ENCRYPTION_KEY') {
+  const clave = process.env[nombreVariableEntorno];
   if (!clave) {
     throw new Error(
-      'Falta la variable de entorno MFA_ENCRYPTION_KEY. Genere una clave de 32 bytes con: ' +
+      `Falta la variable de entorno ${nombreVariableEntorno}. Genere una clave de 32 bytes con: ` +
       'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))" ' +
-      'y definala en Render (Environment) antes de operar con MFA.'
+      `y definala en Render (Environment) antes de operar con ${nombreVariableEntorno === 'MFA_ENCRYPTION_KEY' ? 'MFA' : 'esta funcion'}.`
     );
   }
   const buffer = Buffer.from(clave, 'base64');
   if (buffer.length !== 32) {
-    throw new Error('MFA_ENCRYPTION_KEY debe decodificar a exactamente 32 bytes (AES-256). El valor actual no tiene el largo correcto.');
+    throw new Error(`${nombreVariableEntorno} debe decodificar a exactamente 32 bytes (AES-256). El valor actual no tiene el largo correcto.`);
   }
   return buffer;
 }
 
 /**
- * Cifra un texto (ej: secreto TOTP) para guardarlo en base de datos.
+ * Cifra un texto (ej: secreto TOTP, o el .p12/passphrase de una firma
+ * electronica) para guardarlo en base de datos.
  */
-function encriptar(textoPlano) {
+function encriptar(textoPlano, nombreVariableEntorno = 'MFA_ENCRYPTION_KEY') {
   const iv = crypto.randomBytes(12); // 96 bits, recomendado para GCM
-  const cipher = crypto.createCipheriv(ALGORITMO, obtenerClave(), iv);
+  const cipher = crypto.createCipheriv(ALGORITMO, obtenerClave(nombreVariableEntorno), iv);
   const cifrado = Buffer.concat([cipher.update(textoPlano, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${iv.toString('base64')}:${tag.toString('base64')}:${cifrado.toString('base64')}`;
@@ -57,7 +67,7 @@ function encriptar(textoPlano) {
  * cifrado. Se recomienda notificar a los usuarios con MFA activo
  * antes de esta correccion para que lo reconfiguren una vez.
  */
-function desencriptar(valorGuardado) {
+function desencriptar(valorGuardado, nombreVariableEntorno = 'MFA_ENCRYPTION_KEY') {
   if (!valorGuardado) return valorGuardado;
   const partes = String(valorGuardado).split(':');
   if (partes.length !== 3) {
@@ -66,12 +76,12 @@ function desencriptar(valorGuardado) {
   }
   const [ivB64, tagB64, datosB64] = partes;
   try {
-    const decipher = crypto.createDecipheriv(ALGORITMO, obtenerClave(), Buffer.from(ivB64, 'base64'));
+    const decipher = crypto.createDecipheriv(ALGORITMO, obtenerClave(nombreVariableEntorno), Buffer.from(ivB64, 'base64'));
     decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
     const descifrado = Buffer.concat([decipher.update(Buffer.from(datosB64, 'base64')), decipher.final()]);
     return descifrado.toString('utf8');
   } catch (err) {
-    throw new Error('No se pudo descifrar el secreto MFA. Verifique que MFA_ENCRYPTION_KEY no haya cambiado.');
+    throw new Error(`No se pudo descifrar el secreto. Verifique que ${nombreVariableEntorno} no haya cambiado.`);
   }
 }
 

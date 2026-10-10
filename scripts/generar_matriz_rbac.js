@@ -108,6 +108,7 @@ const CLASIFICACION_RECURSOS = {
   'permisos-trabajo': 'operativo_individual (control de tareas criticas: JSA/AST, estados, firmas -- no clinico)',
   'quimicos': 'catalogo (inventario y SDS/FDS por sede/area, no clinico)',
   'emergencias': 'catalogo (planes, simulacros y equipos criticos) + operativo_individual (hallazgos de simulacro)',
+  'firma-electronica': 'operativo_individual (certificado personal del usuario autenticado -- nunca por :id de otro usuario)',
   'ejemplo': 'N/A (ruta de ejemplo/diagnostico, no expone datos de negocio)',
   'plataforma': 'N/A (informacion publica de la app y canal de sugerencias, sin datos de negocio)',
 };

@@ -14,7 +14,7 @@
 > es decir, es estructuralmente imposible que esta matriz quede desactualizada
 > sin que el pipeline lo marque en rojo.
 >
-> Ultima generacion: 2026-10-01.
+> Ultima generacion: 2026-10-05.
 
 ## `/api/auth`
 
@@ -681,6 +681,17 @@
 | GET | `/api/emergencias/equipos` | admin, sso |
 | PATCH | `/api/emergencias/equipos/:id/inspeccion` | admin, sso |
 
+## `/api/firma-electronica`
+
+**Clasificacion del dato:** operativo_individual (certificado personal del usuario autenticado -- nunca por :id de otro usuario)
+
+| Metodo | Ruta | Rol(es) permitido(s) |
+|---|---|---|
+| GET | `/api/firma-electronica/mi-certificado` | cualquier rol autenticado (sin restriccion de rol) |
+| POST | `/api/firma-electronica/cargar` | cualquier rol autenticado (sin restriccion de rol) |
+| PATCH | `/api/firma-electronica/activar` | cualquier rol autenticado (sin restriccion de rol) |
+| DELETE | `/api/firma-electronica/mi-certificado` | cualquier rol autenticado (sin restriccion de rol) |
+
 ## `/api/documentos-control`
 
 **Clasificacion del dato:** catalogo (documentos de gestion; acuses de lectura son operativo_individual)
@@ -734,4 +745,4 @@
 
 ---
 
-**Resumen:** 302 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 70 requieren sesion valida pero no restringen por rol especifico.
+**Resumen:** 306 endpoints documentados. 8 sin autenticacion (revisar cada una individualmente mas arriba). 74 requieren sesion valida pero no restringen por rol especifico.

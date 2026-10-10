@@ -18,6 +18,7 @@ const { query, withTransaction } = require('../db/pool');
 const { registrarAuditoria } = require('../utils/auditoria');
 const { obtenerLogoBuffer } = require('../utils/logoPdf');
 const { obtenerFirmaParaPdf } = require('../utils/firmaPdf');
+const { aplicarFirmaElectronicaSiCorresponde, pdfkitDocToBuffer } = require('../utils/aplicarFirmaElectronicaSiCorresponde');
 const { generarPdfCertificadoRestriccion } = require('../restriccionesMedicas/pdfCertificadoRestriccion');
 
 const COLUMNAS_MEDICO = `
@@ -484,10 +485,14 @@ async function descargarCertificado(req, res) {
       firma
     );
 
+    const pdfSinFirmar = await pdfkitDocToBuffer(doc);
+    const pdfFinal = await aplicarFirmaElectronicaSiCorresponde(pdfSinFirmar, r.medico_emisor_id, req.usuario.organizacionId, {
+      documentoTipo: 'certificado_restriccion_medica', documentoId: restriccionId, req,
+    });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="restriccion-medica-${r.documento}.pdf"`);
-    doc.pipe(res);
-    doc.end();
+    res.send(pdfFinal);
   } catch (err) {
     console.error('Error en descargarCertificado (restricciones medicas):', err);
     return res.status(500).json({ error: 'Error interno al generar el certificado.' });

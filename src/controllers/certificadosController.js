@@ -23,6 +23,7 @@ const { generarPdfCertificadoAptitud } = require('../certificados/pdfCertificado
 const { registrarAuditoria } = require('../utils/auditoria');
 const { obtenerLogoBuffer } = require('../utils/logoPdf');
 const { obtenerFirmaParaPdf } = require('../utils/firmaPdf');
+const { aplicarFirmaElectronicaSiCorresponde, pdfkitDocToBuffer } = require('../utils/aplicarFirmaElectronicaSiCorresponde');
 
 // ------------------------------------------------------------
 // GET /api/certificados/capacitacion/:capacitacionId/trabajador/:trabajadorId
@@ -62,7 +63,8 @@ async function certificadoCapacitacion(req, res) {
     // el instructor interno (instructor_usuario_id) si esta vinculado
     // a un usuario del sistema; si no, usa quien la registro (creado_por).
     const capacitacion = capacitacionRes.rows[0];
-    const firma = await obtenerFirmaParaPdf(capacitacion.instructor_usuario_id || capacitacion.creado_por, orgId);
+    const firmanteId = capacitacion.instructor_usuario_id || capacitacion.creado_por;
+    const firma = await obtenerFirmaParaPdf(firmanteId, orgId);
 
     const doc = generarPdfCertificadoCapacitacion(
       { capacitacion: capacitacionRes.rows[0], trabajador: asistenciaRes.rows[0] },
@@ -76,10 +78,14 @@ async function certificadoCapacitacion(req, res) {
       accion: 'generar_certificado_capacitacion', entidad: 'capacitacion', entidadId: capacitacionId, req,
     });
 
+    const pdfSinFirmar = await pdfkitDocToBuffer(doc);
+    const pdfFinal = await aplicarFirmaElectronicaSiCorresponde(pdfSinFirmar, firmanteId, orgId, {
+      documentoTipo: 'certificado_capacitacion', documentoId: capacitacionId, req,
+    });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="certificado-capacitacion-${asistenciaRes.rows[0].documento}.pdf"`);
-    doc.pipe(res);
-    doc.end();
+    res.send(pdfFinal);
   } catch (err) {
     console.error('Error en certificadoCapacitacion:', err);
     return res.status(500).json({ error: 'Error interno al generar el certificado.' });
@@ -112,7 +118,8 @@ async function certificadoAptitud(req, res) {
        ORDER BY creado_en DESC LIMIT 1`,
       [req.params.trabajadorId, orgId]
     );
-    const firma = await obtenerFirmaParaPdf(ultimaEvaluacionRes.rows[0]?.medico_id, orgId);
+    const medicoId = ultimaEvaluacionRes.rows[0]?.medico_id;
+    const firma = await obtenerFirmaParaPdf(medicoId, orgId);
     const doc = generarPdfCertificadoAptitud(trabajadorRes.rows[0], orgRes.rows[0]?.nombre, logoBuffer, firma);
 
     // CORREGIDO en Auditoria N.12 (hallazgo GRAVE G12-05, P1): el
@@ -123,10 +130,19 @@ async function certificadoAptitud(req, res) {
       lecturaSensible: true,
     });
 
+    // Firma electronica criptografica (Oct 2026): si el medico que
+    // respalda esta evaluacion tiene un certificado .p12 activo, el PDF
+    // se firma digitalmente de verdad antes de entregarse. Requiere
+    // juntar el PDF completo primero -- ya no se puede streamear directo
+    // a la respuesta, porque firmar exige el documento entero.
+    const pdfSinFirmar = await pdfkitDocToBuffer(doc);
+    const pdfFinal = await aplicarFirmaElectronicaSiCorresponde(pdfSinFirmar, medicoId, orgId, {
+      documentoTipo: 'certificado_aptitud', documentoId: req.params.trabajadorId, req,
+    });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="certificado-aptitud-${trabajadorRes.rows[0].documento}.pdf"`);
-    doc.pipe(res);
-    doc.end();
+    res.send(pdfFinal);
   } catch (err) {
     console.error('Error en certificadoAptitud:', err);
     return res.status(500).json({ error: 'Error interno al generar el certificado.' });
