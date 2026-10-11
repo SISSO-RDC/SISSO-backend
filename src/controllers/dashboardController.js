@@ -147,7 +147,7 @@ async function obtenerResumen(req, res) {
          WHERE s.organizacion_id = $1 AND t.area IS NOT NULL
          GROUP BY t.area
          ORDER BY maximo DESC
-         LIMIT 8`,
+         LIMIT 20`,
         [orgId]
       ),
 
