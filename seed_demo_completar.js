@@ -74,6 +74,12 @@ function fechaHace(diasAtras) {
 }
 
 
+// Credenciales por token, para renovar la sesion cuando el access token expira
+// (dura pocos minutos y este script puede tardar mas).
+const credenciales = new Map();
+const reemplazos = new Map(); // token viejo -> token vigente
+function vigente(t) { while (reemplazos.has(t)) t = reemplazos.get(t); return t; }
+
 async function loginConMfa(email, password) {
   let login = await api(null, 'POST', '/auth/login', { email, password });
   if (login && login.requiereMfa) {
@@ -84,6 +90,7 @@ async function loginConMfa(email, password) {
     console.error(`La cuenta ${email} todavia tiene la password temporal y pide cambiarla. Cambiala una vez desde la plataforma y vuelve a correr el script con la nueva.`);
     process.exit(1);
   }
+  credenciales.set(login.accessToken, { email, password });
   return login.accessToken;
 }
 
@@ -92,10 +99,20 @@ const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // api() con reintento ante 429/502/503 (Render free se duerme / limita).
 const apiBase = api;
+async function renovar(tokenViejo) {
+  const actual = vigente(tokenViejo);
+  const cred = credenciales.get(actual);
+  if (!cred) throw new Error('sesion expirada y sin credenciales para renovarla');
+  const nuevo = await loginConMfa(cred.email, cred.password);
+  reemplazos.set(actual, nuevo);
+  return nuevo;
+}
 async function apiR(token, method, path, body) {
+  let renovado = false;
   for (let intento = 1; ; intento++) {
-    try { return await apiBase(token, method, path, body); }
+    try { return await apiBase(token ? vigente(token) : token, method, path, body); }
     catch (e) {
+      if (e.status === 401 && token && !renovado) { await renovar(token); renovado = true; continue; }
       if ([429, 502, 503, 504].includes(e.status) && intento < 5) { await pausa(1500 * intento); continue; }
       throw e;
     }
